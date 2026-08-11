@@ -1,0 +1,651 @@
+<title>Wireframe — ระบบติดตามสถานะผลงานวิชาการ เขตสุขภาพที่ 11</title>
+<style>
+  @font-face{font-family:'Sarabun';font-style:normal;font-weight:400;font-display:swap;
+    src:url(data:font/woff2;base64,{{F400_THAI}}) format('woff2');
+    unicode-range:U+0E01-0E5B,U+200C-200D,U+25CC;}
+  @font-face{font-family:'Sarabun';font-style:normal;font-weight:400;font-display:swap;
+    src:url(data:font/woff2;base64,{{F400_LATIN}}) format('woff2');
+    unicode-range:U+0000-00FF,U+2000-206F,U+20AC,U+2122;}
+  @font-face{font-family:'Sarabun';font-style:normal;font-weight:600;font-display:swap;
+    src:url(data:font/woff2;base64,{{F600_THAI}}) format('woff2');
+    unicode-range:U+0E01-0E5B,U+200C-200D,U+25CC;}
+  @font-face{font-family:'Sarabun';font-style:normal;font-weight:600;font-display:swap;
+    src:url(data:font/woff2;base64,{{F600_LATIN}}) format('woff2');
+    unicode-range:U+0000-00FF,U+2000-206F,U+20AC,U+2122;}
+  @font-face{font-family:'Sarabun';font-style:normal;font-weight:700;font-display:swap;
+    src:url(data:font/woff2;base64,{{F700_THAI}}) format('woff2');
+    unicode-range:U+0E01-0E5B,U+200C-200D,U+25CC;}
+  @font-face{font-family:'Sarabun';font-style:normal;font-weight:700;font-display:swap;
+    src:url(data:font/woff2;base64,{{F700_LATIN}}) format('woff2');
+    unicode-range:U+0000-00FF,U+2000-206F,U+20AC,U+2122;}
+
+  :root{
+    --bg:#eef4f6; --surface:#ffffff; --surface-muted:#f4f9fa; --surface-sunken:#e6eef1;
+    --border:#d7e6ea; --border-soft:#e5eef1;
+    --ink:#16323f; --ink-muted:#5b7482; --ink-faint:#8ba0aa;
+    --brand-900:#0a3d50; --brand-700:#0e5a73; --brand-600:#10748f; --brand-500:#2c93ac; --brand-100:#dcedf1;
+    --accent:#159c85; --accent-100:#dbf1ec;
+    --success-bg:#e2f5ea; --success-ink:#1c7a43;
+    --warning-bg:#fdf1dc; --warning-ink:#9a6510;
+    --danger-bg:#fbe6e6; --danger-ink:#a63737;
+    --info-bg:#dcedf1; --info-ink:#0e5a73;
+    --shadow-sm:0 1px 2px rgba(10,61,80,.06), 0 1px 1px rgba(10,61,80,.08);
+    --shadow-md:0 6px 20px rgba(10,61,80,.10);
+    --radius:12px; --radius-sm:8px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0b1a20; --surface:#12262d; --surface-muted:#0f2027; --surface-sunken:#0a1a1f;
+      --border:#20393f; --border-soft:#1a3138;
+      --ink:#e6f1f3; --ink-muted:#93aab1; --ink-faint:#5f7880;
+      --brand-900:#bfe6ef; --brand-700:#7fd0e0; --brand-600:#3fb4cf; --brand-500:#2c93ac; --brand-100:#173339;
+      --accent:#3fcbb0; --accent-100:#123330;
+      --success-bg:#113523; --success-ink:#6fd39a;
+      --warning-bg:#3a2c0f; --warning-ink:#f0b84a;
+      --danger-bg:#3a1616; --danger-ink:#f19a9a;
+      --info-bg:#173339; --info-ink:#7fd0e0;
+      --shadow-sm:0 1px 2px rgba(0,0,0,.3); --shadow-md:0 10px 28px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0b1a20; --surface:#12262d; --surface-muted:#0f2027; --surface-sunken:#0a1a1f;
+    --border:#20393f; --border-soft:#1a3138;
+    --ink:#e6f1f3; --ink-muted:#93aab1; --ink-faint:#5f7880;
+    --brand-900:#bfe6ef; --brand-700:#7fd0e0; --brand-600:#3fb4cf; --brand-500:#2c93ac; --brand-100:#173339;
+    --accent:#3fcbb0; --accent-100:#123330;
+    --success-bg:#113523; --success-ink:#6fd39a;
+    --warning-bg:#3a2c0f; --warning-ink:#f0b84a;
+    --danger-bg:#3a1616; --danger-ink:#f19a9a;
+    --info-bg:#173339; --info-ink:#7fd0e0;
+    --shadow-sm:0 1px 2px rgba(0,0,0,.3); --shadow-md:0 10px 28px rgba(0,0,0,.4);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Sarabun',system-ui,sans-serif; font-size:15px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,h4{margin:0; font-weight:700; text-wrap:balance;}
+  button{font-family:inherit;}
+  ::selection{background:var(--brand-100);}
+  :focus-visible{outline:2px solid var(--brand-500); outline-offset:2px;}
+
+  /* ---- Prototype chrome (not part of the real product) ---- */
+  .proto-head{
+    padding:28px 20px 8px; max-width:1180px; margin:0 auto;
+  }
+  .proto-eyebrow{
+    font-size:.75rem; font-weight:600; letter-spacing:.06em; color:var(--brand-600);
+    text-transform:uppercase; margin-bottom:6px;
+  }
+  .proto-title{font-size:1.5rem; color:var(--brand-900);}
+  .proto-sub{color:var(--ink-muted); font-size:.9rem; margin-top:4px; max-width:60ch;}
+
+  .tabbar-wrap{position:sticky; top:0; z-index:30; background:var(--bg); padding:14px 20px; border-bottom:1px solid var(--border-soft);}
+  .tabbar{
+    max-width:1180px; margin:0 auto; display:flex; gap:6px; overflow-x:auto; padding-bottom:2px;
+    scrollbar-width:thin;
+  }
+  .tabbtn{
+    flex:0 0 auto; border:1px solid var(--border); background:var(--surface); color:var(--ink-muted);
+    padding:9px 16px; border-radius:999px; font-size:.85rem; font-weight:600; cursor:pointer;
+    white-space:nowrap; transition:background .15s,color .15s,border-color .15s;
+  }
+  .tabbtn:hover{border-color:var(--brand-500); color:var(--brand-700);}
+  .tabbtn[aria-selected="true"]{background:var(--brand-600); border-color:var(--brand-600); color:#fff;}
+
+  .stage{max-width:1180px; margin:0 auto; padding:20px; }
+  .screen{display:none;}
+  .screen[data-active="true"]{display:block; animation:fade .25s ease;}
+  @media (prefers-reduced-motion:reduce){.screen[data-active="true"]{animation:none;}}
+  @keyframes fade{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;}}
+
+  .frame{
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    box-shadow:var(--shadow-md); overflow:hidden;
+  }
+  .frame-label{
+    padding:10px 16px; font-size:.75rem; color:var(--ink-faint); border-bottom:1px dashed var(--border-soft);
+    display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;
+  }
+
+  /* ---- App shell ---- */
+  .app{display:grid; grid-template-columns:220px 1fr; min-height:640px;}
+  .app.no-sidebar{grid-template-columns:1fr;}
+  @media (max-width:820px){.app{grid-template-columns:1fr;}}
+
+  .sidebar{
+    background:var(--brand-900); color:#eaf4f7; padding:18px 14px; display:flex; flex-direction:column; gap:2px;
+  }
+  @media (max-width:820px){.sidebar{display:none;}}
+  .side-brand{color:#fff; font-weight:700; font-size:.95rem; padding:6px 10px 16px; line-height:1.4; border-bottom:1px solid rgba(255,255,255,.14); margin-bottom:10px;}
+  .side-brand small{display:block; font-weight:400; opacity:.75; font-size:.72rem; margin-top:2px;}
+  .side-link{
+    display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:9px; color:#cfe6ec;
+    font-size:.87rem; text-decoration:none; cursor:default;
+  }
+  .side-link .ico{width:18px; text-align:center; opacity:.85;}
+  .side-link.active{background:rgba(255,255,255,.14); color:#fff; font-weight:600;}
+  .side-link.logout{margin-top:auto; color:#f3b9b9;}
+
+  .bottomnav{
+    display:none; position:sticky; bottom:0; background:var(--surface); border-top:1px solid var(--border);
+    padding:6px 4px 8px;
+  }
+  @media (max-width:820px){.bottomnav{display:grid; grid-template-columns:repeat(5,1fr);}}
+  .bn-link{display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 2px; color:var(--ink-faint); font-size:.66rem; border-radius:8px;}
+  .bn-link.active{color:var(--brand-600);}
+  .bn-ico{font-size:1.05rem;}
+
+  .main{padding:20px; background:var(--surface-muted); min-width:0;}
+  .topbar{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px; flex-wrap:wrap;}
+  .topbar h2{font-size:1.15rem; color:var(--brand-900);}
+  .topbar .meta{font-size:.8rem; color:var(--ink-muted);}
+  .whoami{display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--border); padding:6px 10px 6px 6px; border-radius:999px;}
+  .avatar{width:26px; height:26px; border-radius:50%; background:var(--brand-500); color:#fff; display:flex; align-items:center; justify-content:center; font-size:.7rem; font-weight:700;}
+  .role-chip{font-size:.68rem; background:var(--brand-100); color:var(--brand-700); padding:2px 8px; border-radius:999px; font-weight:600;}
+
+  /* stat tiles */
+  .stats{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:18px;}
+  @media (max-width:700px){.stats{grid-template-columns:repeat(2,1fr);}}
+  .stat{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; box-shadow:var(--shadow-sm);}
+  .stat .n{font-size:1.5rem; font-weight:700; font-variant-numeric:tabular-nums; color:var(--brand-900);}
+  .stat .l{font-size:.78rem; color:var(--ink-muted); margin-top:2px;}
+  .stat.warn{border-color:#eecf9a; background:linear-gradient(180deg,var(--warning-bg),var(--surface) 70%);}
+  .stat.warn .n{color:var(--warning-ink);}
+
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow-sm);}
+  .card-h{padding:13px 16px; border-bottom:1px solid var(--border-soft); font-weight:600; font-size:.92rem; display:flex; justify-content:space-between; align-items:center; gap:8px;}
+  .card-b{padding:16px;}
+
+  .pill{display:inline-flex; align-items:center; gap:5px; font-size:.72rem; font-weight:600; padding:3px 10px; border-radius:999px;}
+  .pill.info{background:var(--info-bg); color:var(--info-ink);}
+  .pill.success{background:var(--success-bg); color:var(--success-ink);}
+  .pill.warning{background:var(--warning-bg); color:var(--warning-ink);}
+  .pill.danger{background:var(--danger-bg); color:var(--danger-ink);}
+  .pill.muted{background:var(--surface-sunken); color:var(--ink-muted);}
+  .dot{width:6px; height:6px; border-radius:50%; background:currentColor;}
+
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:8px;
+    border-radius:var(--radius-sm); border:1px solid transparent; font-weight:600; font-size:.86rem;
+    padding:10px 16px; cursor:pointer; min-height:44px; transition:filter .15s, background .15s;
+  }
+  .btn-primary{background:var(--brand-600); color:#fff;}
+  .btn-primary:hover{filter:brightness(1.06);}
+  .btn-accent{background:var(--accent); color:#fff;}
+  .btn-outline{background:var(--surface); border-color:var(--border); color:var(--ink);}
+  .btn-outline:hover{border-color:var(--brand-500); color:var(--brand-700);}
+  .btn-ghost{background:transparent; border-color:transparent; color:var(--brand-700);}
+  .btn-block{width:100%;}
+  .btn-lg{padding:14px 18px; font-size:.95rem;}
+  .btn-sm{padding:6px 12px; font-size:.78rem; min-height:32px;}
+
+  label{display:block; font-size:.8rem; color:var(--ink-muted); margin-bottom:5px; font-weight:600;}
+  .field{margin-bottom:14px;}
+  .input, select.input, textarea.input{
+    width:100%; border:1px solid var(--border); background:var(--surface); color:var(--ink);
+    border-radius:var(--radius-sm); padding:10px 12px; font-size:.9rem; font-family:inherit;
+  }
+  .input:focus{border-color:var(--brand-500);}
+  .input.unsure{border-color:#e0b64a; background:var(--warning-bg);}
+  .hint{font-size:.72rem; color:var(--ink-faint); margin-top:4px;}
+  .hint.unsure{color:var(--warning-ink);}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px 16px;}
+  @media (max-width:560px){.grid2{grid-template-columns:1fr;}}
+
+  /* ---- Screen 2 intake ---- */
+  .steps{display:flex; gap:6px; margin-bottom:18px; flex-wrap:wrap;}
+  .step{display:flex; align-items:center; gap:8px; font-size:.78rem; color:var(--ink-faint); padding:6px 10px 6px 6px; border-radius:999px; background:var(--surface); border:1px solid var(--border);}
+  .step .num{width:20px; height:20px; border-radius:50%; background:var(--surface-sunken); color:var(--ink-muted); display:flex; align-items:center; justify-content:center; font-size:.7rem; font-weight:700;}
+  .step.done{color:var(--success-ink); border-color:#bfe3cd;}
+  .step.done .num{background:var(--success-bg); color:var(--success-ink);}
+  .step.now{color:var(--brand-700); border-color:var(--brand-500); font-weight:700;}
+  .step.now .num{background:var(--brand-600); color:#fff;}
+
+  .intake-grid{display:grid; grid-template-columns:260px 1fr; gap:18px;}
+  @media (max-width:760px){.intake-grid{grid-template-columns:1fr;}}
+  .dropzone{
+    border:2px dashed var(--border); border-radius:var(--radius); background:var(--surface-muted);
+    aspect-ratio:3/4; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:8px; color:var(--ink-faint); overflow:hidden; position:relative;
+  }
+  .dropzone img{width:100%; height:100%; object-fit:cover;}
+  .cover-mock{width:100%; height:100%; background:
+      linear-gradient(180deg,var(--brand-100),var(--surface-sunken));
+      display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; color:var(--brand-700);}
+  .cover-mock .doc{width:74%; height:80%; background:var(--surface); border:1px solid var(--border); border-radius:6px; box-shadow:var(--shadow-sm); position:relative;}
+  .cover-mock .doc:before,.cover-mock .doc:after{content:""; position:absolute; left:14%; right:14%; height:6px; background:var(--border); border-radius:3px;}
+  .cover-mock .doc:before{top:18%;}
+  .cover-mock .doc:after{top:28%; right:34%;}
+
+  .confidence{font-size:.68rem; padding:2px 8px; border-radius:999px; font-weight:600;}
+  .confidence.high{background:var(--success-bg); color:var(--success-ink);}
+  .confidence.low{background:var(--warning-bg); color:var(--warning-ink);}
+  .flabel-row{display:flex; justify-content:space-between; align-items:baseline;}
+
+  /* ---- Screen 3 registry ---- */
+  .filterbar{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; align-items:end;}
+  .filterbar .field{margin-bottom:0; min-width:150px; flex:1 1 150px;}
+  .filterbar .field.grow{flex:2 1 220px;}
+
+  table.reg{width:100%; border-collapse:collapse; font-size:.85rem;}
+  table.reg th{text-align:left; font-size:.72rem; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.04em; font-weight:600; padding:9px 10px; border-bottom:1px solid var(--border);}
+  table.reg td{padding:11px 10px; border-bottom:1px solid var(--border-soft); vertical-align:middle;}
+  table.reg tbody tr:hover{background:var(--surface-muted);}
+  .tnum{font-variant-numeric:tabular-nums;}
+  .namecell strong{display:block; font-size:.87rem;}
+  .namecell span{font-size:.76rem; color:var(--ink-muted);}
+  .table-wrap{overflow-x:auto;}
+
+  .reg-cards{display:none; flex-direction:column; gap:10px;}
+  .reg-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 14px; box-shadow:var(--shadow-sm);}
+  .reg-card .top{display:flex; justify-content:space-between; gap:8px; align-items:flex-start;}
+  .reg-card .tno{font-size:.72rem; color:var(--ink-faint); font-variant-numeric:tabular-nums;}
+  .reg-card h4{font-size:.92rem; margin:2px 0 6px;}
+  .reg-card .meta{font-size:.78rem; color:var(--ink-muted); display:flex; flex-wrap:wrap; gap:x; gap:4px 10px; margin:8px 0;}
+  .reg-card .actions{display:flex; gap:8px; margin-top:10px;}
+
+  @media (max-width:760px){
+    .table-wrap{display:none;}
+    .reg-cards{display:flex;}
+  }
+  .resp-note{font-size:.72rem; color:var(--ink-faint); text-align:center; padding:8px; border-top:1px dashed var(--border-soft); display:none;}
+  @media (max-width:760px){.resp-note{display:block;}}
+
+  /* ---- Screen 4 detail ---- */
+  .detail-grid{display:grid; grid-template-columns:1.5fr 1fr; gap:16px;}
+  @media (max-width:820px){.detail-grid{grid-template-columns:1fr;}}
+  .dl{display:grid; grid-template-columns:auto 1fr; gap:6px 14px; font-size:.86rem;}
+  .dl dt{color:var(--ink-muted);}
+  .dl dd{margin:0; font-weight:600;}
+  .kv-list{display:flex; flex-direction:column; gap:10px;}
+  .kv-list .row{display:flex; justify-content:space-between; gap:10px; font-size:.85rem;}
+  .kv-list .row .k{color:var(--ink-muted);}
+  .kv-list .row .v{font-weight:600; text-align:right;}
+
+  .timeline{position:relative; margin-left:6px; padding-left:22px; border-left:2px solid var(--border-soft);}
+  .tl-item{position:relative; padding-bottom:20px;}
+  .tl-item:last-child{padding-bottom:0;}
+  .tl-item:before{content:""; position:absolute; left:-28px; top:3px; width:11px; height:11px; border-radius:50%; background:var(--brand-600); border:2px solid var(--surface); box-shadow:0 0 0 2px var(--brand-600);}
+  .tl-item.done:before{background:var(--success-ink); box-shadow:0 0 0 2px var(--success-ink);}
+  .tl-item .when{font-size:.72rem; color:var(--ink-faint); font-variant-numeric:tabular-nums;}
+  .tl-item .what{font-weight:600; font-size:.88rem; margin:2px 0;}
+  .tl-item .who{font-size:.78rem; color:var(--ink-muted);}
+  .tl-item .note{font-size:.78rem; color:var(--ink-muted); background:var(--surface-muted); border-radius:8px; padding:6px 10px; margin-top:6px;}
+
+  .qrbox{width:88px; height:88px; border-radius:8px; background:
+    repeating-linear-gradient(0deg,var(--ink) 0 3px, transparent 3px 6px),
+    repeating-linear-gradient(90deg,var(--ink) 0 3px, transparent 3px 6px);
+    background-blend-mode:multiply; background-color:#fff; border:1px solid var(--border); flex:0 0 auto;}
+
+  /* ---- Screen 5 status update ---- */
+  .method-tabs{display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap;}
+  .method-tab{flex:1 1 160px; text-align:center; padding:12px; border-radius:var(--radius-sm); border:1px solid var(--border); background:var(--surface); font-size:.85rem; font-weight:600; color:var(--ink-muted);}
+  .method-tab.active{border-color:var(--brand-600); background:var(--brand-100); color:var(--brand-700);}
+  .method-tab .ico{display:block; font-size:1.3rem; margin-bottom:4px;}
+
+  .next-options{display:flex; flex-direction:column; gap:10px; margin:14px 0;}
+  .next-opt{
+    display:flex; align-items:center; justify-content:space-between; gap:10px; text-align:left;
+    padding:14px 16px; border-radius:var(--radius-sm); border:1.5px solid var(--border); background:var(--surface);
+    cursor:pointer; min-height:44px;
+  }
+  .next-opt .code{font-size:.68rem; color:var(--ink-faint); font-variant-numeric:tabular-nums;}
+  .next-opt strong{display:block; font-size:.9rem;}
+  .next-opt.selected{border-color:var(--brand-600); background:var(--brand-100);}
+  .next-opt .arrow{color:var(--brand-600); font-weight:700;}
+
+  /* ---- Screen 6 public tracking ---- */
+  .public-wrap{display:flex; justify-content:center; padding:10px 0 40px;}
+  .public-card{width:100%; max-width:520px;}
+  .public-hero{text-align:center; padding:26px 20px 10px;}
+  .public-hero .badge{width:52px; height:52px; border-radius:14px; background:var(--brand-600); color:#fff; display:flex; align-items:center; justify-content:center; margin:0 auto 12px; font-size:1.3rem; font-weight:700;}
+  .public-hero h1{font-size:1.15rem; color:var(--brand-900);}
+  .public-hero p{color:var(--ink-muted); font-size:.85rem; margin-top:4px;}
+  .instr{background:var(--info-bg); color:var(--info-ink); font-size:.82rem; padding:12px 14px; border-radius:var(--radius-sm); margin:14px 0;}
+  .result-name{font-size:.8rem; color:var(--ink-muted);}
+  .result-title{font-size:1.05rem; font-weight:700; margin:2px 0 12px;}
+  .public-timeline .tl-item .what{font-size:.83rem;}
+  .todo-box{background:var(--warning-bg); color:var(--warning-ink); border-radius:var(--radius-sm); padding:12px 14px; font-size:.83rem; margin-top:14px; display:flex; gap:8px;}
+
+  .assum{font-size:.72rem; color:var(--ink-faint); border-top:1px dashed var(--border-soft); margin-top:16px; padding-top:10px;}
+  .assum b{color:var(--ink-muted);}
+
+  .footer-note{max-width:1180px; margin:0 auto; padding:6px 20px 40px; font-size:.78rem; color:var(--ink-faint); text-align:center;}
+</style>
+
+<div class="proto-head">
+  <div class="proto-eyebrow">Wireframe · เฟส 1 ออกแบบ (ยังไม่ใช่ระบบจริง)</div>
+  <h1 class="proto-title">ระบบติดตามสถานะผลงานวิชาการ — สำนักงานเขตสุขภาพที่ 11</h1>
+  <p class="proto-sub">ตัวอย่างหน้าจอทั้ง 6 หน้า ลองย่อ/ขยายหน้าต่างเพื่อดูพฤติกรรม responsive จริง (ตารางทะเบียนจะสลับเป็นการ์ดเมื่อหน้าจอแคบ)</p>
+</div>
+
+<div class="tabbar-wrap">
+  <div class="tabbar" role="tablist" id="tabbar"></div>
+</div>
+
+<div class="stage" id="stage"></div>
+
+<p class="footer-note">Mock data ทั้งหมดในหน้านี้เป็นตัวอย่างสำหรับออกแบบเท่านั้น · ฟอนต์ Sarabun (ฟอนต์ราชการไทยตามมติคณะรัฐมนตรี) ฝังไว้ในไฟล์นี้โดยตรง</p>
+
+<script>
+const SCREENS = [
+  {id:'dash', label:'หน้าหลัก (เจ้าหน้าที่)'},
+  {id:'intake', label:'รับเอกสารใหม่'},
+  {id:'registry', label:'ทะเบียนผลงาน'},
+  {id:'detail', label:'รายละเอียดผลงาน'},
+  {id:'update', label:'อัปเดตสถานะ'},
+  {id:'public', label:'ตรวจสอบสถานะ (ประชาชน)'},
+];
+
+const SIDEBAR = (active) => {
+  const items = [
+    ['🏠','หน้าหลัก','dash'],['📥','รับเอกสารใหม่','intake'],['📋','ทะเบียนผลงาน','registry'],
+    ['🔄','อัปเดตสถานะ','update'],['🕘','ประวัติการดำเนินงาน',''],['⚙️','ตั้งค่าขั้นตอน',''],
+  ];
+  return `<nav class="sidebar">
+    <div class="side-brand">อวช.11<br><small>สำนักงานเขตสุขภาพที่ 11</small></div>
+    ${items.map(([ico,label,key])=>`<a class="side-link ${key===active?'active':''}">
+       <span class="ico">${ico}</span>${label}</a>`).join('')}
+    <a class="side-link logout"><span class="ico">↩︎</span>ออกจากระบบ</a>
+  </nav>`;
+};
+
+const BOTTOMNAV = (active) => {
+  const items = [['🏠','หน้าหลัก','dash'],['📥','รับเอกสาร','intake'],['📋','ทะเบียน','registry'],['🔄','อัปเดต','update'],['🕘','ประวัติ','']];
+  return `<nav class="bottomnav">
+    ${items.map(([ico,label,key])=>`<a class="bn-link ${key===active?'active':''}"><span class="bn-ico">${ico}</span>${label}</a>`).join('')}
+  </nav>`;
+};
+
+const TOPBAR = (title, meta) => `
+  <div class="topbar">
+    <div><h2>${title}</h2><div class="meta">${meta}</div></div>
+    <div class="whoami"><div class="avatar">สจ</div>
+      <div><div style="font-size:.82rem;font-weight:600;">สมใจ จันทร์เพ็ญ</div>
+      <span class="role-chip">เจ้าหน้าที่ผู้รับผิดชอบ</span></div>
+    </div>
+  </div>`;
+
+function screenDash(){
+  return `<div class="frame"><div class="frame-label"><span>เจ้าหน้าที่ · หน้าหลัก</span><span>Desktop: sidebar ซ้าย / มือถือ: bottom-nav</span></div>
+  <div class="app">
+    ${SIDEBAR('dash')}
+    <div class="main">
+      ${TOPBAR('ภาพรวมวันนี้','อัปเดตล่าสุด 11 ส.ค. 2569 เวลา 09:12 น.')}
+      <div class="stats">
+        <div class="stat"><div class="n">1,284</div><div class="l">รับเอกสารทั้งหมด</div></div>
+        <div class="stat"><div class="n">62</div><div class="l">อยู่ระหว่างตรวจสอบ</div></div>
+        <div class="stat"><div class="n">37</div><div class="l">อยู่ระหว่างคณะกรรมการพิจารณา</div></div>
+        <div class="stat"><div class="n">54</div><div class="l">รอเจ้าของผลงานแก้ไข</div></div>
+        <div class="stat"><div class="n">1,102</div><div class="l">ดำเนินการเสร็จสิ้น</div></div>
+        <div class="stat warn"><div class="n">9</div><div class="l">ไม่มีอัปเดตเกินกำหนด</div></div>
+      </div>
+      <div class="card">
+        <div class="card-h">รายการล่าสุด <a class="btn btn-ghost btn-sm">ดูทั้งหมด →</a></div>
+        <div class="card-b" style="padding:0;">
+          <div class="table-wrap"><table class="reg">
+            <thead><tr><th>เลขติดตาม</th><th>ชื่อ–นามสกุล</th><th>สถานะปัจจุบัน</th><th>อัปเดตล่าสุด</th></tr></thead>
+            <tbody>
+              <tr><td class="tnum">อวช11-2569-00218</td><td>นภสร ทุมมา</td><td><span class="pill info">อยู่ระหว่างการพิจารณา</span></td><td class="tnum">10 ส.ค. 14:32</td></tr>
+              <tr><td class="tnum">อวช11-2569-00217</td><td>วีระพงษ์ ใจดี</td><td><span class="pill warning">รอแก้ไข/ส่งเพิ่มเติม</span></td><td class="tnum">10 ส.ค. 11:05</td></tr>
+              <tr><td class="tnum">อวช11-2569-00216</td><td>อรอุมา ทองสุข</td><td><span class="pill success">เสร็จสิ้น</span></td><td class="tnum">9 ส.ค. 16:40</td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  ${BOTTOMNAV('dash')}
+  </div>`;
+}
+
+function screenIntake(){
+  return `<div class="frame"><div class="frame-label"><span>เจ้าหน้าที่ · รับเอกสารใหม่</span><span>OCR เติมฟอร์มอัตโนมัติ ไฮไลต์จุดที่ไม่มั่นใจ</span></div>
+  <div class="app">
+    ${SIDEBAR('intake')}
+    <div class="main">
+      ${TOPBAR('รับเอกสารใหม่','ขั้นตอนที่ 3 จาก 4')}
+      <div class="steps">
+        <div class="step done"><span class="num">✓</span>ถ่าย/อัปโหลดภาพ</div>
+        <div class="step done"><span class="num">✓</span>OCR อ่านข้อมูล</div>
+        <div class="step now"><span class="num">3</span>ตรวจสอบ/แก้ไข</div>
+        <div class="step"><span class="num">4</span>ยืนยันรับเอกสาร</div>
+      </div>
+      <div class="intake-grid">
+        <div>
+          <div class="dropzone"><div class="cover-mock"><div class="doc"></div><span style="font-size:.72rem;">ภาพหน้าปกเอกสาร</span></div></div>
+          <button class="btn btn-outline btn-block" style="margin-top:10px;">📷 ถ่ายภาพใหม่ / อัปโหลด</button>
+        </div>
+        <div class="card"><div class="card-b">
+          <div class="grid2">
+            <div class="field"><div class="flabel-row"><label>เลขบัตรประจำตัวประชาชน</label><span class="confidence low">OCR ไม่มั่นใจ 54%</span></div>
+              <input class="input unsure" value="1-2399-00XXX-XX-1"><div class="hint unsure">กรุณาตรวจสอบเลขให้ครบ 13 หลัก</div></div>
+            <div class="field"><label>คำนำหน้าชื่อ</label><select class="input"><option>นางสาว</option></select></div>
+            <div class="field"><div class="flabel-row"><label>ชื่อ</label><span class="confidence high">OCR มั่นใจ 96%</span></div><input class="input" value="นภสร"></div>
+            <div class="field"><label>นามสกุล</label><input class="input" value="ทุมมา"></div>
+            <div class="field"><label>ตำแหน่ง</label><input class="input" value="พยาบาลวิชาชีพชำนาญการ"></div>
+            <div class="field"><label>ระดับปัจจุบัน → ระดับที่ขอ</label><input class="input" value="ชำนาญการ → ชำนาญการพิเศษ"></div>
+            <div class="field" style="grid-column:1/-1;"><div class="flabel-row"><label>ชื่อผลงาน</label><span class="confidence low">OCR ไม่มั่นใจ 61%</span></div>
+              <input class="input unsure" value="การพัฒนาแนวปฏิบัติการพยาบาล...(ตรวจสอบ)"></div>
+            <div class="field"><label>หน่วยงาน</label><input class="input" value="รพ.สต. บ้านโนนสูง"></div>
+            <div class="field"><label>จังหวัด</label><select class="input"><option>อุบลราชธานี</option></select></div>
+          </div>
+        </div></div>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+        <button class="btn btn-outline">ย้อนกลับ</button>
+        <button class="btn btn-primary btn-lg">ยืนยันรับเอกสาร →</button>
+      </div>
+    </div>
+  </div>
+  ${BOTTOMNAV('intake')}
+  </div>`;
+}
+
+function screenRegistry(){
+  const rows = [
+    ['อวช11-2569-00218','นภสร ทุมมา','พยาบาลวิชาชีพชำนาญการ','รพ.สต. บ้านโนนสูง','อุบลราชธานี','5 ส.ค. 69','อยู่ระหว่างการพิจารณา','info','เลขานุการฯ','10 ส.ค. 69','6 วัน'],
+    ['อวช11-2569-00217','วีระพงษ์ ใจดี','นักวิชาการสาธารณสุขชำนาญการ','สสอ.เมือง','ศรีสะเกษ','3 ส.ค. 69','รอแก้ไข/ส่งเพิ่มเติม','warning','หน่วยงานเจ้าของผลงาน','10 ส.ค. 69','8 วัน'],
+    ['อวช11-2569-00216','อรอุมา ทองสุข','พยาบาลวิชาชีพชำนาญการ','รพ. 50 พรรษาฯ','อุบลราชธานี','28 ก.ค. 69','ดำเนินการเสร็จสิ้น','success','—','9 ส.ค. 69','—'],
+    ['อวช11-2569-00215','ธีรพล มีสุข','นักกายภาพบำบัดชำนาญการ','รพ.สต. ท่าช้าง','ยโสธร','27 ก.ค. 69','อยู่ระหว่างตรวจสอบเอกสาร','muted','เจ้าหน้าที่รับเอกสาร','8 ส.ค. 69','3 วัน'],
+  ];
+  const trow = r => `<tr><td class="tnum">${r[0]}</td>
+    <td class="namecell"><strong>${r[1]}</strong><span>${r[2]}</span></td>
+    <td>${r[3]}</td><td>${r[4]}</td><td class="tnum">${r[5]}</td>
+    <td><span class="pill ${r[7]}">${r[6]}</span></td><td>${r[8]}</td><td class="tnum">${r[9]}</td><td class="tnum">${r[10]}</td>
+    <td style="white-space:nowrap;"><a class="btn btn-ghost btn-sm">ดู</a><a class="btn btn-outline btn-sm">อัปเดต</a></td></tr>`;
+  const rcard = r => `<div class="reg-card"><div class="top">
+      <div><div class="tno">${r[0]}</div><h4>${r[1]}</h4></div><span class="pill ${r[7]}">${r[6]}</span></div>
+      <div class="meta"><span>${r[3]}</span><span>·</span><span>${r[4]}</span><span>·</span><span>รับ ${r[5]}</span></div>
+      <div class="meta"><span>ผู้รับผิดชอบ: ${r[8]}</span></div>
+      <div class="actions"><a class="btn btn-outline btn-sm" style="flex:1;">ดูรายละเอียด</a><a class="btn btn-primary btn-sm" style="flex:1;">อัปเดตสถานะ</a></div>
+    </div>`;
+  return `<div class="frame"><div class="frame-label"><span>เจ้าหน้าที่ · ทะเบียนผลงาน</span><span>ย่อหน้าต่าง &lt; 760px เพื่อดูมุมมองการ์ดจริง</span></div>
+  <div class="app">
+    ${SIDEBAR('registry')}
+    <div class="main">
+      ${TOPBAR('ทะเบียนผลงาน','ทั้งหมด 1,284 รายการ')}
+      <div class="card"><div class="card-b">
+        <div class="filterbar">
+          <div class="field grow"><label>ค้นหา (ชื่อ / เลขติดตาม)</label><input class="input" placeholder="เช่น อวช11-2569-00218 หรือ นภสร"></div>
+          <div class="field"><label>จังหวัด</label><select class="input"><option>ทั้งหมด</option></select></div>
+          <div class="field"><label>หน่วยงาน</label><select class="input"><option>ทั้งหมด</option></select></div>
+          <div class="field"><label>สถานะ</label><select class="input"><option>ทั้งหมด</option></select></div>
+          <div class="field"><label>ช่วงวันที่รับ</label><input class="input" placeholder="เลือกช่วงวันที่"></div>
+          <button class="btn btn-primary">ค้นหา</button>
+        </div>
+        <div class="table-wrap"><table class="reg">
+          <thead><tr><th>เลขติดตาม</th><th>ชื่อ–นามสกุล / ตำแหน่ง</th><th>หน่วยงาน</th><th>จังหวัด</th><th>วันที่รับ</th><th>สถานะปัจจุบัน</th><th>ผู้รับผิดชอบ</th><th>อัปเดตล่าสุด</th><th>อยู่ในสถานะ</th><th></th></tr></thead>
+          <tbody>${rows.map(trow).join('')}</tbody>
+        </table></div>
+        <div class="reg-cards">${rows.map(rcard).join('')}</div>
+        <div class="resp-note">↑ มุมมองมือถือ: การ์ด (ไม่ต้องเลื่อนตารางแนวนอน)</div>
+      </div></div>
+    </div>
+  </div>
+  ${BOTTOMNAV('registry')}
+  </div>`;
+}
+
+function screenDetail(){
+  return `<div class="frame"><div class="frame-label"><span>เจ้าหน้าที่ · รายละเอียดผลงาน</span><span>Timeline จากประวัติสถานะทั้งหมด</span></div>
+  <div class="app">
+    ${SIDEBAR('registry')}
+    <div class="main">
+      <div class="topbar">
+        <div><div style="display:flex; align-items:center; gap:10px;">
+          <h2 class="tnum">อวช11-2569-00218</h2><span class="pill info">อยู่ระหว่างการพิจารณา</span></div>
+          <div class="meta">นภสร ทุมมา · การพัฒนาแนวปฏิบัติการพยาบาลผู้ป่วยโรคเรื้อรังในชุมชน</div></div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-outline btn-sm">🖨️ พิมพ์ QR</button>
+          <button class="btn btn-outline btn-sm">✎ แก้ไขข้อมูล</button>
+          <button class="btn btn-primary btn-sm">🔄 อัปเดตสถานะ</button>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div style="display:flex; flex-direction:column; gap:14px;">
+          <div class="card"><div class="card-h">ข้อมูลเจ้าของผลงานและผลงาน</div><div class="card-b">
+            <dl class="dl">
+              <dt>ชื่อ–นามสกุล</dt><dd>นางสาว นภสร ทุมมา</dd>
+              <dt>ตำแหน่ง</dt><dd>พยาบาลวิชาชีพชำนาญการ</dd>
+              <dt>ระดับ</dt><dd>ชำนาญการ → ขอประเมินชำนาญการพิเศษ</dd>
+              <dt>ด้าน/สาขา</dt><dd>การพยาบาลชุมชน</dd>
+              <dt>ชื่อผลงาน</dt><dd>การพัฒนาแนวปฏิบัติการพยาบาลผู้ป่วยโรคเรื้อรังในชุมชน</dd>
+              <dt>หน่วยงาน</dt><dd>รพ.สต. บ้านโนนสูง อ.เมือง จ.อุบลราชธานี</dd>
+              <dt>เลขหนังสือนำส่ง</dt><dd>อบ 0032.101/ว.221</dd>
+              <dt>วันที่รับเอกสาร</dt><dd class="tnum">5 ส.ค. 2569</dd>
+            </dl>
+          </div></div>
+          <div class="card"><div class="card-h">ภาพหน้าปก / ไฟล์แนบ</div><div class="card-b" style="display:flex; gap:12px; flex-wrap:wrap;">
+            <div class="qrbox" style="width:110px;height:140px;border-radius:6px;"></div>
+            <div style="display:flex; flex-direction:column; gap:8px; justify-content:center;">
+              <a class="btn btn-outline btn-sm">📄 เอกสารฉบับเต็ม.pdf</a>
+              <a class="btn btn-outline btn-sm">📄 ผลงานวิชาการ.pdf</a>
+            </div>
+          </div></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:14px;">
+          <div class="card"><div class="card-b kv-list">
+            <div class="row"><span class="k">ผู้รับผิดชอบปัจจุบัน</span><span class="v">เลขานุการคณะกรรมการ</span></div>
+            <div class="row"><span class="k">อัปเดตล่าสุด</span><span class="v tnum">10 ส.ค. 69, 14:32 น.</span></div>
+            <div class="row"><span class="k">ขั้นตอนถัดไป</span><span class="v">รอผลการประชุมคณะกรรมการ</span></div>
+            <div class="row"><span class="k">อยู่ในสถานะนี้มา</span><span class="v tnum">6 วัน</span></div>
+          </div></div>
+          <div class="card"><div class="card-h">Timeline การดำเนินงาน</div><div class="card-b">
+            <div class="timeline">
+              <div class="tl-item done"><div class="when tnum">10 ส.ค. 69 · 14:32</div><div class="what">5 · ประธานกำหนดวันประชุม</div><div class="who">โดย เลขานุการคณะกรรมการ</div></div>
+              <div class="tl-item done"><div class="when tnum">8 ส.ค. 69 · 09:10</div><div class="what">4 · เลขานุการส่งผลงานให้กรรมการ</div><div class="who">โดย สมใจ จันทร์เพ็ญ</div></div>
+              <div class="tl-item done"><div class="when tnum">7 ส.ค. 69 · 16:20</div><div class="what">3.1 · เอกสารครบถ้วน ส่งเลขานุการ</div><div class="who">โดย สมใจ จันทร์เพ็ญ</div><div class="note">ตรวจครบตามเกณฑ์ ไม่มีข้อแก้ไข</div></div>
+              <div class="tl-item done"><div class="when tnum">6 ส.ค. 69 · 10:02</div><div class="what">2 · ตรวจสอบความครบถ้วนของเอกสาร</div><div class="who">โดย สมใจ จันทร์เพ็ญ</div></div>
+              <div class="tl-item done"><div class="when tnum">5 ส.ค. 69 · 13:45</div><div class="what">1 · รับเรื่องจากหน่วยงาน</div><div class="who">โดย สมใจ จันทร์เพ็ญ</div></div>
+            </div>
+          </div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  ${BOTTOMNAV('registry')}
+  </div>`;
+}
+
+function screenUpdate(){
+  return `<div class="frame"><div class="frame-label"><span>เจ้าหน้าที่ · อัปเดตสถานะ</span><span>แสดงเฉพาะสถานะถัดไปที่ถูกต้องตาม Workflow</span></div>
+  <div class="app">
+    ${SIDEBAR('update')}
+    <div class="main">
+      ${TOPBAR('อัปเดตสถานะ','เปิดรายการด้วย QR / เลขติดตาม / เลือกจากทะเบียน')}
+      <div class="method-tabs">
+        <div class="method-tab"><span class="ico">📷</span>สแกน QR Code</div>
+        <div class="method-tab active"><span class="ico">🔎</span>ค้นหาเลขติดตาม</div>
+        <div class="method-tab"><span class="ico">📋</span>เลือกจากทะเบียน</div>
+      </div>
+      <div class="field"><input class="input" value="อวช11-2569-00214" style="max-width:320px;"></div>
+      <div class="card"><div class="card-h">
+          <span class="tnum">อวช11-2569-00214</span> · ธนากร ศรีวิไล
+          <span class="pill muted">2 · ตรวจสอบความครบถ้วนของเอกสาร</span>
+        </div>
+        <div class="card-b">
+          <p style="margin:0 0 4px; font-size:.85rem; color:var(--ink-muted);">เลือกขั้นตอนถัดไป (แสดงเฉพาะตัวเลือกที่ถูกต้องตามสถานะปัจจุบัน)</p>
+          <div class="next-options">
+            <div class="next-opt selected"><div><div class="code">3.1</div><strong>เอกสารครบถ้วน → ส่งเลขานุการ</strong></div><span class="arrow">✓</span></div>
+            <div class="next-opt"><div><div class="code">3.2</div><strong>เอกสารไม่ครบถ้วน → ส่งคืนหน่วยงาน</strong></div><span class="arrow">›</span></div>
+          </div>
+          <div class="field"><label>หมายเหตุ (ถ้ามี)</label><textarea class="input" rows="2" placeholder="เช่น เอกสารครบถ้วนตามเกณฑ์ ไม่มีข้อแก้ไข"></textarea></div>
+          <div class="field"><label>ไฟล์แนบ (ถ้ามี)</label><button class="btn btn-outline btn-sm">📎 แนบไฟล์</button></div>
+          <div style="display:flex; justify-content:flex-end; gap:10px;">
+            <button class="btn btn-outline">ยกเลิก</button>
+            <button class="btn btn-primary btn-lg">บันทึกการอัปเดต →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  ${BOTTOMNAV('update')}
+  </div>`;
+}
+
+function screenPublic(){
+  return `<div class="frame"><div class="frame-label"><span>สาธารณะ · ตรวจสอบสถานะ (ไม่ต้อง Login)</span><span>ส่งข้อมูลด้วย POST · เลขบัตรไม่ปรากฏใน URL</span></div>
+  <div class="app no-sidebar">
+    <div class="main" style="background:var(--bg);">
+      <div class="public-wrap"><div class="public-card">
+        <div class="public-hero">
+          <div class="badge">11</div>
+          <h1>ระบบติดตามสถานะผลงานวิชาการ<br>สำนักงานเขตสุขภาพที่ 11</h1>
+        </div>
+        <div class="card"><div class="card-b">
+          <div class="instr">กรุณากรอกเลขติดตามเอกสารและเลขบัตรประจำตัวประชาชน 13 หลักของเจ้าของผลงาน เพื่อตรวจสอบสถานะการดำเนินงาน</div>
+          <div class="field"><label>เลขติดตามเอกสาร</label><input class="input tnum" placeholder="อวช11-2569-00000"></div>
+          <div class="field"><label>เลขบัตรประจำตัวประชาชน 13 หลัก</label><input class="input tnum" type="password" placeholder="•••••••••••••"></div>
+          <button class="btn btn-primary btn-block btn-lg">ตรวจสอบสถานะ</button>
+        </div></div>
+
+        <div class="card" style="margin-top:16px;"><div class="card-b">
+          <div class="result-name">เลขติดตาม: <span class="tnum">อวช11-2569-00218</span></div>
+          <div class="result-title">เจ้าของผลงาน: นภ*** ทุม***</div>
+          <dl class="dl" style="margin-bottom:14px;">
+            <dt>ชื่อผลงาน</dt><dd>การพัฒนาแนวปฏิบัติการพยาบาล...</dd>
+            <dt>วันที่รับเอกสาร</dt><dd class="tnum">5 ส.ค. 2569</dd>
+            <dt>สถานะปัจจุบัน</dt><dd><span class="pill info">อยู่ระหว่างคณะกรรมการพิจารณา</span></dd>
+            <dt>ผู้รับผิดชอบ</dt><dd>เลขานุการคณะกรรมการ</dd>
+            <dt>อัปเดตล่าสุด</dt><dd class="tnum">10 สิงหาคม 2569 เวลา 14:32 น.</dd>
+          </dl>
+          <div class="timeline public-timeline">
+            <div class="tl-item done"><div class="when tnum">10 ส.ค. 69</div><div class="what">อยู่ระหว่างคณะกรรมการพิจารณา</div></div>
+            <div class="tl-item done"><div class="when tnum">7 ส.ค. 69</div><div class="what">ส่งให้เลขานุการหรือคณะกรรมการแล้ว</div></div>
+            <div class="tl-item done"><div class="when tnum">6 ส.ค. 69</div><div class="what">อยู่ระหว่างตรวจสอบเอกสาร</div></div>
+            <div class="tl-item done"><div class="when tnum">5 ส.ค. 69</div><div class="what">รับเอกสารแล้ว</div></div>
+          </div>
+          <div class="todo-box">⏳ ขั้นตอนต่อไป: รอผลการประชุมคณะกรรมการ ยังไม่ต้องดำเนินการใดเพิ่มเติมในขณะนี้</div>
+        </div></div>
+      </div></div>
+    </div>
+  </div>
+  </div>`;
+}
+
+const RENDER = {dash:screenDash, intake:screenIntake, registry:screenRegistry, detail:screenDetail, update:screenUpdate, public:screenPublic};
+
+const tabbar = document.getElementById('tabbar');
+const stage = document.getElementById('stage');
+SCREENS.forEach((s,i)=>{
+  const b = document.createElement('button');
+  b.className='tabbtn'; b.textContent=s.label; b.setAttribute('role','tab');
+  b.setAttribute('aria-selected', i===0 ? 'true':'false');
+  b.addEventListener('click', ()=>activate(s.id));
+  tabbar.appendChild(b);
+  const d = document.createElement('div');
+  d.className='screen'; d.id='screen-'+s.id; d.dataset.active = (i===0?'true':'false');
+  stage.appendChild(d);
+});
+function activate(id){
+  SCREENS.forEach(s=>{
+    document.getElementById('screen-'+s.id).dataset.active = (s.id===id?'true':'false');
+  });
+  [...tabbar.children].forEach((b,i)=>b.setAttribute('aria-selected', SCREENS[i].id===id?'true':'false'));
+}
+SCREENS.forEach(s=>{ document.getElementById('screen-'+s.id).innerHTML = RENDER[s.id](); });
+</script>
