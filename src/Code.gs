@@ -1,8 +1,8 @@
 /**
  * จุดเข้าใช้งาน Web App — doGet/doPost
  *
- * สถานะ Part 1: ยังเป็นเพียง skeleton สำหรับตรวจสอบว่าติดตั้ง+เดินสายถูกต้อง
- * หน้าตาจริงของ Public/Staff/Admin portal จะมาใน Part 2 เป็นต้นไป (แทนที่ renderStatusPage_)
+ * สถานะ Part 2: โซนเจ้าหน้าที่มีเชลล์จริงแล้ว (bottom-nav 3 ปุ่ม + Dashboard ตามข้อ 3.3)
+ * หน้า "สแกน QR / ค้นหา / รับเอกสารใหม่" ยังเป็น stub รอ Part 3-5 มาเติมเนื้อหาจริง
  */
 function doGet(e) {
   if (!isSystemInstalled_()) {
@@ -20,8 +20,26 @@ function doGet(e) {
     return renderPage_('ไม่มีสิทธิ์เข้าใช้งาน', htmlAccessDenied_(email));
   }
 
-  // เจ้าหน้าที่ผ่านการตรวจสอบสิทธิ์แล้ว → โซนเจ้าหน้าที่/Admin (หน้าตาจริงจะพัฒนาใน Part 2 เป็นต้นไป)
-  return renderPage_('ระบบสำหรับเจ้าหน้าที่', htmlStaffPlaceholder_(user));
+  return routeStaffPage_(e, user);
+}
+
+/** เจ้าหน้าที่ผ่านการตรวจสอบสิทธิ์แล้ว — เลือกหน้าตาม ?page= (ค่าเริ่มต้น dashboard) */
+function routeStaffPage_(e, user) {
+  var page = (e && e.parameter && e.parameter.page) || 'dashboard';
+  var ss = getSpreadsheet_();
+
+  switch (page) {
+    case 'scan':
+      return renderStaffPage_('สแกน QR', renderStubBody_('หน้าสแกน QR เพื่อรับเอกสาร/สิ้นสุดขั้นตอน จะพัฒนาใน Part 4'), user, 'scan');
+    case 'search':
+      return renderStaffPage_('ค้นหา', renderStubBody_('หน้าค้นหารายการ + รายละเอียดงาน จะพัฒนาใน Part 5'), user, 'search');
+    case 'register':
+      return renderStaffPage_('รับเอกสารใหม่', renderStubBody_('แบบฟอร์มรับเอกสารใหม่ (อัปโหลด + OCR + ออกเลขติดตาม/QR) จะพัฒนาใน Part 3'), user, 'register');
+    case 'dashboard':
+    default:
+      var metrics = computeDashboardMetrics_(ss, user.organization);
+      return renderStaffPage_('แดชบอร์ดเจ้าหน้าที่', renderDashboardBody_(user, metrics), user, 'dashboard');
+  }
 }
 
 function doPost(e) {
@@ -35,7 +53,7 @@ function isSystemInstalled_() {
   return !!PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
 }
 
-/* ---------- placeholder pages (Part 1 เท่านั้น — จะถูกแทนที่ทีละหน้าใน Part ถัดไป) ---------- */
+/* ---------- placeholder pages นอกโซนเจ้าหน้าที่ (จะถูกแทนที่ทีละหน้าใน Part ถัดไป) ---------- */
 
 function htmlNotInstalled_() {
   return '' +
@@ -56,24 +74,7 @@ function htmlAccessDenied_(email) {
     '<p>กรุณาติดต่อผู้ดูแลระบบเพื่อเพิ่มชื่อในชีต <code>Users</code></p>';
 }
 
-function htmlStaffPlaceholder_(user) {
-  var ss = getSpreadsheet_();
-  var rows = [];
-  Object.keys(SHEET).forEach(function (key) {
-    var sheetName = SHEET[key];
-    var sheet = ss.getSheetByName(sheetName);
-    var count = sheet ? Math.max(sheet.getLastRow() - 1, 0) : 0;
-    rows.push('<tr><td>' + sheetName + '</td><td class="tnum">' + count + '</td></tr>');
-  });
-  return '' +
-    '<p>เข้าสู่ระบบสำเร็จในฐานะ <b>' + escapeHtml_(user.display_name || user.user_email) + '</b> ' +
-    '(' + escapeHtml_(user.role) + ' · ' + escapeHtml_(user.organization) + ')</p>' +
-    '<p>เมนู/แดชบอร์ดจริงจะพัฒนาใน Part 2 เป็นต้นไป ขณะนี้แสดงสถานะฐานข้อมูลเพื่อยืนยันว่า Part 1 ทำงานถูกต้อง:</p>' +
-    '<table><thead><tr><th>ชีต</th><th>จำนวนแถวข้อมูล</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>' +
-    '<p><a href="' + ss.getUrl() + '" target="_blank">เปิด Spreadsheet ฐานข้อมูล →</a></p>';
-}
-
-/** ครอบหน้าด้วยสไตล์พื้นฐาน (Sarabun, โทนน้ำเงิน-เขียวอมฟ้า) — ยังไม่ใช่ดีไซน์เต็มรูปแบบ ใช้ยืนยันการเดินสายเท่านั้น */
+/** ครอบหน้าด้วยสไตล์พื้นฐาน (Sarabun, โทนน้ำเงิน-เขียวอมฟ้า) — ใช้กับหน้านอกโซนเจ้าหน้าที่ (ไม่ติดตั้ง/สาธารณะ/ไม่มีสิทธิ์) */
 function renderPage_(title, bodyHtml) {
   var html = '' +
     '<!doctype html><html><head><meta charset="utf-8">' +

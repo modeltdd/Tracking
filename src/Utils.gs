@@ -67,6 +67,12 @@ function appendRowByHeader_(sheet, headers, rowObj) {
   sheet.appendRow(row);
 }
 
+/** จำนวนวันเต็มระหว่างสองวันที่ (ปัดลง) — ใช้คำนวณ "ใกล้ครบกำหนด/เกินกำหนด" ตาม docs/DESIGN.md A9 */
+function daysBetween_(earlier, later) {
+  var msPerDay = 24 * 60 * 60 * 1000;
+  return Math.floor((new Date(later).getTime() - new Date(earlier).getTime()) / msPerDay);
+}
+
 /** สร้างรหัสสุ่มสำหรับ QR token / session token ฯลฯ (ตัวอักษร+ตัวเลข ตัดตัวที่อ่านสับสนออก) */
 function randomToken_(length) {
   var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ตัด O/0, I/1 กันอ่านผิด
