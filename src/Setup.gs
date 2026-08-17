@@ -97,13 +97,19 @@ function seedFirstAdminUser_(ss) {
   Logger.log('เพิ่ม ' + email + ' เป็น Admin คนแรกแล้ว — แก้ไข display_name ในชีต Users ได้ภายหลัง');
 }
 
-/** Spreadsheet ที่สร้างใหม่มักมี "Sheet1" ว่างติดมาด้วย — ลบทิ้งถ้าไม่มีใครใช้ */
+/**
+ * Spreadsheet ที่สร้างใหม่มักมีชีตว่างติดมาด้วย 1 แผ่น (ชื่อขึ้นกับภาษาบัญชี Google ของผู้ติดตั้ง เช่น
+ * "Sheet1" ในบัญชีอังกฤษ, "ชีต1" ในบัญชีไทย — ห้าม hardcode ชื่อ) ลบทิ้งเฉพาะชีตที่ไม่ใช่ชีตของระบบเราและว่างจริง
+ */
 function removeDefaultBlankSheet_(ss) {
-  var blank = ss.getSheetByName('Sheet1');
-  if (blank && ss.getSheets().length > 1) {
-    var isEmpty = blank.getLastRow() === 0 && blank.getLastColumn() === 0;
-    if (isEmpty) ss.deleteSheet(blank);
-  }
+  var ourSheetNames = {};
+  Object.keys(SHEET).forEach(function (key) { ourSheetNames[SHEET[key]] = true; });
+
+  ss.getSheets().forEach(function (sheet) {
+    if (ourSheetNames[sheet.getName()]) return;
+    var isEmpty = sheet.getLastRow() === 0 && sheet.getLastColumn() === 0;
+    if (isEmpty && ss.getSheets().length > 1) ss.deleteSheet(sheet);
+  });
 }
 
 /** อ่านค่า Settings ตัวเดียวแบบสะดวก (ใช้ตอน install เท่านั้น — ส่วนอื่นควรใช้ getSetting() ใน Settings.gs ที่จะเพิ่มใน Part ถัดไป) */
