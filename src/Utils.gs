@@ -73,6 +73,13 @@ function daysBetween_(earlier, later) {
   return Math.floor((new Date(later).getTime() - new Date(earlier).getTime()) / msPerDay);
 }
 
+/** เติมเลข 0 ด้านหน้าให้ครบความยาวที่กำหนด (เช่น เลขลำดับในเลขติดตามเอกสาร) */
+function padLeft_(num, width) {
+  var s = String(num);
+  while (s.length < width) s = '0' + s;
+  return s;
+}
+
 /** สร้างรหัสสุ่มสำหรับ QR token / session token ฯลฯ (ตัวอักษร+ตัวเลข ตัดตัวที่อ่านสับสนออก) */
 function randomToken_(length) {
   var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ตัด O/0, I/1 กันอ่านผิด

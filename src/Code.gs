@@ -25,16 +25,20 @@ function doGet(e) {
 
 /** เจ้าหน้าที่ผ่านการตรวจสอบสิทธิ์แล้ว — เลือกหน้าตาม ?page= (ค่าเริ่มต้น dashboard) */
 function routeStaffPage_(e, user) {
-  var page = (e && e.parameter && e.parameter.page) || 'dashboard';
+  var params = (e && e.parameter) || {};
+  var page = params.page || (params.t ? 'scan' : 'dashboard');
   var ss = getSpreadsheet_();
 
   switch (page) {
     case 'scan':
-      return renderStaffPage_('สแกน QR', renderStubBody_('หน้าสแกน QR เพื่อรับเอกสาร/สิ้นสุดขั้นตอน จะพัฒนาใน Part 4'), user, 'scan');
+      var scanMsg = params.t
+        ? 'สแกน QR token "' + params.t + '" แล้ว — หน้ารับเอกสาร/สิ้นสุดขั้นตอนจะพัฒนาใน Part 4'
+        : 'หน้าสแกน QR เพื่อรับเอกสาร/สิ้นสุดขั้นตอน จะพัฒนาใน Part 4';
+      return renderStaffPage_('สแกน QR', renderStubBody_(scanMsg), user, 'scan');
     case 'search':
       return renderStaffPage_('ค้นหา', renderStubBody_('หน้าค้นหารายการ + รายละเอียดงาน จะพัฒนาใน Part 5'), user, 'search');
     case 'register':
-      return renderStaffPage_('รับเอกสารใหม่', renderStubBody_('แบบฟอร์มรับเอกสารใหม่ (อัปโหลด + OCR + ออกเลขติดตาม/QR) จะพัฒนาใน Part 3'), user, 'register');
+      return renderStaffPage_('รับเอกสารใหม่', renderRegisterFormBody_(ss, {}, []), user, 'register');
     case 'dashboard':
     default:
       var metrics = computeDashboardMetrics_(ss, user.organization);
@@ -43,7 +47,23 @@ function routeStaffPage_(e, user) {
 }
 
 function doPost(e) {
-  // การดำเนินการจริง (รับเอกสาร/ส่งต่อ/ตรวจสอบสถานะ ฯลฯ) จะเพิ่มใน Part ถัดไปทีละส่วน
+  var email = getCurrentUserEmail_();
+  var user = email ? findUserByEmail_(email) : null;
+  if (!user) {
+    return renderPage_('ไม่มีสิทธิ์เข้าใช้งาน', htmlAccessDenied_(email || '(ไม่ได้ Login)'));
+  }
+
+  var formAction = e && e.parameter && e.parameter.form_action;
+  var ss = getSpreadsheet_();
+
+  if (formAction === 'register_work') {
+    var result = registerNewWork_(ss, user, e);
+    if (!result.ok) {
+      return renderStaffPage_('รับเอกสารใหม่', renderRegisterFormBody_(ss, result.values, result.errors), user, 'register');
+    }
+    return renderStaffPage_('ลงทะเบียนสำเร็จ', renderRegisterSuccessBody_(result), user, 'register');
+  }
+
   return ContentService
     .createTextOutput(JSON.stringify({ ok: false, error: 'not_implemented', message: 'ฟังก์ชันนี้จะพัฒนาในลำดับถัดไป' }))
     .setMimeType(ContentService.MimeType.JSON);

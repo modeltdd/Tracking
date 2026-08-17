@@ -94,10 +94,74 @@ function renderWorkList_(works) {
   return rows + more;
 }
 
-/** หน้าที่ยังไม่พัฒนา (สแกน/ค้นหา/รับเอกสารใหม่) — stub รอ Part ถัดไป */
+/** หน้าที่ยังไม่พัฒนา (สแกน/ค้นหา) — stub รอ Part ถัดไป */
 function renderStubBody_(message) {
   return '<div class="stub"><p>' + escapeHtml_(message) + '</p>' +
     '<p><a href="?page=dashboard">&larr; กลับหน้าแรก</a></p></div>';
+}
+
+/** ฟอร์มรับเอกสารใหม่ (docs/DESIGN.md Part 3) — values/errors ใช้ตอนส่งฟอร์มไม่ผ่าน validation เพื่อคืนค่าที่กรอกไว้ */
+function renderRegisterFormBody_(ss, values, errors) {
+  values = values || {};
+  var v = function (key) { return escapeHtml_(values[key] || ''); };
+
+  var errorHtml = (errors && errors.length)
+    ? '<div class="error-banner"><b>กรุณาแก้ไข:</b><ul>' +
+      errors.map(function (e) { return '<li>' + escapeHtml_(e) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+
+  var levelOptions = getSettingList_(ss, 'career_level_options', ['ปฏิบัติการ', 'ชำนาญการ', 'ชำนาญการพิเศษ', 'เชี่ยวชาญ', 'ทรงคุณวุฒิ']);
+  var typeOptions = getSettingList_(ss, 'work_type_options', ['อื่น ๆ']);
+
+  function selectHtml(name, options, current) {
+    return '<select class="input" name="' + name + '">' +
+      options.map(function (opt) {
+        var sel = opt === current ? ' selected' : '';
+        return '<option' + sel + '>' + escapeHtml_(opt) + '</option>';
+      }).join('') + '</select>';
+  }
+
+  return '' +
+    errorHtml +
+    '<form method="post" enctype="multipart/form-data" class="reg-form">' +
+    '<input type="hidden" name="form_action" value="register_work">' +
+    '<div class="field"><label>คำนำหน้าชื่อ</label><input class="input" name="reg_title_name" value="' + v('title_name') + '" placeholder="นาย / นาง / นางสาว"></div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>ชื่อ</label><input class="input" name="reg_first_name" value="' + v('first_name') + '"></div>' +
+    '<div class="field"><label>นามสกุล</label><input class="input" name="reg_last_name" value="' + v('last_name') + '"></div>' +
+    '</div>' +
+    '<div class="field"><label>ตำแหน่ง</label><input class="input" name="reg_position" value="' + v('position') + '"></div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>ระดับปัจจุบัน</label>' + selectHtml('reg_current_level', levelOptions, values.current_level) + '</div>' +
+    '<div class="field"><label>ระดับที่ขอ</label>' + selectHtml('reg_requested_level', levelOptions, values.requested_level) + '</div>' +
+    '</div>' +
+    '<div class="field"><label>ประเภทผลงาน</label>' + selectHtml('reg_work_type', typeOptions, values.work_type) + '</div>' +
+    '<div class="field"><label>ถ้าเลือก "อื่น ๆ" ข้างต้น ระบุประเภทผลงาน</label><input class="input" name="reg_work_type_other" placeholder="ระบุประเภทผลงาน (ใช้เฉพาะกรณีเลือกอื่น ๆ)"></div>' +
+    '<div class="field"><label>ชื่อผลงาน</label><textarea class="input" name="reg_work_title" rows="2">' + v('work_title') + '</textarea></div>' +
+    '<div class="field"><label>หน่วยงานต้นสังกัด</label><input class="input" name="reg_org_from" value="' + v('org_from') + '"></div>' +
+    '<div class="field"><label>เลขบัตรประชาชน (13 หลัก)</label><input class="input" name="reg_citizen_id" value="' + v('citizen_id') + '" maxlength="13" inputmode="numeric" pattern="[0-9]{13}"></div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>เบอร์โทร (ถ้ามี)</label><input class="input" name="reg_phone" value="' + v('phone') + '"></div>' +
+    '<div class="field"><label>อีเมล (ถ้ามี)</label><input class="input" name="reg_email" value="' + v('email') + '"></div>' +
+    '</div>' +
+    '<div class="field"><label>ภาพหน้าปกผลงาน (ถ้ามี — ใช้ OCR ช่วยตรวจสอบ)</label><input class="input" type="file" name="reg_cover_image" accept="image/*"></div>' +
+    '<button class="btn-primary" type="submit">บันทึกและออกเลขติดตาม</button>' +
+    '</form>';
+}
+
+/** หน้าสำเร็จหลังลงทะเบียน — แสดงเลขติดตาม + QR ให้พิมพ์แปะเอกสาร */
+function renderRegisterSuccessBody_(result) {
+  return '' +
+    '<div class="success-card">' +
+    '<p class="success-title">ลงทะเบียนสำเร็จ</p>' +
+    '<p class="tracking-big">' + escapeHtml_(result.tracking_no) + '</p>' +
+    '<img class="qr-img" src="' + escapeHtml_(result.qr_image_url) + '" alt="QR code เอกสาร ' + escapeHtml_(result.tracking_no) + '">' +
+    (result.ocr_low_confidence
+      ? '<p class="ocr-warn">OCR ไม่มั่นใจในภาพที่อัปโหลด — โปรดตรวจสอบข้อมูลที่บันทึกไว้อีกครั้งในภายหลัง</p>'
+      : '') +
+    '<p class="hint">พิมพ์/แปะ QR นี้ไว้บนเอกสาร ใช้สแกนรับงานที่สถานีถัดไป</p>' +
+    '<p><a href="?page=register">+ ลงทะเบียนรายการถัดไป</a> &nbsp;|&nbsp; <a href="?page=dashboard">กลับหน้าแรก</a></p>' +
+    '</div>';
 }
 
 var STAFF_CSS_ = '' +
@@ -131,4 +195,19 @@ var STAFF_CSS_ = '' +
   '.bottomnav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--border);z-index:5;}' +
   '.navitem{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 0 8px;color:var(--muted);text-decoration:none;font-size:.72rem;}' +
   '.navitem.active{color:var(--teal);font-weight:700;}' +
-  '.navicon{font-size:1.2rem;}';
+  '.navicon{font-size:1.2rem;}' +
+  '.reg-form{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;}' +
+  '.field{margin-bottom:12px;display:flex;flex-direction:column;gap:4px;}' +
+  '.field-row{display:flex;gap:10px;}.field-row .field{flex:1;}' +
+  '.field label{font-size:.78rem;color:var(--muted);}' +
+  '.input{font-family:inherit;font-size:.92rem;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);}' +
+  'textarea.input{resize:vertical;}' +
+  '.btn-primary{width:100%;padding:12px;border:none;border-radius:10px;background:var(--teal);color:#fff;font-size:1rem;font-weight:700;font-family:inherit;margin-top:6px;}' +
+  '.error-banner{background:#fdecec;border:1px solid var(--danger);color:var(--danger);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:.85rem;}' +
+  '.error-banner ul{margin:6px 0 0;padding-left:18px;}' +
+  '.success-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;}' +
+  '.success-title{color:var(--done);font-weight:700;font-size:1.1rem;margin:0 0 8px;}' +
+  '.tracking-big{font-size:1.4rem;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;margin:0 0 14px;}' +
+  '.qr-img{width:200px;height:200px;border:1px solid var(--border);border-radius:8px;}' +
+  '.ocr-warn{color:var(--revision);font-size:.82rem;margin-top:10px;}' +
+  '.hint{font-size:.8rem;color:var(--muted);margin-top:14px;}';
