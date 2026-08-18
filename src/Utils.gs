@@ -80,6 +80,16 @@ function padLeft_(num, width) {
   return s;
 }
 
+/** จัดรูปแบบวันที่-เวลาให้อ่านง่าย (dd/MM/yyyy HH:mm ตาม timezone ของสคริปต์) — ใช้บน Timeline หน้ารายละเอียดงาน */
+function formatDateTh_(date) {
+  if (!date) return '-';
+  try {
+    return Utilities.formatDate(new Date(date), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+  } catch (err) {
+    return String(date);
+  }
+}
+
 /** สร้างรหัสสุ่มสำหรับ QR token / session token ฯลฯ (ตัวอักษร+ตัวเลข ตัดตัวที่อ่านสับสนออก) */
 function randomToken_(length) {
   var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ตัด O/0, I/1 กันอ่านผิด

@@ -78,20 +78,92 @@ function renderDashboardBody_(user, metrics) {
     sections;
 }
 
-/** รายการงานแบบย่อ (ใช้ในการ์ด Dashboard) — tracking_no, ชื่อผลงาน, ป้ายสถานะ */
-function renderWorkList_(works) {
-  var rows = works.slice(0, 5).map(function (w) {
+/** รายการงานแบบย่อ (ใช้ในการ์ด Dashboard และหน้าค้นหา) — tracking_no, ชื่อผลงาน, ป้ายสถานะ, คลิกไปหน้ารายละเอียด
+ *  showAll=true (หน้าค้นหา) แสดงครบทุกแถว, ไม่ระบุ/false (การ์ด Dashboard) แสดงแค่ 5 แถวแรก */
+function renderWorkList_(works, showAll) {
+  var list = showAll ? works : works.slice(0, 5);
+  var rows = list.map(function (w) {
     var cls = STATUS_PILL_CLASS_[w.current_status_public] || 'pending';
     var label = PUBLIC_STATUS_LABELS[w.current_status_public] || w.current_status_public || '-';
     return '' +
-      '<div class="work-row">' +
+      '<a class="work-row" href="?page=detail&id=' + encodeURIComponent(w.work_id) + '">' +
       '<div class="work-main"><span class="tracking">' + escapeHtml_(w.tracking_no) + '</span>' +
       '<span class="worktitle">' + escapeHtml_(w.work_title || '-') + '</span></div>' +
       '<span class="pill pill-' + cls + '">' + escapeHtml_(label) + '</span>' +
-      '</div>';
+      '</a>';
   }).join('');
-  var more = works.length > 5 ? '<div class="empty">และอีก ' + (works.length - 5) + ' รายการ</div>' : '';
+  var more = (!showAll && works.length > 5) ? '<div class="empty">และอีก ' + (works.length - 5) + ' รายการ</div>' : '';
   return rows + more;
+}
+
+/** หน้าค้นหา — ช่องค้นหา (GET) + ผลลัพธ์ (ค้นหาแล้วครอบคลุมทุกหน่วยงาน, ไม่ค้นหาแสดงเฉพาะหน่วยงานตน) */
+function renderSearchBody_(org, query, results) {
+  var q = escapeHtml_(query || '');
+  var listHtml = results.length
+    ? renderWorkList_(results, true)
+    : '<div class="empty">' + (query ? 'ไม่พบรายการที่ตรงกับ "' + q + '"' : 'ไม่มีงานของหน่วยงานนี้ในขณะนี้') + '</div>';
+
+  return '' +
+    '<form method="get" class="search-form">' +
+    '<input type="hidden" name="page" value="search">' +
+    '<input class="input" type="text" name="q" value="' + q + '" placeholder="เลขติดตาม / ชื่อ-สกุล / ชื่อผลงาน">' +
+    '<button class="btn-primary" type="submit">ค้นหา</button>' +
+    '</form>' +
+    '<p class="scope-note">' + (query ? 'ผลการค้นหาทุกหน่วยงาน' : 'งานของหน่วยงาน: <b>' + escapeHtml_(org) + '</b>') + '</p>' +
+    '<section class="metric-card">' + listHtml + '</section>';
+}
+
+/** หน้ารายละเอียดงาน — ข้อมูลเต็ม + Timeline จาก StatusHistory (อ่านอย่างเดียว ปุ่มการกระทำจะเพิ่มใน Part ถัดไป) */
+function renderWorkDetailBody_(work, history, stationsMap) {
+  var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
+  var statusLabel = PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public || '-';
+  var station = stationsMap[work.current_station_key];
+
+  var fields = [
+    ['ชื่อ-สกุล', (work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')],
+    ['ตำแหน่ง', work.position],
+    ['ระดับ', (work.current_level || '-') + ' → ' + (work.requested_level || '-')],
+    ['ประเภทผลงาน', work.work_type],
+    ['ชื่อผลงาน', work.work_title],
+    ['หน่วยงานต้นสังกัด', work.org_from],
+    ['เลขบัตรประชาชน', 'xxxxxxxxx' + (work.citizen_id_last4 || '----')],
+    ['เบอร์โทร', work.phone || '-'],
+    ['อีเมล', work.email || '-'],
+    ['สถานีปัจจุบัน', station ? station.station_name : work.current_station_key],
+    ['หน่วยงานที่รับผิดชอบ', work.handoff_pending ? '(รอปลายทางรับเอกสาร)' : (work.current_owner_org || '-')],
+    ['ผู้ดำเนินการล่าสุด', work.current_handler_name || '-'],
+    ['ขั้นตอนถัดไป', work.next_step_text || '-'],
+  ];
+
+  var fieldsHtml = fields.map(function (f) {
+    return '<div class="detail-row"><span class="detail-label">' + escapeHtml_(f[0]) + '</span>' +
+      '<span class="detail-value">' + escapeHtml_(f[1] || '-') + '</span></div>';
+  }).join('');
+
+  var coverHtml = work.cover_image_url
+    ? '<p><a href="' + escapeHtml_(work.cover_image_url) + '" target="_blank" rel="noopener">ดูภาพหน้าปกที่อัปโหลด</a></p>'
+    : '';
+
+  var timelineHtml = history.length
+    ? '<ul class="timeline">' + history.map(function (h) {
+        var label = ACTION_LABELS_[h.action] || h.action;
+        return '<li class="tl-item">' +
+          '<div class="tl-head"><b>' + escapeHtml_(label) + '</b><span class="tl-date">' + formatDateTh_(h.action_date) + '</span></div>' +
+          '<div class="tl-meta">' + escapeHtml_(h.action_by_org || '-') + (h.action_by ? ' (' + escapeHtml_(h.action_by) + ')' : '') + '</div>' +
+          (h.note ? '<div class="tl-note">' + escapeHtml_(h.note) + '</div>' : '') +
+          (h.revision_reasons ? '<div class="tl-note">เหตุผล: ' + escapeHtml_(h.revision_reasons) + '</div>' : '') +
+          '</li>';
+      }).join('') + '</ul>'
+    : '<div class="empty">ยังไม่มีประวัติ</div>';
+
+  return '' +
+    '<div class="detail-card">' +
+    '<div class="detail-head"><span class="tracking-big">' + escapeHtml_(work.tracking_no) + '</span>' +
+    '<span class="pill pill-' + cls + '">' + escapeHtml_(statusLabel) + '</span></div>' +
+    fieldsHtml + coverHtml +
+    '</div>' +
+    '<section class="metric-card"><div class="metric-head"><span class="metric-label">ประวัติการดำเนินการ</span></div>' + timelineHtml + '</section>' +
+    '<p><a href="?page=search">&larr; กลับหน้าค้นหา</a></p>';
 }
 
 /** หน้าที่ยังไม่พัฒนา (สแกน/ค้นหา) — stub รอ Part ถัดไป */
@@ -180,7 +252,7 @@ var STAFF_CSS_ = '' +
   '.metric-label{font-weight:700;color:var(--navy);}' +
   '.metric-count{font-size:1.3rem;font-weight:700;color:var(--teal);font-variant-numeric:tabular-nums;}' +
   '.metric-hint{font-size:.78rem;color:var(--muted);margin:2px 0 10px;}' +
-  '.work-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--border);}' +
+  '.work-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--border);text-decoration:none;color:inherit;cursor:pointer;}' +
   '.work-row:first-child{border-top:none;}' +
   '.work-main{display:flex;flex-direction:column;min-width:0;}' +
   '.tracking{font-size:.72rem;color:var(--muted);font-variant-numeric:tabular-nums;}' +
@@ -210,4 +282,20 @@ var STAFF_CSS_ = '' +
   '.tracking-big{font-size:1.4rem;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;margin:0 0 14px;}' +
   '.qr-img{width:200px;height:200px;border:1px solid var(--border);border-radius:8px;}' +
   '.ocr-warn{color:var(--revision);font-size:.82rem;margin-top:10px;}' +
-  '.hint{font-size:.8rem;color:var(--muted);margin-top:14px;}';
+  '.hint{font-size:.8rem;color:var(--muted);margin-top:14px;}' +
+  '.search-form{display:flex;gap:8px;margin-bottom:12px;}' +
+  '.search-form .input{flex:1;}' +
+  '.search-form .btn-primary{width:auto;padding:9px 18px;margin-top:0;}' +
+  '.detail-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;}' +
+  '.detail-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;}' +
+  '.detail-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--border);font-size:.88rem;}' +
+  '.detail-row:first-of-type{border-top:none;}' +
+  '.detail-label{color:var(--muted);flex-shrink:0;}' +
+  '.detail-value{text-align:right;}' +
+  '.timeline{list-style:none;margin:0;padding:0;}' +
+  '.tl-item{padding:9px 0;border-top:1px solid var(--border);}' +
+  '.tl-item:first-child{border-top:none;}' +
+  '.tl-head{display:flex;justify-content:space-between;gap:8px;font-size:.88rem;}' +
+  '.tl-date{color:var(--muted);font-size:.76rem;font-variant-numeric:tabular-nums;white-space:nowrap;}' +
+  '.tl-meta{font-size:.78rem;color:var(--muted);margin-top:2px;}' +
+  '.tl-note{font-size:.82rem;margin-top:3px;}';

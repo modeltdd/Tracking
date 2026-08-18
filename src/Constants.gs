@@ -70,6 +70,20 @@ var PUBLIC_STATUS_LABELS = {
   terminated: 'ยุติกระบวนการ',
 };
 
+// ป้ายชื่อ action ใน StatusHistory (ตรง docs/DESIGN.md 4.2) — ใช้แสดงบน Timeline หน้ารายละเอียดงาน
+var ACTION_LABELS_ = {
+  registered: 'ลงทะเบียนรับเรื่อง',
+  received: 'รับเอกสารและเริ่มดำเนินการ',
+  forwarded: 'ผ่านและส่งต่อขั้นตอนถัดไป',
+  more_info: 'ขอข้อมูลเพิ่มเติม',
+  revision_requested: 'ส่งกลับให้เจ้าของผลงานแก้ไข',
+  rejected: 'ไม่ผ่านการพิจารณา',
+  terminated: 'ยุติกระบวนการ',
+  closed: 'ปิดงาน (ข้ามขั้นตอนที่เหลือ)',
+  reassigned: 'เปลี่ยนผู้รับผิดชอบ',
+  edited: 'แก้ไขข้อมูล',
+};
+
 // ค่าตั้งต้นของ Settings (key-value) — ตรง docs/DESIGN.md 4.5 / A-list ในหัวข้อ 2
 function getSettingsSeed_() {
   var fiscalYear = getBuddhistYear_(new Date());

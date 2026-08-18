@@ -1,8 +1,8 @@
 /**
  * จุดเข้าใช้งาน Web App — doGet/doPost
  *
- * สถานะ Part 2: โซนเจ้าหน้าที่มีเชลล์จริงแล้ว (bottom-nav 3 ปุ่ม + Dashboard ตามข้อ 3.3)
- * หน้า "สแกน QR / ค้นหา / รับเอกสารใหม่" ยังเป็น stub รอ Part 3-5 มาเติมเนื้อหาจริง
+ * สถานะ: เชลล์เจ้าหน้าที่ (bottom-nav 3 ปุ่ม + Dashboard), รับเอกสารใหม่, ค้นหา + รายละเอียดงาน (Timeline) พร้อมใช้งานแล้ว
+ * หน้า "สแกน QR" (รับเอกสาร/สิ้นสุดขั้นตอน) ยังเป็น stub รอ Part ถัดไป
  */
 function doGet(e) {
   if (!isSystemInstalled_()) {
@@ -36,7 +36,17 @@ function routeStaffPage_(e, user) {
         : 'หน้าสแกน QR เพื่อรับเอกสาร/สิ้นสุดขั้นตอน จะพัฒนาใน Part 4';
       return renderStaffPage_('สแกน QR', renderStubBody_(scanMsg), user, 'scan');
     case 'search':
-      return renderStaffPage_('ค้นหา', renderStubBody_('หน้าค้นหารายการ + รายละเอียดงาน จะพัฒนาใน Part 5'), user, 'search');
+      var query = params.q || '';
+      var results = searchWorks_(ss, user.organization, query);
+      return renderStaffPage_('ค้นหา', renderSearchBody_(user.organization, query, results), user, 'search');
+    case 'detail':
+      var work = findWorkById_(ss, params.id);
+      if (!work) {
+        return renderStaffPage_('ไม่พบรายการ', renderStubBody_('ไม่พบงานที่ระบุ (work_id: ' + params.id + ')'), user, 'search');
+      }
+      var workHistory = getHistoryForWork_(ss, params.id);
+      var stationsMap = getStationsMap_(ss);
+      return renderStaffPage_('รายละเอียดผลงาน', renderWorkDetailBody_(work, workHistory, stationsMap), user, 'search');
     case 'register':
       return renderStaffPage_('รับเอกสารใหม่', renderRegisterFormBody_(ss, {}, []), user, 'register');
     case 'dashboard':
