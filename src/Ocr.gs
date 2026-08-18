@@ -61,3 +61,77 @@ function isOcrLowConfidence_(ss, ocrResult) {
   var threshold = Number(getSetting_(ss, 'ocr_confidence_threshold', '0.7'));
   return ocrResult.confidence < threshold;
 }
+
+/**
+ * Client-callable ผ่าน google.script.run จากหน้าฟอร์มรับเอกสารใหม่ (เลือกไฟล์ปุ๊บรันทันที)
+ * อ่านภาพหน้าปกผลงานด้วย OCR แล้วพยายามแยกฟิลด์ (ชื่อ-สกุล/ตำแหน่ง/ระดับ/ชื่อผลงาน/สังกัด) ให้อัตโนมัติ
+ * เพื่อลดงานพิมพ์ของเจ้าหน้าที่ — ผลลัพธ์เป็นแค่ "ข้อเสนอ" เติมเฉพาะช่องที่ยังว่าง เจ้าหน้าที่ต้องตรวจสอบ/แก้ไขก่อนกด
+ * "บันทึกและออกเลขติดตาม" เสมอ (OCR ตอน submit จริงยังทำงานเหมือนเดิมเป็น fallback + log ใน StatusHistory.note)
+ *
+ * google.script.run ไม่ได้วิ่งผ่าน doGet/doPost จึงไม่ผ่านการเช็คสิทธิ์ตรงนั้น ต้องเช็คเองในนี้ (กันคนนอกยิงตรง
+ * มาใช้ ocr_api_key ของระบบฟรีๆ)
+ */
+function ocrPreviewCoverImage(base64Data, mimeType, filename) {
+  var email = getCurrentUserEmail_();
+  var user = email ? findUserByEmail_(email) : null;
+  if (!user) {
+    return { ok: false, message: 'ไม่มีสิทธิ์เข้าใช้งาน' };
+  }
+
+  var ss = getSpreadsheet_();
+  var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType || 'image/jpeg', filename || 'cover.jpg');
+  var ocrResult = runOcrOnBlob_(ss, blob);
+  if (!ocrResult) {
+    return { ok: false, message: 'OCR ไม่พร้อมใช้งาน (ยังไม่ได้ตั้งค่า ocr_api_key ใน Settings หรืออ่านภาพไม่สำเร็จ) — กรอกข้อมูลด้วยตนเอง' };
+  }
+  return {
+    ok: true,
+    fields: parseCoverImageOcrText_(ocrResult.text),
+    low_confidence: isOcrLowConfidence_(ss, ocrResult),
+  };
+}
+
+/**
+ * แยกฟิลด์แบบ best-effort จากข้อความ OCR ของหน้าปกผลงาน — หาแพทเทิร์นป้ายกำกับภาษาไทยที่พบทั่วไป
+ * (ชื่อ-นามสกุล/ตำแหน่ง/ระดับ/ชื่อผลงาน/สังกัด) ไม่ครบทุกฟิลด์เสมอไป แม่นยำแค่ระดับ "ช่วยร่าง" เจ้าหน้าที่ต้องตรวจซ้ำ
+ */
+function parseCoverImageOcrText_(text) {
+  var fields = {};
+  var lines = String(text || '').split(/\r?\n/).map(function (l) { return l.trim(); }).filter(function (l) { return l; });
+
+  function grabAfterLabel(labelPatterns) {
+    for (var i = 0; i < lines.length; i++) {
+      for (var p = 0; p < labelPatterns.length; p++) {
+        var m = lines[i].match(labelPatterns[p]);
+        if (!m) continue;
+        var rest = lines[i].slice(m[0].length).replace(/^[:\-–\s]+/, '').trim();
+        if (rest) return rest;
+        if (lines[i + 1]) return lines[i + 1].trim();
+      }
+    }
+    return '';
+  }
+
+  var nameLine = grabAfterLabel([/^ชื่อ[-\s]*(?:นามสกุล|สกุล)?\s*[:\-–]?/]);
+  if (nameLine) {
+    var nm = nameLine.match(/^(นาย|นาง|นางสาว|น\.ส\.|ดร\.)?\s*([ก-๙]+)\s+([ก-๙]+)/);
+    if (nm) {
+      if (nm[1]) fields.title_name = nm[1];
+      fields.first_name = nm[2];
+      fields.last_name = nm[3];
+    }
+  }
+
+  fields.position = grabAfterLabel([/^ตำแหน่ง\s*[:\-–]?/]);
+  fields.current_level = grabAfterLabel([/^ระดับปัจจุบัน\s*[:\-–]?/]);
+  fields.requested_level = grabAfterLabel([/^ระดับที่ขอ(?:ประเมิน|เลื่อน)?\s*[:\-–]?/, /^ขอประเมินเลื่อนเป็นระดับ\s*[:\-–]?/]);
+  if (!fields.current_level && !fields.requested_level) {
+    var lvl = grabAfterLabel([/^ระดับ\s*[:\-–]?/]);
+    if (lvl) fields.requested_level = lvl;
+  }
+  fields.work_title = grabAfterLabel([/^ชื่อผลงาน\s*[:\-–]?/, /^ชื่อเรื่อง\s*[:\-–]?/]);
+  fields.org_from = grabAfterLabel([/^สังกัด\s*[:\-–]?/, /^หน่วยงาน(?:ต้นสังกัด)?\s*[:\-–]?/]);
+
+  Object.keys(fields).forEach(function (k) { if (!fields[k]) delete fields[k]; });
+  return fields;
+}

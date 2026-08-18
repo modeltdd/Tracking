@@ -218,10 +218,58 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '<div class="field"><label>เบอร์โทร (ถ้ามี)</label><input class="input" name="reg_phone" value="' + v('phone') + '"></div>' +
     '<div class="field"><label>อีเมล (ถ้ามี)</label><input class="input" name="reg_email" value="' + v('email') + '"></div>' +
     '</div>' +
-    '<div class="field"><label>ภาพหน้าปกผลงาน (ถ้ามี — ใช้ OCR ช่วยตรวจสอบ)</label><input class="input" type="file" name="reg_cover_image" accept="image/*"></div>' +
+    '<div class="field"><label>ภาพหน้าปกผลงาน (ถ้ามี — เลือกไฟล์แล้วระบบจะลองอ่าน OCR กรอกฟอร์มให้อัตโนมัติ)</label>' +
+    '<input class="input" type="file" name="reg_cover_image" accept="image/*" id="reg-cover-input">' +
+    '<div id="ocr-status" class="ocr-status"></div></div>' +
     '<button class="btn-primary" type="submit">บันทึกและออกเลขติดตาม</button>' +
-    '</form>';
+    '</form>' +
+    OCR_AUTOFILL_SCRIPT_;
 }
+
+/** อ่านไฟล์ภาพที่เลือกเป็น base64 ฝั่ง client ทันที แล้วยิง google.script.run ไปรัน OCR + แยกฟิลด์
+ *  เติมเฉพาะช่องที่ยังว่าง (ไม่ทับข้อมูลที่เจ้าหน้าที่พิมพ์ไว้แล้ว) — เจ้าหน้าที่ยังต้องตรวจสอบก่อน submit เสมอ */
+var OCR_AUTOFILL_SCRIPT_ = '' +
+  '<script>(function(){' +
+  'var fileInput=document.getElementById("reg-cover-input");' +
+  'var statusEl=document.getElementById("ocr-status");' +
+  'if(!fileInput||!statusEl)return;' +
+  'var FIELD_MAP={title_name:"reg_title_name",first_name:"reg_first_name",last_name:"reg_last_name",' +
+  'position:"reg_position",current_level:"reg_current_level",requested_level:"reg_requested_level",' +
+  'work_type:"reg_work_type",work_title:"reg_work_title",org_from:"reg_org_from"};' +
+  'fileInput.addEventListener("change",function(){' +
+  'var file=fileInput.files&&fileInput.files[0];if(!file)return;' +
+  'statusEl.textContent="กำลังอ่านข้อมูลจากภาพด้วย OCR...";statusEl.className="ocr-status ocr-status-loading";' +
+  'var reader=new FileReader();' +
+  'reader.onload=function(){' +
+  'var base64=String(reader.result).split(",")[1];' +
+  'google.script.run.withSuccessHandler(handleResult).withFailureHandler(handleError)' +
+  '.ocrPreviewCoverImage(base64,file.type,file.name);' +
+  '};' +
+  'reader.readAsDataURL(file);' +
+  '});' +
+  'function handleError(err){' +
+  'statusEl.textContent="OCR ล้มเหลว: "+(err&&err.message?err.message:err)+" — กรอกข้อมูลด้วยตนเอง";' +
+  'statusEl.className="ocr-status ocr-status-error";' +
+  '}' +
+  'function handleResult(res){' +
+  'if(!res||!res.ok){statusEl.textContent=(res&&res.message)||"อ่านภาพไม่สำเร็จ — กรอกข้อมูลด้วยตนเอง";statusEl.className="ocr-status ocr-status-error";return;}' +
+  'var filled=0;' +
+  'Object.keys(FIELD_MAP).forEach(function(key){' +
+  'var val=res.fields&&res.fields[key];if(!val)return;' +
+  'var el=document.getElementsByName(FIELD_MAP[key])[0];' +
+  'if(!el||el.value)return;' +
+  'el.value=val;filled++;' +
+  '});' +
+  'if(filled){' +
+  'statusEl.textContent="อ่านข้อมูลจากภาพสำเร็จ กรอกให้อัตโนมัติ "+filled+" ช่อง — กรุณาตรวจสอบความถูกต้องก่อนบันทึก"' +
+  '+(res.low_confidence?" (OCR ไม่มั่นใจ ตรวจสอบให้ดี)":"");' +
+  'statusEl.className="ocr-status ocr-status-success";' +
+  '}else{' +
+  'statusEl.textContent="อ่านภาพสำเร็จ แต่ไม่พบข้อมูลที่จับคู่ได้ — กรอกข้อมูลด้วยตนเอง";' +
+  'statusEl.className="ocr-status ocr-status-warn";' +
+  '}' +
+  '}' +
+  '})();</script>';
 
 /** หน้าสำเร็จหลังลงทะเบียน — แสดงเลขติดตาม + QR ให้พิมพ์แปะเอกสาร */
 function renderRegisterSuccessBody_(result, baseUrl) {
@@ -285,6 +333,11 @@ var STAFF_CSS_ = '' +
   '.tracking-big{font-size:1.4rem;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;margin:0 0 14px;}' +
   '.qr-img{width:200px;height:200px;border:1px solid var(--border);border-radius:8px;}' +
   '.ocr-warn{color:var(--revision);font-size:.82rem;margin-top:10px;}' +
+  '.ocr-status{font-size:.78rem;margin-top:6px;min-height:1em;}' +
+  '.ocr-status-loading{color:var(--muted);}' +
+  '.ocr-status-success{color:var(--done);}' +
+  '.ocr-status-warn{color:var(--revision);}' +
+  '.ocr-status-error{color:var(--danger);}' +
   '.hint{font-size:.8rem;color:var(--muted);margin-top:14px;}' +
   '.search-form{display:flex;gap:8px;margin-bottom:12px;}' +
   '.search-form .input{flex:1;}' +
