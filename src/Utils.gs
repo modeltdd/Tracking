@@ -80,6 +80,19 @@ function padLeft_(num, width) {
   return s;
 }
 
+/**
+ * URL เต็มของ Web App ที่ deploy อยู่ — ใช้สร้างลิงก์ภายในแบบ absolute เสมอ
+ * (HtmlService render เนื้อหาอยู่ใน iframe sandbox คนละ origin กับ URL ที่เห็นบน address bar —
+ * ลิงก์ relative อย่าง href="?page=x" จะ resolve ผิด origin แล้วเงียบ/ว่างเปล่า ต้องใช้ URL เต็มคู่กับ target="_top" เสมอ)
+ */
+function getWebAppUrl_() {
+  try {
+    return ScriptApp.getService().getUrl() || '';
+  } catch (err) {
+    return '';
+  }
+}
+
 /** จัดรูปแบบวันที่-เวลาให้อ่านง่าย (dd/MM/yyyy HH:mm ตาม timezone ของสคริปต์) — ใช้บน Timeline หน้ารายละเอียดงาน */
 function formatDateTh_(date) {
   if (!date) return '-';

@@ -30,11 +30,13 @@ var METRIC_SECTIONS_ = [
   { key: 'returnedForRevision', label: 'ส่งกลับแก้ไข', hint: 'รอเจ้าของผลงานส่งฉบับแก้ไขกลับมา' },
 ];
 
-/** ครอบหน้าเจ้าหน้าที่ด้วยเชลล์เต็มรูปแบบ: header ผู้ใช้ + เนื้อหา + bottom-nav */
-function renderStaffPage_(title, bodyHtml, user, activePage) {
+/** ครอบหน้าเจ้าหน้าที่ด้วยเชลล์เต็มรูปแบบ: header ผู้ใช้ + เนื้อหา + bottom-nav
+ *  baseUrl: URL เต็มของ Web App (จาก getWebAppUrl_()) — ลิงก์ภายในทุกอันต้อง absolute + target="_top"
+ *  กัน relative href พังใน iframe sandbox ของ HtmlService (ดูคอมเมนต์ getWebAppUrl_ ใน Utils.gs) */
+function renderStaffPage_(title, bodyHtml, user, activePage, baseUrl) {
   var navHtml = NAV_ITEMS_.map(function (item) {
     var isActive = item.page === activePage;
-    return '<a class="navitem' + (isActive ? ' active' : '') + '" href="?page=' + item.page + '">' +
+    return '<a class="navitem' + (isActive ? ' active' : '') + '" target="_top" href="' + baseUrl + '?page=' + item.page + '">' +
       '<span class="navicon">' + item.icon + '</span><span>' + escapeHtml_(item.label) + '</span></a>';
   }).join('');
 
@@ -51,7 +53,7 @@ function renderStaffPage_(title, bodyHtml, user, activePage) {
     '<span class="orgtag">' + escapeHtml_(user.organization) + '</span></div>' +
     '</header>' +
     '<main class="content">' + bodyHtml + '</main>' +
-    '<a class="fab" href="?page=register" title="รับเอกสารใหม่">+</a>' +
+    '<a class="fab" target="_top" href="' + baseUrl + '?page=register" title="รับเอกสารใหม่">+</a>' +
     '<nav class="bottomnav">' + navHtml + '</nav>' +
     '</body></html>';
 
@@ -61,7 +63,7 @@ function renderStaffPage_(title, bodyHtml, user, activePage) {
 }
 
 /** เนื้อหาหน้า Dashboard — การ์ดสรุป 6 กลุ่มตามข้อ 3.3 ต่อหน่วยงานของผู้ Login */
-function renderDashboardBody_(user, metrics) {
+function renderDashboardBody_(user, metrics, baseUrl) {
   var sections = METRIC_SECTIONS_.map(function (sec) {
     var items = metrics[sec.key] || [];
     return '' +
@@ -69,7 +71,7 @@ function renderDashboardBody_(user, metrics) {
       '<div class="metric-head"><span class="metric-label">' + escapeHtml_(sec.label) + '</span>' +
       '<span class="metric-count">' + items.length + '</span></div>' +
       '<div class="metric-hint">' + escapeHtml_(sec.hint) + '</div>' +
-      (items.length ? renderWorkList_(items) : '<div class="empty">ไม่มีรายการ</div>') +
+      (items.length ? renderWorkList_(items, false, baseUrl) : '<div class="empty">ไม่มีรายการ</div>') +
       '</section>';
   }).join('');
 
@@ -80,13 +82,13 @@ function renderDashboardBody_(user, metrics) {
 
 /** รายการงานแบบย่อ (ใช้ในการ์ด Dashboard และหน้าค้นหา) — tracking_no, ชื่อผลงาน, ป้ายสถานะ, คลิกไปหน้ารายละเอียด
  *  showAll=true (หน้าค้นหา) แสดงครบทุกแถว, ไม่ระบุ/false (การ์ด Dashboard) แสดงแค่ 5 แถวแรก */
-function renderWorkList_(works, showAll) {
+function renderWorkList_(works, showAll, baseUrl) {
   var list = showAll ? works : works.slice(0, 5);
   var rows = list.map(function (w) {
     var cls = STATUS_PILL_CLASS_[w.current_status_public] || 'pending';
     var label = PUBLIC_STATUS_LABELS[w.current_status_public] || w.current_status_public || '-';
     return '' +
-      '<a class="work-row" href="?page=detail&id=' + encodeURIComponent(w.work_id) + '">' +
+      '<a class="work-row" target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(w.work_id) + '">' +
       '<div class="work-main"><span class="tracking">' + escapeHtml_(w.tracking_no) + '</span>' +
       '<span class="worktitle">' + escapeHtml_(w.work_title || '-') + '</span></div>' +
       '<span class="pill pill-' + cls + '">' + escapeHtml_(label) + '</span>' +
@@ -97,14 +99,14 @@ function renderWorkList_(works, showAll) {
 }
 
 /** หน้าค้นหา — ช่องค้นหา (GET) + ผลลัพธ์ (ค้นหาแล้วครอบคลุมทุกหน่วยงาน, ไม่ค้นหาแสดงเฉพาะหน่วยงานตน) */
-function renderSearchBody_(org, query, results) {
+function renderSearchBody_(org, query, results, baseUrl) {
   var q = escapeHtml_(query || '');
   var listHtml = results.length
-    ? renderWorkList_(results, true)
+    ? renderWorkList_(results, true, baseUrl)
     : '<div class="empty">' + (query ? 'ไม่พบรายการที่ตรงกับ "' + q + '"' : 'ไม่มีงานของหน่วยงานนี้ในขณะนี้') + '</div>';
 
   return '' +
-    '<form method="get" class="search-form">' +
+    '<form method="get" target="_top" action="' + baseUrl + '" class="search-form">' +
     '<input type="hidden" name="page" value="search">' +
     '<input class="input" type="text" name="q" value="' + q + '" placeholder="เลขติดตาม / ชื่อ-สกุล / ชื่อผลงาน">' +
     '<button class="btn-primary" type="submit">ค้นหา</button>' +
@@ -114,7 +116,7 @@ function renderSearchBody_(org, query, results) {
 }
 
 /** หน้ารายละเอียดงาน — ข้อมูลเต็ม + Timeline จาก StatusHistory (อ่านอย่างเดียว ปุ่มการกระทำจะเพิ่มใน Part ถัดไป) */
-function renderWorkDetailBody_(work, history, stationsMap) {
+function renderWorkDetailBody_(work, history, stationsMap, baseUrl) {
   var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
   var statusLabel = PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public || '-';
   var station = stationsMap[work.current_station_key];
@@ -163,17 +165,17 @@ function renderWorkDetailBody_(work, history, stationsMap) {
     fieldsHtml + coverHtml +
     '</div>' +
     '<section class="metric-card"><div class="metric-head"><span class="metric-label">ประวัติการดำเนินการ</span></div>' + timelineHtml + '</section>' +
-    '<p><a href="?page=search">&larr; กลับหน้าค้นหา</a></p>';
+    '<p><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>';
 }
 
 /** หน้าที่ยังไม่พัฒนา (สแกน/ค้นหา) — stub รอ Part ถัดไป */
-function renderStubBody_(message) {
+function renderStubBody_(message, baseUrl) {
   return '<div class="stub"><p>' + escapeHtml_(message) + '</p>' +
-    '<p><a href="?page=dashboard">&larr; กลับหน้าแรก</a></p></div>';
+    '<p><a target="_top" href="' + baseUrl + '?page=dashboard">&larr; กลับหน้าแรก</a></p></div>';
 }
 
 /** ฟอร์มรับเอกสารใหม่ (docs/DESIGN.md Part 3) — values/errors ใช้ตอนส่งฟอร์มไม่ผ่าน validation เพื่อคืนค่าที่กรอกไว้ */
-function renderRegisterFormBody_(ss, values, errors) {
+function renderRegisterFormBody_(ss, values, errors, baseUrl) {
   values = values || {};
   var v = function (key) { return escapeHtml_(values[key] || ''); };
 
@@ -195,7 +197,7 @@ function renderRegisterFormBody_(ss, values, errors) {
 
   return '' +
     errorHtml +
-    '<form method="post" enctype="multipart/form-data" class="reg-form">' +
+    '<form method="post" target="_top" action="' + baseUrl + '" enctype="multipart/form-data" class="reg-form">' +
     '<input type="hidden" name="form_action" value="register_work">' +
     '<div class="field"><label>คำนำหน้าชื่อ</label><input class="input" name="reg_title_name" value="' + v('title_name') + '" placeholder="นาย / นาง / นางสาว"></div>' +
     '<div class="field-row">' +
@@ -222,7 +224,7 @@ function renderRegisterFormBody_(ss, values, errors) {
 }
 
 /** หน้าสำเร็จหลังลงทะเบียน — แสดงเลขติดตาม + QR ให้พิมพ์แปะเอกสาร */
-function renderRegisterSuccessBody_(result) {
+function renderRegisterSuccessBody_(result, baseUrl) {
   return '' +
     '<div class="success-card">' +
     '<p class="success-title">ลงทะเบียนสำเร็จ</p>' +
@@ -232,7 +234,8 @@ function renderRegisterSuccessBody_(result) {
       ? '<p class="ocr-warn">OCR ไม่มั่นใจในภาพที่อัปโหลด — โปรดตรวจสอบข้อมูลที่บันทึกไว้อีกครั้งในภายหลัง</p>'
       : '') +
     '<p class="hint">พิมพ์/แปะ QR นี้ไว้บนเอกสาร ใช้สแกนรับงานที่สถานีถัดไป</p>' +
-    '<p><a href="?page=register">+ ลงทะเบียนรายการถัดไป</a> &nbsp;|&nbsp; <a href="?page=dashboard">กลับหน้าแรก</a></p>' +
+    '<p><a target="_top" href="' + baseUrl + '?page=register">+ ลงทะเบียนรายการถัดไป</a> &nbsp;|&nbsp; ' +
+    '<a target="_top" href="' + baseUrl + '?page=dashboard">กลับหน้าแรก</a></p>' +
     '</div>';
 }
 

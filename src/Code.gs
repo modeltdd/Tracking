@@ -28,31 +28,32 @@ function routeStaffPage_(e, user) {
   var params = (e && e.parameter) || {};
   var page = params.page || (params.t ? 'scan' : 'dashboard');
   var ss = getSpreadsheet_();
+  var baseUrl = getWebAppUrl_();
 
   switch (page) {
     case 'scan':
       var scanMsg = params.t
         ? 'สแกน QR token "' + params.t + '" แล้ว — หน้ารับเอกสาร/สิ้นสุดขั้นตอนจะพัฒนาใน Part 4'
         : 'หน้าสแกน QR เพื่อรับเอกสาร/สิ้นสุดขั้นตอน จะพัฒนาใน Part 4';
-      return renderStaffPage_('สแกน QR', renderStubBody_(scanMsg), user, 'scan');
+      return renderStaffPage_('สแกน QR', renderStubBody_(scanMsg, baseUrl), user, 'scan', baseUrl);
     case 'search':
       var query = params.q || '';
       var results = searchWorks_(ss, user.organization, query);
-      return renderStaffPage_('ค้นหา', renderSearchBody_(user.organization, query, results), user, 'search');
+      return renderStaffPage_('ค้นหา', renderSearchBody_(user.organization, query, results, baseUrl), user, 'search', baseUrl);
     case 'detail':
       var work = findWorkById_(ss, params.id);
       if (!work) {
-        return renderStaffPage_('ไม่พบรายการ', renderStubBody_('ไม่พบงานที่ระบุ (work_id: ' + params.id + ')'), user, 'search');
+        return renderStaffPage_('ไม่พบรายการ', renderStubBody_('ไม่พบงานที่ระบุ (work_id: ' + params.id + ')', baseUrl), user, 'search', baseUrl);
       }
       var workHistory = getHistoryForWork_(ss, params.id);
       var stationsMap = getStationsMap_(ss);
-      return renderStaffPage_('รายละเอียดผลงาน', renderWorkDetailBody_(work, workHistory, stationsMap), user, 'search');
+      return renderStaffPage_('รายละเอียดผลงาน', renderWorkDetailBody_(work, workHistory, stationsMap, baseUrl), user, 'search', baseUrl);
     case 'register':
-      return renderStaffPage_('รับเอกสารใหม่', renderRegisterFormBody_(ss, {}, []), user, 'register');
+      return renderStaffPage_('รับเอกสารใหม่', renderRegisterFormBody_(ss, {}, [], baseUrl), user, 'register', baseUrl);
     case 'dashboard':
     default:
       var metrics = computeDashboardMetrics_(ss, user.organization);
-      return renderStaffPage_('แดชบอร์ดเจ้าหน้าที่', renderDashboardBody_(user, metrics), user, 'dashboard');
+      return renderStaffPage_('แดชบอร์ดเจ้าหน้าที่', renderDashboardBody_(user, metrics, baseUrl), user, 'dashboard', baseUrl);
   }
 }
 
@@ -65,13 +66,14 @@ function doPost(e) {
 
   var formAction = e && e.parameter && e.parameter.form_action;
   var ss = getSpreadsheet_();
+  var baseUrl = getWebAppUrl_();
 
   if (formAction === 'register_work') {
     var result = registerNewWork_(ss, user, e);
     if (!result.ok) {
-      return renderStaffPage_('รับเอกสารใหม่', renderRegisterFormBody_(ss, result.values, result.errors), user, 'register');
+      return renderStaffPage_('รับเอกสารใหม่', renderRegisterFormBody_(ss, result.values, result.errors, baseUrl), user, 'register', baseUrl);
     }
-    return renderStaffPage_('ลงทะเบียนสำเร็จ', renderRegisterSuccessBody_(result), user, 'register');
+    return renderStaffPage_('ลงทะเบียนสำเร็จ', renderRegisterSuccessBody_(result, baseUrl), user, 'register', baseUrl);
   }
 
   return ContentService
