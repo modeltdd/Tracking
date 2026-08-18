@@ -29,12 +29,22 @@ function runOcrOnBlob_(ss, blob) {
         muteHttpExceptions: true,
       }
     );
-    if (response.getResponseCode() !== 200) return null;
+    if (response.getResponseCode() !== 200) {
+      Logger.log('OCR: Vision API ตอบ HTTP ' + response.getResponseCode() + ' — ' + response.getContentText().slice(0, 500));
+      return null;
+    }
 
     var json = JSON.parse(response.getContentText());
     var result = json.responses && json.responses[0];
+    if (result && result.error) {
+      Logger.log('OCR: Vision API คืน error — ' + JSON.stringify(result.error).slice(0, 500));
+      return null;
+    }
     var annotation = result && result.fullTextAnnotation;
-    if (!annotation || !annotation.text) return null;
+    if (!annotation || !annotation.text) {
+      Logger.log('OCR: Vision API สำเร็จแต่ไม่พบข้อความในภาพ (fullTextAnnotation ว่าง)');
+      return null;
+    }
 
     var pages = annotation.pages || [];
     var confidence = pages.length ? averagePageConfidence_(pages) : null;
