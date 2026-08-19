@@ -1,68 +1,64 @@
 /**
- * OCR อ่านภาพหน้าปกผลงาน — Google Cloud Vision API ผ่าน UrlFetchApp (docs/DESIGN.md A4)
+ * OCR อ่านภาพหน้าปกผลงาน — Drive API OCR (Advanced Drive Service) แทน Cloud Vision (docs/DESIGN.md A4)
+ * เลือกใช้ Drive OCR เพราะฟรี ไม่ต้องเปิด billing บน Google Cloud project (Vision ต้องเปิด billing แม้อยู่ใน free tier)
+ * แลกกับความแม่นยำที่ต่ำกว่า Vision โดยเฉพาะลายมือ/ตารางซับซ้อน — และ Drive OCR ไม่รายงานค่า confidence เลย
+ * (ดู isOcrLowConfidence_ — confidence เป็น null เสมอ จึงถือว่า "ไม่มั่นใจ" ทุกครั้ง ต้องให้เจ้าหน้าที่ตรวจซ้ำเสมอ)
  *
- * ทำงานแบบ best-effort เท่านั้น: ถ้าไม่ได้ตั้งค่า ocr_api_key ไว้ หรือเรียก API ไม่สำเร็จไม่ว่าเหตุผลใด
- * ฟังก์ชันคืน null เงียบๆ — การลงทะเบียนเอกสารต้องสำเร็จได้เสมอแม้ OCR ใช้งานไม่ได้ (เจ้าหน้าที่กรอกฟอร์มเองแทน)
+ * วิธีทำงาน: อัปโหลดภาพเป็นไฟล์ชั่วคราวผ่าน Drive.Files.insert({ocr:true}) แปลงเป็น Google Doc ที่มีข้อความ
+ * OCR แล้ว แล้ว export เป็น text/plain ผ่าน exportLinks ด้วย token ของสคริปต์เอง จากนั้นลบไฟล์ชั่วคราวทิ้งเสมอ
+ *
+ * ทำงานแบบ best-effort เท่านั้น: ถ้าเรียก Drive API ไม่สำเร็จไม่ว่าเหตุผลใด ฟังก์ชันคืน null เงียบๆ —
+ * การลงทะเบียนเอกสารต้องสำเร็จได้เสมอแม้ OCR ใช้งานไม่ได้ (เจ้าหน้าที่กรอกฟอร์มเองแทน)
  *
  * หมายเหตุสมมติฐาน A11 (เพิ่มใน Part 3): ฟอร์มรับเอกสารใหม่เป็น HTML form ธรรมดา (POST ครั้งเดียว ไม่มี AJAX)
  * OCR จึงรันตอน submit และ "บันทึกข้อความที่อ่านได้" ไว้ใน StatusHistory.note ของ action แรก (registered)
  * ให้เจ้าหน้าที่ตรวจสอบย้อนหลังได้ ไม่ใช่การ auto-fill ฟอร์มก่อน submit (ต้องมี AJAX round-trip เพิ่มถ้าต้องการ)
+ *
+ * ต้องเปิด Advanced Drive Service (Drive API v2, userSymbol "Drive") ใน appsscript.json ก่อนใช้งาน
  */
 function runOcrOnBlob_(ss, blob) {
-  var apiKey = getSetting_(ss, 'ocr_api_key', '');
-  if (!apiKey || !blob) return null;
+  if (!blob) return null;
 
+  var tempFileId = null;
   try {
-    var base64Image = Utilities.base64Encode(blob.getBytes());
-    var payload = {
-      requests: [{
-        image: { content: base64Image },
-        features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-      }],
+    var resource = {
+      title: 'ocr-temp-' + Utilities.getUuid(),
+      mimeType: MimeType.GOOGLE_DOCS,
     };
-    var response = UrlFetchApp.fetch(
-      'https://vision.googleapis.com/v1/images:annotate?key=' + encodeURIComponent(apiKey),
-      {
-        method: 'post',
-        contentType: 'application/json',
-        payload: JSON.stringify(payload),
-        muteHttpExceptions: true,
-      }
-    );
+    var file = Drive.Files.insert(resource, blob, { ocr: true, ocrLanguage: 'th' });
+    tempFileId = file.id;
+
+    var exportUrl = file.exportLinks && file.exportLinks['text/plain'];
+    if (!exportUrl) {
+      Logger.log('OCR (Drive): ไม่พบ exportLinks[text/plain] ในไฟล์ผลลัพธ์');
+      return null;
+    }
+    var response = UrlFetchApp.fetch(exportUrl, {
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+      muteHttpExceptions: true,
+    });
     if (response.getResponseCode() !== 200) {
-      Logger.log('OCR: Vision API ตอบ HTTP ' + response.getResponseCode() + ' — ' + response.getContentText().slice(0, 500));
+      Logger.log('OCR (Drive): export ข้อความไม่สำเร็จ HTTP ' + response.getResponseCode() + ' — ' + response.getContentText().slice(0, 500));
       return null;
     }
 
-    var json = JSON.parse(response.getContentText());
-    var result = json.responses && json.responses[0];
-    if (result && result.error) {
-      Logger.log('OCR: Vision API คืน error — ' + JSON.stringify(result.error).slice(0, 500));
-      return null;
-    }
-    var annotation = result && result.fullTextAnnotation;
-    if (!annotation || !annotation.text) {
-      Logger.log('OCR: Vision API สำเร็จแต่ไม่พบข้อความในภาพ (fullTextAnnotation ว่าง)');
+    var text = response.getContentText();
+    if (!text || !text.trim()) {
+      Logger.log('OCR (Drive): อ่านสำเร็จแต่ไม่พบข้อความในภาพ');
       return null;
     }
 
-    var pages = annotation.pages || [];
-    var confidence = pages.length ? averagePageConfidence_(pages) : null;
-
-    return { text: annotation.text, confidence: confidence };
+    return { text: text, confidence: null };
   } catch (err) {
-    Logger.log('OCR ล้มเหลว (ข้ามไป ให้กรอกฟอร์มเอง): ' + err.message);
+    Logger.log('OCR (Drive) ล้มเหลว (ข้ามไป ให้กรอกฟอร์มเอง): ' + err.message);
     return null;
+  } finally {
+    if (tempFileId) {
+      try { Drive.Files.remove(tempFileId); } catch (cleanupErr) {
+        Logger.log('OCR (Drive): ลบไฟล์ชั่วคราวไม่สำเร็จ (' + tempFileId + '): ' + cleanupErr.message);
+      }
+    }
   }
-}
-
-function averagePageConfidence_(pages) {
-  var sum = 0;
-  var n = 0;
-  pages.forEach(function (p) {
-    if (typeof p.confidence === 'number') { sum += p.confidence; n++; }
-  });
-  return n ? sum / n : null;
 }
 
 /** true ถ้า OCR ไม่มั่นใจ (ต่ำกว่า Settings.ocr_confidence_threshold) หรือไม่มีผล OCR เลย */
@@ -79,7 +75,7 @@ function isOcrLowConfidence_(ss, ocrResult) {
  * "บันทึกและออกเลขติดตาม" เสมอ (OCR ตอน submit จริงยังทำงานเหมือนเดิมเป็น fallback + log ใน StatusHistory.note)
  *
  * google.script.run ไม่ได้วิ่งผ่าน doGet/doPost จึงไม่ผ่านการเช็คสิทธิ์ตรงนั้น ต้องเช็คเองในนี้ (กันคนนอกยิงตรง
- * มาใช้ ocr_api_key ของระบบฟรีๆ)
+ * มาใช้โควตา Drive API ของระบบฟรีๆ)
  */
 function ocrPreviewCoverImage(base64Data, mimeType, filename) {
   var email = getCurrentUserEmail_();
@@ -92,7 +88,7 @@ function ocrPreviewCoverImage(base64Data, mimeType, filename) {
   var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType || 'image/jpeg', filename || 'cover.jpg');
   var ocrResult = runOcrOnBlob_(ss, blob);
   if (!ocrResult) {
-    return { ok: false, message: 'OCR ไม่พร้อมใช้งาน (ยังไม่ได้ตั้งค่า ocr_api_key ใน Settings หรืออ่านภาพไม่สำเร็จ) — กรอกข้อมูลด้วยตนเอง' };
+    return { ok: false, message: 'OCR อ่านภาพไม่สำเร็จ — กรอกข้อมูลด้วยตนเอง' };
   }
   return {
     ok: true,
