@@ -1,8 +1,8 @@
 /**
  * จุดเข้าใช้งาน Web App — doGet/doPost
  *
- * สถานะ: เชลล์เจ้าหน้าที่ (bottom-nav 3 ปุ่ม + Dashboard), รับเอกสารใหม่, ค้นหา + รายละเอียดงาน (Timeline) พร้อมใช้งานแล้ว
- * หน้า "สแกน QR" (รับเอกสาร/สิ้นสุดขั้นตอน) ยังเป็น stub รอ Part ถัดไป
+ * สถานะ: เชลล์เจ้าหน้าที่ (bottom-nav 3 ปุ่ม + Dashboard), รับเอกสารใหม่, ค้นหา + รายละเอียดงาน (Timeline),
+ * สแกน QR รับงาน + ปุ่ม action ทั้ง 8 (docs/DESIGN.md ตาราง 3.2) พร้อมใช้งานแล้ว — โซนประชาชน (Part 6) ยังเป็น stub
  */
 function doGet(e) {
   if (!isSystemInstalled_()) {
@@ -32,10 +32,7 @@ function routeStaffPage_(e, user) {
 
   switch (page) {
     case 'scan':
-      var scanMsg = params.t
-        ? 'สแกน QR token "' + params.t + '" แล้ว — หน้ารับเอกสาร/สิ้นสุดขั้นตอนจะพัฒนาใน Part 4'
-        : 'หน้าสแกน QR เพื่อรับเอกสาร/สิ้นสุดขั้นตอน จะพัฒนาใน Part 4';
-      return renderStaffPage_('สแกน QR', renderStubBody_(scanMsg, baseUrl), user, 'scan', baseUrl);
+      return renderScanRoute_(ss, user, params, baseUrl);
     case 'search':
       var query = params.q || '';
       var results = searchWorks_(ss, user.organization, query);
@@ -74,6 +71,23 @@ function doPost(e) {
       return renderStaffPage_('รับเอกสารใหม่', renderRegisterFormBody_(ss, result.values, result.errors, baseUrl), user, 'register', baseUrl);
     }
     return renderStaffPage_('ลงทะเบียนสำเร็จ', renderRegisterSuccessBody_(result, baseUrl), user, 'register', baseUrl);
+  }
+
+  if (formAction === 'work_action') {
+    var token = e.parameter.qr_token || '';
+    var actionResult = performWorkAction_(ss, user, e);
+    if (!actionResult.ok) {
+      var work = findWorkById_(ss, e.parameter.work_id);
+      var stationsMap = getStationsMap_(ss);
+      var station = work ? stationsMap[work.current_station_key] : null;
+      if (!work) {
+        return renderStaffPage_('สแกน QR', renderScanEntryBody_(baseUrl, 'ไม่พบงานที่ระบุ'), user, 'scan', baseUrl);
+      }
+      return renderStaffPage_('สแกน QR',
+        renderActionFormBody_(ss, work, station, e.parameter.action, baseUrl, token, actionResult.errors, e.parameter),
+        user, 'scan', baseUrl);
+    }
+    return renderStaffPage_('บันทึกสำเร็จ', renderActionSuccessBody_(actionResult, baseUrl), user, 'scan', baseUrl);
   }
 
   return ContentService

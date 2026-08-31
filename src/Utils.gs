@@ -113,6 +113,30 @@ function randomToken_(length) {
   return out;
 }
 
+/** อัปเดตบางคอลัมน์ของแถวงานเดียวใน Works ด้วย work_id (เติม updated_at ให้อัตโนมัติถ้าไม่ได้ส่งมาเอง) — ใช้โดย Actions.gs ทุก action */
+function updateWorkRow_(ss, workId, fields) {
+  var sheet = ss.getSheetByName(SHEET.WORKS);
+  var headers = SHEET_HEADERS[SHEET.WORKS];
+  var idCol = headers.indexOf('work_id') + 1;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) throw new Error('ไม่พบงาน (ชีต Works ว่างเปล่า)');
+
+  var ids = sheet.getRange(2, idCol, lastRow - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (ids[i][0] !== workId) continue;
+    var rowNum = i + 2;
+    var merged = {};
+    Object.keys(fields).forEach(function (k) { merged[k] = fields[k]; });
+    if (!('updated_at' in merged)) merged.updated_at = now_();
+    Object.keys(merged).forEach(function (key) {
+      var col = headers.indexOf(key) + 1;
+      if (col > 0) sheet.getRange(rowNum, col).setValue(merged[key]);
+    });
+    return;
+  }
+  throw new Error('ไม่พบงาน work_id: ' + workId);
+}
+
 /** log ไปยัง AuditLog เมื่อ Admin แก้ไขข้อมูล — เรียกใช้จากทุกจุดที่มีการแก้ไขค่าที่บันทึกแล้ว */
 function writeAuditLog_(userEmail, action, workId, fieldChanged, oldValue, newValue) {
   var ss = getSpreadsheet_();

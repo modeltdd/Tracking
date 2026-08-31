@@ -168,6 +168,127 @@ function renderWorkDetailBody_(work, history, stationsMap, baseUrl) {
     '<p><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>';
 }
 
+/** หน้าสแกน QR — ยังไม่มี token (เข้าจากเมนู ไม่ใช่จากลิงก์ QR) — กรอกรหัสเองได้กรณีกล้องอ่านไม่ออก */
+function renderScanEntryBody_(baseUrl, errorMsg) {
+  var errorHtml = errorMsg ? '<div class="error-banner">' + escapeHtml_(errorMsg) + '</div>' : '';
+  return '' + errorHtml +
+    '<div class="stub">' +
+    '<p>เปิดกล้องมือถือสแกน QR บนเอกสาร ระบบจะเปิดหน้ารับงานนี้ให้อัตโนมัติ</p>' +
+    '<p>หรือกรอกรหัส QR ด้วยตนเอง (8 ตัวอักษร ใต้ QR บนเอกสาร):</p>' +
+    '<form method="get" target="_top" action="' + baseUrl + '" class="search-form">' +
+    '<input type="hidden" name="page" value="scan">' +
+    '<input class="input" type="text" name="t" placeholder="รหัส QR 8 ตัว" maxlength="8" autocapitalize="characters">' +
+    '<button class="btn-primary" type="submit">ค้นหา</button>' +
+    '</form></div>';
+}
+
+/** การ์ดสรุปงาน + รายการปุ่ม action ที่กดได้จริง ณ ขณะนี้ (คำนวณจาก computeEligibleActions_ ฝั่ง Actions.gs) */
+function renderScanWorkBody_(work, station, eligible, baseUrl, token, errors) {
+  var errorHtml = (errors && errors.length)
+    ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+  var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
+  var statusLabel = PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public || '-';
+
+  var summaryHtml = '' +
+    '<div class="detail-card">' +
+    '<div class="detail-head"><span class="tracking-big">' + escapeHtml_(work.tracking_no) + '</span>' +
+    '<span class="pill pill-' + cls + '">' + escapeHtml_(statusLabel) + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">ชื่อผลงาน</span><span class="detail-value">' + escapeHtml_(work.work_title || '-') + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">เจ้าของผลงาน</span><span class="detail-value">' +
+    escapeHtml_((work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')) + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">สถานีปัจจุบัน</span><span class="detail-value">' +
+    escapeHtml_(station ? station.station_name : work.current_station_key) + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">ผู้รับผิดชอบ</span><span class="detail-value">' +
+    escapeHtml_(work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-')) + '</span></div>' +
+    '</div>';
+
+  var buttonsHtml = eligible.length
+    ? '<div class="action-list">' + eligible.map(function (a) {
+        var variant = ACTION_BUTTON_VARIANT_[a] || 'secondary';
+        return '<a class="btn-action btn-action-' + variant + '" target="_top" href="' + baseUrl +
+          '?page=scan&t=' + encodeURIComponent(token) + '&do=' + a + '">' + escapeHtml_(ACTION_LABELS_[a] || a) + '</a>';
+      }).join('') + '</div>'
+    : '<div class="empty">ไม่มีการกระทำที่ทำได้กับงานนี้ในขณะนี้ (อาจไม่ใช่หน่วยงานที่รับผิดชอบ หรืองานสิ้นสุดแล้ว)</div>';
+
+  return errorHtml + summaryHtml + buttonsHtml +
+    '<p><a target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(work.work_id) + '">ดูรายละเอียด/ประวัติทั้งหมด &rarr;</a></p>' +
+    '<p><a target="_top" href="' + baseUrl + '?page=scan">&larr; สแกนรายการอื่น</a></p>';
+}
+
+/** ฟอร์มกรอกข้อมูลเฉพาะ action (หรือหน้ายืนยันเฉยๆ กรณี received/forwarded) — POST กลับไปที่ doPost form_action=work_action
+ *  prevValues ใช้คืนค่าที่กรอกไว้เมื่อ validate ไม่ผ่าน (ตาม pattern เดียวกับ renderRegisterFormBody_) */
+function renderActionFormBody_(ss, work, station, action, baseUrl, token, errors, prevValues) {
+  prevValues = prevValues || {};
+  var errorHtml = (errors && errors.length)
+    ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+  var label = ACTION_LABELS_[action] || action;
+
+  var hiddenFields = '' +
+    '<input type="hidden" name="form_action" value="work_action">' +
+    '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
+    '<input type="hidden" name="action" value="' + escapeHtml_(action) + '">' +
+    '<input type="hidden" name="qr_token" value="' + escapeHtml_(token) + '">';
+
+  var extraHtml = '';
+  if (action === 'forwarded') {
+    var stationsMap = getStationsMap_(ss);
+    var next = stationsMap[station.next_station_key];
+    extraHtml = '<p>ยืนยันส่งต่องาน <b>' + escapeHtml_(work.tracking_no) + '</b> ไปยังสถานี ' +
+      '<b>' + escapeHtml_(next ? next.station_name : '-') + '</b> (หน่วยงาน ' + escapeHtml_(next ? next.org : '-') + ')</p>';
+  } else if (action === 'received') {
+    extraHtml = '<p>ยืนยันรับเอกสาร <b>' + escapeHtml_(work.tracking_no) + '</b> และเริ่มดำเนินการที่สถานีนี้</p>';
+  } else if (action === 'more_info') {
+    extraHtml = '<div class="field"><label>รายละเอียดที่ขอเพิ่มเติม</label>' +
+      '<textarea class="input" name="note" rows="3">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
+  } else if (action === 'revision_requested') {
+    var reasonOptions = getSettingList_(ss, 'revision_reason_options', []);
+    var selectedReasons = [].concat(prevValues.revision_reasons || []);
+    extraHtml = '<div class="field"><label>เหตุผล (เลือกได้มากกว่า 1 ข้อ)</label>' +
+      reasonOptions.map(function (opt) {
+        var checked = selectedReasons.indexOf(opt) !== -1 ? ' checked' : '';
+        return '<label class="checkbox-row"><input type="checkbox" name="revision_reasons" value="' + escapeHtml_(opt) + '"' + checked + '> ' + escapeHtml_(opt) + '</label>';
+      }).join('') + '</div>' +
+      '<div class="field"><label>กำหนดวันส่งฉบับแก้ไขกลับ</label><input class="input" type="date" name="revision_due_date" value="' + escapeHtml_(prevValues.revision_due_date || '') + '"></div>' +
+      '<div class="field"><label>หมายเหตุเพิ่มเติม (ถ้ามี)</label><textarea class="input" name="note" rows="2">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
+  } else if (action === 'rejected') {
+    extraHtml = '<div class="field"><label>เหตุผลที่ไม่ผ่านการพิจารณา</label><textarea class="input" name="note" rows="3">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
+  } else if (action === 'terminated') {
+    extraHtml = '<div class="field"><label>เหตุผลที่ยุติกระบวนการ</label><textarea class="input" name="note" rows="3">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
+  } else if (action === 'closed') {
+    extraHtml = '<div class="field"><label>เหตุผลที่ปิดงาน (ข้ามขั้นตอนที่เหลือ)</label><textarea class="input" name="note" rows="3">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
+  } else if (action === 'reassigned') {
+    var orgs = getDistinctStationOrgs_(ss);
+    var currentTarget = prevValues.target_org || work.current_owner_org;
+    extraHtml = '<div class="field"><label>หน่วยงานที่รับผิดชอบใหม่</label><select class="input" name="target_org">' +
+      orgs.map(function (o) {
+        var sel = o === currentTarget ? ' selected' : '';
+        return '<option' + sel + '>' + escapeHtml_(o) + '</option>';
+      }).join('') + '</select></div>' +
+      '<div class="field"><label>เหตุผล</label><textarea class="input" name="note" rows="2">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
+  }
+
+  return errorHtml +
+    '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form">' +
+    '<h3 class="action-form-title">' + escapeHtml_(label) + '</h3>' +
+    hiddenFields + extraHtml +
+    '<button class="btn-primary" type="submit">ยืนยัน' + escapeHtml_(label) + '</button>' +
+    '</form>' +
+    '<p><a target="_top" href="' + baseUrl + '?page=scan&t=' + encodeURIComponent(token) + '">&larr; ยกเลิก กลับไปเลือกการกระทำ</a></p>';
+}
+
+/** หน้าสำเร็จหลังบันทึก action */
+function renderActionSuccessBody_(result, baseUrl) {
+  return '' +
+    '<div class="success-card">' +
+    '<p class="success-title">บันทึก "' + escapeHtml_(ACTION_LABELS_[result.action] || result.action) + '" สำเร็จ</p>' +
+    '<p><a target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(result.work_id) + '">ดูรายละเอียดงาน</a> &nbsp;|&nbsp; ' +
+    '<a target="_top" href="' + baseUrl + '?page=scan">สแกนรายการถัดไป</a> &nbsp;|&nbsp; ' +
+    '<a target="_top" href="' + baseUrl + '?page=dashboard">กลับหน้าแรก</a></p>' +
+    '</div>';
+}
+
 /** หน้าที่ยังไม่พัฒนา (สแกน/ค้นหา) — stub รอ Part ถัดไป */
 function renderStubBody_(message, baseUrl) {
   return '<div class="stub"><p>' + escapeHtml_(message) + '</p>' +
@@ -354,4 +475,12 @@ var STAFF_CSS_ = '' +
   '.tl-head{display:flex;justify-content:space-between;gap:8px;font-size:.88rem;}' +
   '.tl-date{color:var(--muted);font-size:.76rem;font-variant-numeric:tabular-nums;white-space:nowrap;}' +
   '.tl-meta{font-size:.78rem;color:var(--muted);margin-top:2px;}' +
-  '.tl-note{font-size:.82rem;margin-top:3px;}';
+  '.tl-note{font-size:.82rem;margin-top:3px;}' +
+  '.action-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;}' +
+  '.btn-action{display:block;text-align:center;padding:12px;border-radius:10px;font-weight:700;font-size:.92rem;text-decoration:none;color:#fff;}' +
+  '.btn-action-primary{background:var(--teal);}' +
+  '.btn-action-secondary{background:var(--navy);}' +
+  '.btn-action-warn{background:var(--revision);}' +
+  '.btn-action-danger{background:var(--danger);}' +
+  '.action-form-title{color:var(--navy);margin:0 0 12px;font-size:1rem;}' +
+  '.checkbox-row{display:flex;align-items:center;gap:8px;font-size:.88rem;padding:4px 0;}';

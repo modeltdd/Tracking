@@ -38,6 +38,17 @@ function findWorkById_(ss, workId) {
   return null;
 }
 
+/** หา Work ด้วย qr_token (ตัวพิมพ์ใหญ่/เล็กไม่สำคัญ) — ใช้ตอนสแกน QR / กรอกรหัสเองที่หน้าสแกน */
+function findWorkByQrToken_(ss, token) {
+  var needle = String(token || '').trim().toUpperCase();
+  if (!needle) return null;
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  for (var i = 0; i < works.length; i++) {
+    if (String(works[i].qr_token || '').toUpperCase() === needle) return works[i];
+  }
+  return null;
+}
+
 /** ประวัติทั้งหมดของงานหนึ่งรายการ เรียงเก่า→ใหม่ (สำหรับ Timeline) */
 function getHistoryForWork_(ss, workId) {
   var history = readSheetAsObjects_(ss.getSheetByName(SHEET.STATUS_HISTORY));
