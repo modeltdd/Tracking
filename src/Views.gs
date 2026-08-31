@@ -168,6 +168,72 @@ function renderWorkDetailBody_(work, history, stationsMap, baseUrl) {
     '<p><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>';
 }
 
+/** ครอบหน้าโซนสาธารณะ (ไม่ Login) — topbar เรียบๆ ไม่มี bottom-nav/FAB ของเจ้าหน้าที่ ใช้ CSS ชุดเดียวกับ STAFF_CSS_ */
+function renderPublicPage_(title, bodyHtml) {
+  var html = '' +
+    '<!doctype html><html><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">' +
+    '<title>' + escapeHtml_(title) + '</title>' +
+    '<style>' + STAFF_CSS_ + PUBLIC_CSS_ + '</style>' +
+    '</head><body class="public-body">' +
+    '<header class="topbar"><div class="topbar-title">' + escapeHtml_(title) + '</div></header>' +
+    '<main class="content">' + bodyHtml + '</main>' +
+    '</body></html>';
+  return HtmlService.createHtmlOutput(html)
+    .setTitle(title)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+/** ฟอร์มตรวจสอบสถานะสาธารณะ — เลขติดตาม + เลขบัตรประชาชน 4 ตัวท้าย, POST เสมอ (กันเลขบัตรหลุดใน URL/ประวัติเบราว์เซอร์) */
+function renderPublicTrackFormBody_(baseUrl, sessionToken, errors, prevValues) {
+  prevValues = prevValues || {};
+  var errorHtml = (errors && errors.length)
+    ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+  return '' + errorHtml +
+    '<div class="detail-card">' +
+    '<p>กรอกเลขติดตามเอกสารและเลขบัตรประชาชน 4 ตัวท้าย เพื่อตรวจสอบสถานะผลงานวิชาการ</p>' +
+    '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;">' +
+    '<input type="hidden" name="form_action" value="track_status">' +
+    '<input type="hidden" name="session_token" value="' + escapeHtml_(sessionToken) + '">' +
+    '<div class="field"><label>เลขติดตามเอกสาร</label>' +
+    '<input class="input" name="tracking_no" value="' + escapeHtml_(prevValues.tracking_no || '') + '" placeholder="เช่น อวช11-2569-00218"></div>' +
+    '<div class="field"><label>เลขบัตรประชาชน 4 ตัวท้าย</label>' +
+    '<input class="input" name="citizen_id_last4" maxlength="4" inputmode="numeric" pattern="[0-9]{4}"></div>' +
+    '<button class="btn-primary" type="submit">ตรวจสอบสถานะ</button>' +
+    '</form></div>';
+}
+
+/** ผลตรวจสอบสถานะสาธารณะ — เฉพาะฟิลด์ที่เปิดเผยได้ (ไม่มีชื่อ-สกุล/ผู้ดำเนินการ/timeline ภายใน)
+ *  ถ้าสถานะ = need_revision แสดงกล่อง "รายการที่ต้องแก้ไข" (revision detail) แยกจากการ์ดสถานะหลัก */
+function renderPublicResultBody_(work, revisionInfo, baseUrl) {
+  var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
+  var label = PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public || '-';
+
+  var revisionHtml = '';
+  if (work.current_status_public === 'need_revision' && revisionInfo) {
+    revisionHtml = '' +
+      '<div class="revision-box">' +
+      '<p class="revision-title">รายการที่ต้องแก้ไข</p>' +
+      '<p>' + escapeHtml_(revisionInfo.reasons || '-') + '</p>' +
+      (revisionInfo.due_date ? '<p>กรุณาส่งฉบับแก้ไขกลับภายใน <b>' + escapeHtml_(revisionInfo.due_date) + '</b></p>' : '') +
+      (revisionInfo.note ? '<p class="tl-note">หมายเหตุ: ' + escapeHtml_(revisionInfo.note) + '</p>' : '') +
+      '</div>';
+  }
+
+  return '' +
+    '<div class="detail-card">' +
+    '<div class="detail-head"><span class="tracking-big">' + escapeHtml_(work.tracking_no) + '</span>' +
+    '<span class="pill pill-' + cls + '">' + escapeHtml_(label) + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">ชื่อผลงาน</span><span class="detail-value">' + escapeHtml_(work.work_title || '-') + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">อัปเดตล่าสุด</span><span class="detail-value">' + formatDateTh_(work.updated_at) + '</span></div>' +
+    (work.next_step_text ? '<div class="detail-row"><span class="detail-label">ขั้นตอนถัดไป</span><span class="detail-value">' + escapeHtml_(work.next_step_text) + '</span></div>' : '') +
+    '</div>' +
+    revisionHtml +
+    '<p><a target="_top" href="' + baseUrl + '">&larr; ตรวจสอบรายการอื่น</a></p>';
+}
+
 /** หน้าสแกน QR — ยังไม่มี token (เข้าจากเมนู ไม่ใช่จากลิงก์ QR) — กรอกรหัสเองได้กรณีกล้องอ่านไม่ออก */
 function renderScanEntryBody_(baseUrl, errorMsg) {
   var errorHtml = errorMsg ? '<div class="error-banner">' + escapeHtml_(errorMsg) + '</div>' : '';
@@ -484,3 +550,8 @@ var STAFF_CSS_ = '' +
   '.btn-action-danger{background:var(--danger);}' +
   '.action-form-title{color:var(--navy);margin:0 0 12px;font-size:1rem;}' +
   '.checkbox-row{display:flex;align-items:center;gap:8px;font-size:.88rem;padding:4px 0;}';
+
+var PUBLIC_CSS_ = '' +
+  '.public-body{padding-bottom:24px;}' +
+  '.revision-box{background:#fdf6e3;border:1px solid var(--revision);border-radius:12px;padding:14px 16px;margin-bottom:12px;}' +
+  '.revision-title{color:var(--revision);font-weight:700;margin:0 0 6px;}';

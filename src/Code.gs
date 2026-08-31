@@ -2,7 +2,7 @@
  * จุดเข้าใช้งาน Web App — doGet/doPost
  *
  * สถานะ: เชลล์เจ้าหน้าที่ (bottom-nav 3 ปุ่ม + Dashboard), รับเอกสารใหม่, ค้นหา + รายละเอียดงาน (Timeline),
- * สแกน QR รับงาน + ปุ่ม action ทั้ง 8 (docs/DESIGN.md ตาราง 3.2) พร้อมใช้งานแล้ว — โซนประชาชน (Part 6) ยังเป็น stub
+ * สแกน QR รับงาน + ปุ่ม action ทั้ง 8 (docs/DESIGN.md ตาราง 3.2), โซนประชาชน (ตรวจสอบสถานะ + revision detail, Part 6) พร้อมใช้งานแล้ว
  */
 function doGet(e) {
   if (!isSystemInstalled_()) {
@@ -11,8 +11,8 @@ function doGet(e) {
 
   var email = getCurrentUserEmail_();
   if (!email) {
-    // ผู้เยี่ยมชมไม่ได้ Login → โซนสาธารณะ (หน้า Tracking จะพัฒนาใน Part 6)
-    return renderPage_('ตรวจสอบสถานะผลงานวิชาการ', htmlPublicPlaceholder_());
+    // ผู้เยี่ยมชมไม่ได้ Login → โซนสาธารณะ (ตรวจสอบสถานะด้วยเลขติดตาม+last4, PublicTrack.gs)
+    return handlePublicTrackGet_();
   }
 
   var user = findUserByEmail_(email);
@@ -55,14 +55,20 @@ function routeStaffPage_(e, user) {
 }
 
 function doPost(e) {
+  var formAction = e && e.parameter && e.parameter.form_action;
+  var ss = getSpreadsheet_();
+
+  if (formAction === 'track_status') {
+    // โซนสาธารณะ ไม่ต้อง Login — ตรวจสอบสิทธิ์ก่อนหน้านี้จะบล็อกผู้เยี่ยมชมทั่วไปออกไปโดยไม่ตั้งใจ
+    return handlePublicTrackPost_(ss, e);
+  }
+
   var email = getCurrentUserEmail_();
   var user = email ? findUserByEmail_(email) : null;
   if (!user) {
     return renderPage_('ไม่มีสิทธิ์เข้าใช้งาน', htmlAccessDenied_(email || '(ไม่ได้ Login)'));
   }
 
-  var formAction = e && e.parameter && e.parameter.form_action;
-  var ss = getSpreadsheet_();
   var baseUrl = getWebAppUrl_();
 
   if (formAction === 'register_work') {
@@ -106,12 +112,6 @@ function htmlNotInstalled_() {
     '<p>ยังไม่พบฐานข้อมูลของระบบ</p>' +
     '<p>ผู้ดูแลระบบต้องรันฟังก์ชัน <code>installSystem</code> จาก Apps Script Editor ก่อนใช้งานครั้งแรก ' +
     '(ดูขั้นตอนในคอมเมนต์ต้นไฟล์ <code>Setup.gs</code>)</p>';
-}
-
-function htmlPublicPlaceholder_() {
-  return '' +
-    '<p>ส่วนตรวจสอบสถานะสำหรับประชาชนกำลังอยู่ระหว่างพัฒนา (Part 6)</p>' +
-    '<p>ขณะนี้ยืนยันได้ว่า: ผู้เยี่ยมชมที่ไม่ได้ Login จะเห็นหน้านี้ถูกต้องตามที่ออกแบบไว้</p>';
 }
 
 function htmlAccessDenied_(email) {

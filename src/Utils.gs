@@ -137,6 +137,19 @@ function updateWorkRow_(ss, workId, fields) {
   throw new Error('ไม่พบงาน work_id: ' + workId);
 }
 
+/** log การค้นหาสถานะจากหน้าสาธารณะทุกครั้ง (สำเร็จ/ล้มเหลว) — เก็บแค่ last4 ไม่เก็บเลขบัตรเต็ม (docs/DESIGN.md 4.7) */
+function writeSearchLog_(ss, trackingNoAttempt, last4Attempt, success, sessionToken) {
+  var sheet = ss.getSheetByName(SHEET.SEARCH_LOG);
+  appendRowByHeader_(sheet, SHEET_HEADERS[SHEET.SEARCH_LOG], {
+    log_id: Utilities.getUuid(),
+    timestamp: now_(),
+    tracking_no_attempt: trackingNoAttempt,
+    citizen_id_last4_attempt: last4Attempt,
+    success: success,
+    session_token: sessionToken,
+  });
+}
+
 /** log ไปยัง AuditLog เมื่อ Admin แก้ไขข้อมูล — เรียกใช้จากทุกจุดที่มีการแก้ไขค่าที่บันทึกแล้ว */
 function writeAuditLog_(userEmail, action, workId, fieldChanged, oldValue, newValue) {
   var ss = getSpreadsheet_();

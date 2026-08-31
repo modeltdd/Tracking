@@ -49,6 +49,21 @@ function findWorkByQrToken_(ss, token) {
   return null;
 }
 
+/** หา Work ด้วยเลขติดตาม + เลขบัตรประชาชน 4 ตัวท้าย (ตรงทั้งคู่เท่านั้น) — ใช้เฉพาะหน้าตรวจสอบสถานะสาธารณะ */
+function findWorkByTrackingAndLast4_(ss, trackingNo, last4) {
+  var needleTracking = String(trackingNo || '').trim();
+  var needleLast4 = String(last4 || '').trim();
+  if (!needleTracking || !needleLast4) return null;
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  for (var i = 0; i < works.length; i++) {
+    if (String(works[i].tracking_no || '').trim() === needleTracking &&
+        String(works[i].citizen_id_last4 || '').trim() === needleLast4) {
+      return works[i];
+    }
+  }
+  return null;
+}
+
 /** ประวัติทั้งหมดของงานหนึ่งรายการ เรียงเก่า→ใหม่ (สำหรับ Timeline) */
 function getHistoryForWork_(ss, workId) {
   var history = readSheetAsObjects_(ss.getSheetByName(SHEET.STATUS_HISTORY));
