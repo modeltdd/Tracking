@@ -2,7 +2,8 @@
  * จุดเข้าใช้งาน Web App — doGet/doPost
  *
  * สถานะ: เชลล์เจ้าหน้าที่ (bottom-nav 3 ปุ่ม + Dashboard), รับเอกสารใหม่, ค้นหา + รายละเอียดงาน (Timeline),
- * สแกน QR รับงาน + ปุ่ม action ทั้ง 8 (docs/DESIGN.md ตาราง 3.2), โซนประชาชน (ตรวจสอบสถานะ + revision detail, Part 6) พร้อมใช้งานแล้ว
+ * สแกน QR รับงาน + ปุ่ม action ทั้ง 8 (docs/DESIGN.md ตาราง 3.2), โซนประชาชน (ตรวจสอบสถานะ + revision detail, Part 6),
+ * โซนผู้ดูแลระบบ (Admin): จัดการ Workflow/ผู้ใช้งาน, Dashboard ผู้บริหาร, Audit Log, รายงาน CSV (Part 7) พร้อมใช้งานแล้ว
  */
 function doGet(e) {
   if (!isSystemInstalled_()) {
@@ -31,6 +32,8 @@ function routeStaffPage_(e, user) {
   var baseUrl = getWebAppUrl_();
 
   switch (page) {
+    case 'admin':
+      return renderAdminRoute_(ss, user, params, baseUrl);
     case 'scan':
       return renderScanRoute_(ss, user, params, baseUrl);
     case 'search':
@@ -94,6 +97,28 @@ function doPost(e) {
         user, 'scan', baseUrl);
     }
     return renderStaffPage_('บันทึกสำเร็จ', renderActionSuccessBody_(actionResult, baseUrl), user, 'scan', baseUrl);
+  }
+
+  if (formAction === 'admin_station_save' || formAction === 'admin_user_save') {
+    if (user.role !== 'Admin') {
+      return renderStaffPage_('ไม่มีสิทธิ์', renderStubBody_('เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น', baseUrl), user, 'admin', baseUrl);
+    }
+    if (formAction === 'admin_station_save') {
+      var stationResult = performAdminStationSave_(ss, user, e);
+      if (!stationResult.ok) {
+        var editStation = stationResult.isNew ? null : findStationByKey_(ss, stationResult.values.station_key);
+        return renderStaffPage_('จัดการ Workflow',
+          renderStationFormBody_(ss, editStation, baseUrl, stationResult.errors, stationResult.values), user, 'admin', baseUrl);
+      }
+      return renderStaffPage_('จัดการ Workflow', renderAdminStationsBody_(listStationsSorted_(ss), baseUrl), user, 'admin', baseUrl);
+    }
+    var userResult = performAdminUserSave_(ss, user, e);
+    if (!userResult.ok) {
+      var editUser = userResult.isNew ? null : findUserByEmailRaw_(ss, userResult.values.user_email);
+      return renderStaffPage_('จัดการผู้ใช้งาน',
+        renderUserFormBody_(editUser, baseUrl, userResult.errors, userResult.values), user, 'admin', baseUrl);
+    }
+    return renderStaffPage_('จัดการผู้ใช้งาน', renderAdminUsersBody_(listUsersSorted_(ss), baseUrl), user, 'admin', baseUrl);
   }
 
   return ContentService

@@ -19,6 +19,7 @@ var NAV_ITEMS_ = [
   { page: 'dashboard', label: 'หน้าแรก', icon: '⌂' },
   { page: 'scan', label: 'สแกน QR', icon: '⌗' },
   { page: 'search', label: 'ค้นหา', icon: '⌕' },
+  { page: 'admin', label: 'ผู้ดูแล', icon: '⚙', adminOnly: true },
 ];
 
 var METRIC_SECTIONS_ = [
@@ -34,7 +35,9 @@ var METRIC_SECTIONS_ = [
  *  baseUrl: URL เต็มของ Web App (จาก getWebAppUrl_()) — ลิงก์ภายในทุกอันต้อง absolute + target="_top"
  *  กัน relative href พังใน iframe sandbox ของ HtmlService (ดูคอมเมนต์ getWebAppUrl_ ใน Utils.gs) */
 function renderStaffPage_(title, bodyHtml, user, activePage, baseUrl) {
-  var navHtml = NAV_ITEMS_.map(function (item) {
+  var navHtml = NAV_ITEMS_.filter(function (item) {
+    return !item.adminOnly || user.role === 'Admin';
+  }).map(function (item) {
     var isActive = item.page === activePage;
     return '<a class="navitem' + (isActive ? ' active' : '') + '" target="_top" href="' + baseUrl + '?page=' + item.page + '">' +
       '<span class="navicon">' + item.icon + '</span><span>' + escapeHtml_(item.label) + '</span></a>';
@@ -474,6 +477,198 @@ function renderRegisterSuccessBody_(result, baseUrl) {
     '</div>';
 }
 
+/* ---------- โซนผู้ดูแลระบบ (Admin) — Part 7 ---------- */
+
+var ADMIN_TABS_ = [
+  { tab: 'overview', label: 'ภาพรวม' },
+  { tab: 'stations', label: 'Workflow' },
+  { tab: 'users', label: 'ผู้ใช้งาน' },
+  { tab: 'audit', label: 'Audit Log' },
+  { tab: 'report', label: 'รายงาน CSV' },
+];
+
+function renderAdminTabs_(activeTab, baseUrl) {
+  return '<div class="admin-tabs">' + ADMIN_TABS_.map(function (t) {
+    var cls = t.tab === activeTab ? ' active' : '';
+    return '<a class="admin-tab' + cls + '" target="_top" href="' + baseUrl + '?page=admin&tab=' + t.tab + '">' + escapeHtml_(t.label) + '</a>';
+  }).join('') + '</div>';
+}
+
+/** แดชบอร์ดผู้บริหาร — สรุปทุกหน่วยงานในระบบ (ต่างจาก renderDashboardBody_ ที่กรองเฉพาะหน่วยงานผู้ Login) */
+function renderAdminOverviewBody_(metrics, baseUrl) {
+  var statusRows = Object.keys(PUBLIC_STATUS_LABELS).map(function (k) {
+    return '<div class="detail-row"><span class="detail-label">' + escapeHtml_(PUBLIC_STATUS_LABELS[k]) + '</span>' +
+      '<span class="detail-value">' + (metrics.statusCounts[k] || 0) + '</span></div>';
+  }).join('');
+
+  var orgTableHtml = metrics.orgList.length
+    ? '<div class="table-scroll"><table class="admin-table"><thead><tr>' +
+      '<th>หน่วยงาน</th><th>รอรับ</th><th>กำลังดำเนินการ</th><th>ใกล้ครบกำหนด</th><th>เกินกำหนด</th></tr></thead><tbody>' +
+      metrics.orgList.map(function (r) {
+        return '<tr><td>' + escapeHtml_(r.org) + '</td><td>' + r.pendingReceive + '</td><td>' + r.inProgress + '</td>' +
+          '<td>' + r.nearDue + '</td><td' + (r.overdue ? ' class="cell-danger"' : '') + '>' + r.overdue + '</td></tr>';
+      }).join('') + '</tbody></table></div>'
+    : '<div class="empty">ยังไม่มีข้อมูล</div>';
+
+  return '' + renderAdminTabs_('overview', baseUrl) +
+    '<section class="metric-card"><div class="metric-head"><span class="metric-label">งานทั้งหมดในระบบ</span>' +
+    '<span class="metric-count">' + metrics.totalWorks + '</span></div></section>' +
+    '<section class="metric-card"><div class="metric-head"><span class="metric-label">แยกตามสถานะ</span></div>' + statusRows + '</section>' +
+    '<section class="metric-card"><div class="metric-head"><span class="metric-label">แยกตามหน่วยงาน</span></div>' + orgTableHtml + '</section>';
+}
+
+/** ตาราง WorkStations ทั้งหมด เรียงตามลำดับ + ลิงก์แก้ไข */
+function renderAdminStationsBody_(stations, baseUrl) {
+  var rows = stations.map(function (s) {
+    return '<tr><td>' + s.station_order + '</td><td>' + escapeHtml_(s.station_name) + '</td>' +
+      '<td>' + escapeHtml_(s.org) + '</td><td>' + s.standard_days + '</td>' +
+      '<td>' + (s.active ? 'เปิด' : 'ปิด') + '</td>' +
+      '<td><a target="_top" href="' + baseUrl + '?page=admin&tab=station_form&key=' + encodeURIComponent(s.station_key) + '">แก้ไข</a></td></tr>';
+  }).join('');
+
+  return '' + renderAdminTabs_('stations', baseUrl) +
+    '<p><a target="_top" class="btn-action btn-action-primary" href="' + baseUrl + '?page=admin&tab=station_form">+ เพิ่มสถานีใหม่</a></p>' +
+    '<section class="metric-card"><div class="table-scroll"><table class="admin-table">' +
+    '<thead><tr><th>ลำดับ</th><th>ชื่อสถานี</th><th>หน่วยงาน</th><th>วันมาตรฐาน</th><th>สถานะ</th><th></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div></section>';
+}
+
+/** ฟอร์มสร้าง/แก้ไขสถานี — station_key แก้ไม่ได้หลังสร้าง (งานเดิมอ้างอิงด้วย key นี้) */
+function renderStationFormBody_(ss, station, baseUrl, errors, prevValues) {
+  var isNew = !station;
+  var v = function (key) {
+    if (prevValues && key in prevValues) return prevValues[key];
+    return station ? station[key] : '';
+  };
+  var errorHtml = (errors && errors.length)
+    ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+
+  var allStations = listStationsSorted_(ss);
+  var nextOptions = '<option value="">(ไม่มี — เป็นขั้นตอนสุดท้าย)</option>' +
+    allStations.filter(function (s) { return isNew || s.station_key !== station.station_key; }).map(function (s) {
+      var sel = v('next_station_key') === s.station_key ? ' selected' : '';
+      return '<option value="' + escapeHtml_(s.station_key) + '"' + sel + '>' + escapeHtml_(s.station_name) + '</option>';
+    }).join('');
+
+  var statusOptions = Object.keys(PUBLIC_STATUS_LABELS).map(function (k) {
+    var sel = v('public_status') === k ? ' selected' : '';
+    return '<option value="' + k + '"' + sel + '>' + escapeHtml_(PUBLIC_STATUS_LABELS[k]) + '</option>';
+  }).join('');
+
+  var activeChecked = (prevValues && 'active' in prevValues)
+    ? (prevValues.active === true || prevValues.active === '1')
+    : (station ? !!station.active : true);
+
+  return errorHtml +
+    '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form">' +
+    '<input type="hidden" name="form_action" value="admin_station_save">' +
+    '<input type="hidden" name="is_new" value="' + (isNew ? '1' : '0') + '">' +
+    '<div class="field"><label>รหัสสถานี (station_key)</label>' +
+    (isNew
+      ? '<input class="input" name="station_key" value="' + escapeHtml_(v('station_key')) + '" placeholder="เช่น checking (อังกฤษ ไม่เว้นวรรค)">'
+      : '<input class="input" value="' + escapeHtml_(station.station_key) + '" disabled>' +
+        '<input type="hidden" name="station_key" value="' + escapeHtml_(station.station_key) + '">') +
+    '</div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>ลำดับ</label><input class="input" type="number" name="station_order" value="' + escapeHtml_(v('station_order')) + '"></div>' +
+    '<div class="field"><label>วันมาตรฐาน</label><input class="input" type="number" name="standard_days" value="' + escapeHtml_(v('standard_days')) + '"></div>' +
+    '</div>' +
+    '<div class="field"><label>ชื่อสถานี</label><input class="input" name="station_name" value="' + escapeHtml_(v('station_name')) + '"></div>' +
+    '<div class="field"><label>หน่วยงานรับผิดชอบ</label><input class="input" name="org" value="' + escapeHtml_(v('org')) + '"></div>' +
+    '<div class="field"><label>สถานีถัดไป</label><select class="input" name="next_station_key">' + nextOptions + '</select></div>' +
+    '<div class="field"><label>สถานะสาธารณะที่แสดง</label><select class="input" name="public_status">' + statusOptions + '</select></div>' +
+    '<div class="field"><label>บทบาทผู้รับเอกสาร</label><input class="input" name="receive_role" value="' + escapeHtml_(v('receive_role')) + '"></div>' +
+    '<div class="field"><label>บทบาทผู้อนุมัติ</label><input class="input" name="approve_role" value="' + escapeHtml_(v('approve_role')) + '"></div>' +
+    '<div class="field"><label>วิธีแจ้งเตือน</label><input class="input" name="notify_method" value="' + escapeHtml_(v('notify_method')) + '"></div>' +
+    '<label class="checkbox-row"><input type="checkbox" name="active" value="1"' + (activeChecked ? ' checked' : '') + '> เปิดใช้งานสถานีนี้</label>' +
+    '<button class="btn-primary" type="submit">บันทึก</button>' +
+    '</form>' +
+    '<p><a target="_top" href="' + baseUrl + '?page=admin&tab=stations">&larr; กลับรายการสถานี</a></p>';
+}
+
+/** ตารางผู้ใช้งานทั้งหมด + ลิงก์แก้ไข */
+function renderAdminUsersBody_(users, baseUrl) {
+  var rows = users.map(function (u) {
+    return '<tr><td>' + escapeHtml_(u.display_name) + '</td><td>' + escapeHtml_(u.user_email) + '</td>' +
+      '<td>' + escapeHtml_(u.role) + '</td><td>' + escapeHtml_(u.organization) + '</td>' +
+      '<td>' + (u.active ? 'เปิด' : 'ปิด') + '</td>' +
+      '<td><a target="_top" href="' + baseUrl + '?page=admin&tab=user_form&email=' + encodeURIComponent(u.user_email) + '">แก้ไข</a></td></tr>';
+  }).join('');
+
+  return '' + renderAdminTabs_('users', baseUrl) +
+    '<p><a target="_top" class="btn-action btn-action-primary" href="' + baseUrl + '?page=admin&tab=user_form">+ เพิ่มผู้ใช้งานใหม่</a></p>' +
+    '<section class="metric-card"><div class="table-scroll"><table class="admin-table">' +
+    '<thead><tr><th>ชื่อ</th><th>อีเมล</th><th>บทบาท</th><th>หน่วยงาน</th><th>สถานะ</th><th></th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div></section>';
+}
+
+/** ฟอร์มสร้าง/แก้ไขผู้ใช้ — user_email เป็น key คงที่ (แก้ไม่ได้หลังสร้าง) */
+function renderUserFormBody_(user, baseUrl, errors, prevValues) {
+  var isNew = !user;
+  var v = function (key) {
+    if (prevValues && key in prevValues) return prevValues[key];
+    return user ? user[key] : '';
+  };
+  var errorHtml = (errors && errors.length)
+    ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+
+  var roleOptions = ADMIN_ROLE_OPTIONS_.map(function (r) {
+    var sel = v('role') === r ? ' selected' : '';
+    return '<option' + sel + '>' + escapeHtml_(r) + '</option>';
+  }).join('');
+
+  var activeChecked = (prevValues && 'active' in prevValues)
+    ? (prevValues.active === true || prevValues.active === '1')
+    : (user ? !!user.active : true);
+
+  return errorHtml +
+    '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form">' +
+    '<input type="hidden" name="form_action" value="admin_user_save">' +
+    '<input type="hidden" name="is_new" value="' + (isNew ? '1' : '0') + '">' +
+    '<div class="field"><label>อีเมล (บัญชี Google)</label>' +
+    (isNew
+      ? '<input class="input" type="email" name="user_email" value="' + escapeHtml_(v('user_email')) + '">'
+      : '<input class="input" value="' + escapeHtml_(user.user_email) + '" disabled>' +
+        '<input type="hidden" name="user_email" value="' + escapeHtml_(user.user_email) + '">') +
+    '</div>' +
+    '<div class="field"><label>ชื่อที่แสดง</label><input class="input" name="display_name" value="' + escapeHtml_(v('display_name')) + '"></div>' +
+    '<div class="field"><label>บทบาท</label><select class="input" name="role">' + roleOptions + '</select></div>' +
+    '<div class="field"><label>หน่วยงาน</label><input class="input" name="organization" value="' + escapeHtml_(v('organization')) + '"></div>' +
+    '<label class="checkbox-row"><input type="checkbox" name="active" value="1"' + (activeChecked ? ' checked' : '') + '> เปิดใช้งานบัญชีนี้</label>' +
+    '<button class="btn-primary" type="submit">บันทึก</button>' +
+    '</form>' +
+    '<p><a target="_top" href="' + baseUrl + '?page=admin&tab=users">&larr; กลับรายการผู้ใช้งาน</a></p>';
+}
+
+/** Audit Log — แสดงล่าสุดก่อน (ฟังก์ชันเรียกมาตัดจำนวนแล้วที่ Admin.gs) */
+function renderAdminAuditBody_(logs, baseUrl) {
+  var rows = logs.length
+    ? '<ul class="timeline">' + logs.map(function (l) {
+        return '<li class="tl-item"><div class="tl-head"><b>' + escapeHtml_(l.action) + '</b>' +
+          '<span class="tl-date">' + formatDateTh_(l.timestamp) + '</span></div>' +
+          '<div class="tl-meta">' + escapeHtml_(l.user_email) + ' — อ้างอิง: ' + escapeHtml_(l.work_id) + '</div>' +
+          '<div class="tl-note">' + escapeHtml_(l.field_changed) + ': "' + escapeHtml_(l.old_value) + '" &rarr; "' + escapeHtml_(l.new_value) + '"</div>' +
+          '</li>';
+      }).join('') + '</ul>'
+    : '<div class="empty">ยังไม่มีรายการ</div>';
+
+  return '' + renderAdminTabs_('audit', baseUrl) +
+    '<p class="scope-note">แสดง 200 รายการล่าสุด</p>' +
+    '<section class="metric-card">' + rows + '</section>';
+}
+
+/** หน้ารายงาน CSV — ลิงก์ดาวน์โหลดตรง (GET, Admin เท่านั้น ตรวจซ้ำที่ renderAdminRoute_) */
+function renderAdminReportBody_(baseUrl) {
+  return '' + renderAdminTabs_('report', baseUrl) +
+    '<div class="detail-card">' +
+    '<p>ดาวน์โหลดข้อมูลเป็นไฟล์ CSV (เปิดด้วย Excel/Google Sheets)</p>' +
+    '<p><a target="_top" class="btn-action btn-action-secondary" href="' + baseUrl + '?page=admin&tab=report&format=csv&type=works">ดาวน์โหลดรายการงานทั้งหมด (CSV)</a></p>' +
+    '<p><a target="_top" class="btn-action btn-action-secondary" href="' + baseUrl + '?page=admin&tab=report&format=csv&type=audit">ดาวน์โหลด Audit Log (CSV)</a></p>' +
+    '</div>';
+}
+
 var STAFF_CSS_ = '' +
   ':root{--navy:#1f3b54;--teal:#0e7c86;--bg:#eef4f6;--card:#fff;--border:#dde3e8;--text:#1c2b3a;--muted:#5b7184;' +
   '--pending:#8a94a3;--active:#0e7c86;--revision:#b8860b;--danger:#b23a3a;--done:#1f8a4c;}' +
@@ -549,7 +744,14 @@ var STAFF_CSS_ = '' +
   '.btn-action-warn{background:var(--revision);}' +
   '.btn-action-danger{background:var(--danger);}' +
   '.action-form-title{color:var(--navy);margin:0 0 12px;font-size:1rem;}' +
-  '.checkbox-row{display:flex;align-items:center;gap:8px;font-size:.88rem;padding:4px 0;}';
+  '.checkbox-row{display:flex;align-items:center;gap:8px;font-size:.88rem;padding:4px 0;}' +
+  '.admin-tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;}' +
+  '.admin-tab{flex-shrink:0;padding:7px 14px;border-radius:999px;background:#fff;border:1px solid var(--border);color:var(--muted);text-decoration:none;font-size:.82rem;white-space:nowrap;}' +
+  '.admin-tab.active{background:var(--navy);color:#fff;border-color:var(--navy);}' +
+  '.table-scroll{overflow-x:auto;}' +
+  '.admin-table{width:100%;border-collapse:collapse;font-size:.82rem;white-space:nowrap;}' +
+  '.admin-table th,.admin-table td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--border);}' +
+  '.cell-danger{color:var(--danger);font-weight:700;}';
 
 var PUBLIC_CSS_ = '' +
   '.public-body{padding-bottom:24px;}' +
