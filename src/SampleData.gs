@@ -28,9 +28,21 @@ function seedSampleData() {
 
   var s0 = stations[0];
   var last = stations[stations.length - 1];
-  var dest = byKey[s0.next_station_key] || stations[1];
   var nearDays = Math.max(1, Math.ceil(Number(s0.standard_days) * 0.85));
   var overdueDays = Number(s0.standard_days) + 2;
+
+  // หาคู่สถานี "ต้นทาง → ปลายทาง" ที่หน่วยงานต่างกันจริง (ใช้ demo เคสส่งต่อข้ามหน่วยงาน) —
+  // ถ้าไม่พบเลย (ทุกสถานีเป็นหน่วยงานเดียวกันหมด) fallback เป็น s0 → สถานีถัดไปของ s0
+  var handoffOrigin = s0;
+  var handoffDest = byKey[s0.next_station_key] || stations[1];
+  for (var hi = 0; hi < stations.length; hi++) {
+    var candidateNext = byKey[stations[hi].next_station_key];
+    if (candidateNext && candidateNext.org !== stations[hi].org) {
+      handoffOrigin = stations[hi];
+      handoffDest = candidateNext;
+      break;
+    }
+  }
 
   var count = 0;
 
@@ -85,14 +97,14 @@ function seedSampleData() {
     title_name: 'นางสาว', first_name: 'ปิยะดา', last_name: 'ก้าวไว', position: 'นักโภชนาการ',
     current_level: 'ชำนาญการ', requested_level: 'ชำนาญการพิเศษ', work_type: 'คู่มือ/แนวปฏิบัติ',
     work_title: 'คู่มือโภชนบำบัดผู้ป่วยไตเรื้อรัง (ตัวอย่าง)', org_from: 'โรงพยาบาลตัวอย่าง D',
-    current_station_key: dest.station_key, current_status_public: dest.public_status,
-    handoff_pending: true, current_owner_org: s0.org,
-    next_step_text: 'ส่งต่อแล้ว รอหน่วยงาน "' + dest.org + '" สแกนรับเอกสาร',
+    current_station_key: handoffDest.station_key, current_status_public: handoffDest.public_status,
+    handoff_pending: true, current_owner_org: handoffOrigin.org,
+    next_step_text: 'ส่งต่อแล้ว รอหน่วยงาน "' + handoffDest.org + '" สแกนรับเอกสาร',
     history: [
-      { action: 'registered', from_station: '', to_station: s0.station_key, from_org: '', to_org: s0.org,
-        action_by_org: s0.org, action_date: daysAgo_(3), note: 'ข้อมูลตัวอย่าง' },
-      { action: 'forwarded', from_station: s0.station_key, to_station: dest.station_key,
-        from_org: s0.org, to_org: dest.org, action_by_org: s0.org, action_date: daysAgo_(1), note: '' },
+      { action: 'registered', from_station: '', to_station: handoffOrigin.station_key, from_org: '', to_org: handoffOrigin.org,
+        action_by_org: handoffOrigin.org, action_date: daysAgo_(3), note: 'ข้อมูลตัวอย่าง' },
+      { action: 'forwarded', from_station: handoffOrigin.station_key, to_station: handoffDest.station_key,
+        from_org: handoffOrigin.org, to_org: handoffDest.org, action_by_org: handoffOrigin.org, action_date: daysAgo_(1), note: '' },
     ],
   });
   count++;
