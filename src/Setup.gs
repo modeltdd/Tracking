@@ -66,7 +66,7 @@ function seedWorkStations_(ss) {
  * คืน null/undefined) ควรเคลียร์ข้อมูลทดสอบก่อน (clearSampleData()) หรือย้ายงานจริงด้วยตนเองก่อนรัน —
  * ฟังก์ชันนี้จะแค่เตือนใน Log ไม่ได้บล็อกการรัน (ผู้ดูแลระบบต้องตรวจสอบเอง)
  */
-function migrateWorkStationsToRealProcess_() {
+function migrateWorkStationsToRealProcess() {
   var ss = getSpreadsheet_();
   var existingWorks = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
   if (existingWorks.length > 0) {
