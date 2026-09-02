@@ -163,11 +163,13 @@ function generateUniqueQrToken_(ss) {
   throw new Error('สร้าง qr_token ไม่ซ้ำไม่สำเร็จหลังลองหลายครั้ง (โอกาสเกิดน้อยมาก ลองใหม่อีกครั้ง)');
 }
 
-/** URL ที่เข้ารหัสลง QR — ชี้กลับมาที่ Web App เดียวกันพร้อม token (path /t/ ตาม A1 ทำไม่ได้จริงบน Apps Script จึงใช้ query param แทน) */
+/** URL ที่เข้ารหัสลง QR — ชี้กลับมาที่ Web App เดียวกันพร้อม token (path /t/ ตาม A1 ทำไม่ได้จริงบน Apps Script จึงใช้ query param แทน)
+ * หมายเหตุ: เดิมใช้ Google Image Charts (chart.googleapis.com) แต่ Google ปิดบริการนี้ไปตั้งแต่ปี 2019 ทำให้ภาพ QR ไม่ขึ้น
+ * เปลี่ยนมาใช้ QR Server API (api.qrserver.com) แทน — ฟรี ไม่ต้องมี API key */
 function buildQrImageUrl_(ss, qrToken) {
   var base = getSetting_(ss, 'web_app_base_url', '');
   var target = base ? (base + '?t=' + encodeURIComponent(qrToken)) : ('t=' + qrToken);
-  return 'https://chart.googleapis.com/chart?chs=300x300&cht=qr&chld=M|0&choe=UTF-8&chl=' + encodeURIComponent(target);
+  return 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&ecc=M&data=' + encodeURIComponent(target);
 }
 
 /** ไฟล์ภาพหน้าปกที่อัปโหลดมากับฟอร์ม (multipart/form-data) — คืน null ถ้าไม่ได้แนบไฟล์ */
