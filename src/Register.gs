@@ -1,6 +1,6 @@
 /**
  * รับเอกสารใหม่ — ลงทะเบียนผลงานวิชาการ (docs/DESIGN.md ลำดับพัฒนา Part 3)
- * อัปโหลดภาพหน้าปก (ถ้าตั้งค่า Drive ไว้) + OCR แบบ best-effort + ฟอร์ม + ออกเลขติดตาม + qr_token
+ * อัปโหลดภาพหน้าปก (ถ้าตั้งค่า Drive ไว้) + ฟอร์ม + ออกเลขติดตาม + qr_token
  */
 
 var CITIZEN_ID_LENGTH_ = 13;
@@ -20,8 +20,8 @@ var REGISTER_REQUIRED_FIELDS_ = [
 ];
 
 /**
- * รับ e.parameter (จากฟอร์ม HTML ธรรมดา, POST เดียวจบ ไม่มี AJAX — ดูหมายเหตุ A11 ใน Ocr.gs)
- * คืน { ok:true, work_id, tracking_no, qr_token, qr_image_url, ocr_low_confidence }
+ * รับ e.parameter (จากฟอร์ม HTML ธรรมดา, POST เดียวจบ ไม่มี AJAX)
+ * คืน { ok:true, work_id, tracking_no, qr_token, qr_image_url }
  * หรือ { ok:false, errors:[...], values:{...} } ให้แสดงฟอร์มเดิมพร้อมข้อมูลที่กรอกไว้อีกครั้ง
  */
 function registerNewWork_(ss, user, e) {
@@ -51,8 +51,6 @@ function registerNewWork_(ss, user, e) {
   var trackingNo = nextTrackingNo_(ss);
   var qrToken = generateUniqueQrToken_(ss);
   var coverUrl = saveCoverImageToDrive_(ss, blob, trackingNo);
-  var ocrResult = runOcrOnBlob_(ss, blob);
-  var ocrLowConfidence = !!blob && isOcrLowConfidence_(ss, ocrResult);
 
   var workId = Utilities.getUuid();
   var nowTs = now_();
@@ -102,7 +100,7 @@ function registerNewWork_(ss, user, e) {
     action_by: user.user_email,
     action_by_org: user.organization,
     action_date: nowTs,
-    note: buildOcrNote_(ocrResult, ocrLowConfidence),
+    note: '',
     revision_reasons: '',
     revision_due_date: '',
     attachment_url: coverUrl,
@@ -115,14 +113,7 @@ function registerNewWork_(ss, user, e) {
     tracking_no: trackingNo,
     qr_token: qrToken,
     qr_image_url: buildQrImageUrl_(ss, qrToken),
-    ocr_low_confidence: ocrLowConfidence,
   };
-}
-
-function buildOcrNote_(ocrResult, lowConfidence) {
-  if (!ocrResult) return '';
-  var text = String(ocrResult.text).slice(0, 500);
-  return 'OCR: ' + text + (lowConfidence ? ' [OCR ไม่มั่นใจ กรุณาตรวจสอบข้อมูลด้วยตนเอง]' : '');
 }
 
 /** สถานีแรกของ Workflow (station_order ต่ำสุดที่ active) — อ่านจากชีตสด ไม่ hardcode เพราะ Admin ปรับลำดับได้ */

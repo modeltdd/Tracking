@@ -17,7 +17,7 @@
 - **User Portal** (ไม่ต้อง Login) — ตรวจสอบสถานะด้วยเลขติดตาม + เลขบัตรประชาชน **4 ตัวท้าย** (ไม่ใช่ 13 หลักเต็ม) หรือสแกน QR บนเอกสาร
 - **Admin Portal** (ต้อง Login ด้วยบัญชี Google Workspace) — แบ่งเป็นมุมมองเจ้าหน้าที่ปฏิบัติงาน (มือถือ, ปุ่มใหญ่, ไม่มีกราฟ) และมุมมองผู้ดูแล/ผู้บริหาร (Dashboard, จัดการ Workflow, Audit Log)
 
-สถาปัตยกรรม: Google Apps Script Web App + Google Sheets + Google Drive + OCR + HTML/CSS/JS + Bootstrap 5 + ฟอนต์ Sarabun — เหมือนเดิม ไม่เปลี่ยน
+สถาปัตยกรรม: Google Apps Script Web App + Google Sheets + Google Drive + HTML/CSS/JS + Bootstrap 5 + ฟอนต์ Sarabun — เหมือนเดิม ไม่เปลี่ยน (OCR ถูกตัดออกภายหลัง ดู A4)
 
 หลักการ Hand-off (ใหม่ใน v2): เมื่อเจ้าหน้าที่ต้นทางกด "ผ่านและส่งต่อ" ระบบจะยังไม่ถือว่าเอกสารอยู่ที่หน่วยงานปลายทางจนกว่าเจ้าหน้าที่ปลายทางจะสแกน QR และกด "รับเอกสารและเริ่มดำเนินการ" ด้วยตนเอง — ระหว่างนั้นสถานะแสดงเป็น "ส่งต่อแล้ว รอหน่วยงานปลายทางรับเอกสาร" ทำให้ตรวจสอบย้อนหลังได้เสมอว่าเอกสารอยู่ที่ใคร (ตอบเป้าหมายข้อ 5 ของ brief)
 
@@ -30,15 +30,15 @@
 | A1 | ตัวตนที่ QR เก็บ | QR เก็บเฉพาะ `https://<web-app-url>/t/<qr_token>` โดย `qr_token` เป็นสตริงสุ่ม 8 ตัว **ไม่ใช่** `tracking_no` ตรงๆ — กันการเดา/ไล่เลขติดตามอื่นจาก QR ที่ถ่ายภาพหลุด (หมายเหตุการเขียนโค้ดจริง Part 3: Apps Script Web App ไม่รองรับ URL แบบ path segment กำหนดเอง จึงใช้ `<web-app-url>?t=<qr_token>` แทน — ยังคงหลักการเดิมคือ token สุ่ม ไม่ใช่ tracking_no ตรงๆ) | สร้างใหม่ได้ต่อ work_id ถ้า token รั่ว (ปุ่ม "ออก QR ใหม่" ใน Admin) |
 | A2 | สิทธิ์การเห็นหน้าเมื่อเปิดลิงก์ QR เดียวกัน | เช็ค session: ไม่ Login → หน้าติดตามสถานะสาธารณะ, Login แล้วอยู่ใน `Users` → หน้ารับงาน/สิ้นสุดขั้นตอนของเจ้าหน้าที่, role = Admin → หน้ารายละเอียดเต็ม | ปรับ role mapping ได้ที่ชีต `Users` |
 | A3 | ปีในเลขติดตาม/เลขลำดับ | เหมือน v1: ปี พ.ศ. + เลขลำดับ 5 หลัก รันแยกตามปี | `Settings.fiscal_year_current`, `Settings.last_seq_<ปี>` |
-| A4 | OCR | Drive API OCR (Advanced Drive Service, `Drive.Files.insert({ocr:true})` แปลงภาพ→Google Doc แล้ว export text/plain) แทน Cloud Vision — เลือกเพราะฟรี ไม่ต้องเปิด billing บน GCP project (Vision ต้องเปิด billing แม้ใน free tier) แลกกับความแม่นยำต่ำกว่าและไม่รายงานค่า confidence เลย จึงถือว่า "ไม่มั่นใจ" ทุกครั้ง (`Settings.ocr_confidence_threshold` จึงไม่มีผลจริงอีกต่อไป) | `Settings.ocr_provider`; ต้องเปิด Advanced Drive Service (Drive API v2) ใน `appsscript.json` |
+| A4 | OCR — **ตัดออกทั้งหมดภายหลัง (2026-09-02)** | เดิมใช้ Drive API OCR (Advanced Drive Service, `Drive.Files.insert({ocr:true})` แปลงภาพ→Google Doc แล้ว export text/plain) แทน Cloud Vision — เลือกเพราะฟรี ไม่ต้องเปิด billing บน GCP project แลกกับความแม่นยำต่ำกว่าและไม่รายงานค่า confidence เลย ผู้ใช้สั่งตัดฟีเจอร์นี้ทิ้งทั้งหมด (ไม่ใช่แค่ปิดใช้งาน) — ลบ `src/Ocr.gs`, ถอด `enabledAdvancedServices`/`script.external_request` scope ออกจาก `appsscript.json`, ถอด auto-fill ออกจากฟอร์มรับเอกสารใหม่ ดู A11/A11b | ฟอร์มรับเอกสารใหม่กลับไปกรอกเองทั้งหมด อัปโหลดภาพหน้าปกยังทำได้ปกติ (เก็บเป็นไฟล์แนบเฉยๆ ผ่าน `DriveApp`) |
 | A5 | การเก็บเลขบัตรประชาชน | เก็บ 3 รูปแบบต่อ record: `citizen_id_last4` (plain, ใช้ยืนยันตัวตนสาธารณะ), `citizen_id_encrypted` (AES เต็ม 13 หลัก, ใช้ภายในเมื่อ Admin ต้องแก้ไขข้อมูล), `citizen_id_hash` (SHA-256+salt, ใช้ตรวจสอบเอกสารซ้ำ/dedup) — **ไม่มีเลขบัตรอยู่ใน QR หรือ URL ใดๆ** | Key rotation ที่ Script Properties |
 | A6 | จำกัดค้นหาผิดหน้า Tracking | นับผิดต่อ session token ใน `CacheService` ครบ 5 ครั้ง/10 นาที → ล็อก 10 นาที (ไม่อิง IP เพราะ Apps Script อ่าน IP จริงไม่ได้) | `Settings.max_failed_search`, `Settings.search_lockout_minutes` |
 | A7 | เหตุผลส่งกลับแก้ไข (checklist) | ค่าเริ่มต้น 6 ข้อ: เอกสารไม่ครบถ้วน / ลายมือชื่อไม่ครบ / ข้อมูลในแบบฟอร์มไม่ครบ / รูปแบบผลงานไม่ถูกต้อง / ต้องแนบเอกสารเพิ่มเติม / อื่น ๆ (มีช่องกรอกเพิ่มเมื่อเลือก "อื่น ๆ") | `Settings.revision_reason_options` (comma-separated) |
 | A8 | "ปิดงาน" โดย Admin (ข้ามขั้นตอนที่เหลือ) | อนุญาตเฉพาะ role Admin, บังคับกรอกเหตุผลทุกครั้ง, บันทึกสถานะเดิม→ใหม่ใน AuditLog ตามข้อกำหนดความปลอดภัย #8 | — |
 | A9 | เกณฑ์ "ใกล้ครบกำหนด/เกินกำหนด" | ใกล้ครบกำหนด = อยู่ในสถานี ≥ 80% ของ `standard_days`, เกินกำหนด = เกิน 100% | `WorkStations.standard_days` ต่อสถานี |
 | A10 | ปกปิดชื่อบนหน้า Tracking | ตัวอักษรแรกของชื่อ+นามสกุล ตามด้วย `***` เช่น "นภ\*\*\* ทุม\*\*\*" | — |
-| A11 | รูปแบบฟอร์มรับเอกสารใหม่ (เพิ่มใน Part 3) | ฟอร์มยัง submit แบบ POST ครั้งเดียวจบเหมือนเดิม (ไม่มี AJAX ตอนบันทึกจริง) — OCR รันซ้ำตอน submit และบันทึกข้อความที่อ่านได้ไว้ใน `StatusHistory.note` ของ action `registered` เสมอ ไม่ว่าจะใช้ preview ด้านล่างหรือไม่ | เพิ่ม AJAX preview step ภายหลังได้โดยไม่กระทบ schema |
-| A11b | Auto-fill จากภาพหน้าปกผลงาน (เพิ่มทีหลัง A11) | เลือกไฟล์ภาพ → JS ฝั่ง client อ่านเป็น base64 → `google.script.run` เรียก `ocrPreviewCoverImage()` (ไม่ผ่าน doGet/doPost จึงเช็คสิทธิ์ผู้ใช้ซ้ำในฟังก์ชันเอง) → OCR แล้วแยกฟิลด์ด้วย regex ป้ายกำกับภาษาไทย (`parseCoverImageOcrText_`) → เติมเฉพาะช่องที่ยังว่าง เจ้าหน้าที่ต้องตรวจสอบ/แก้ไขก่อนกด submit เสมอ ไม่ใช่ข้อมูลสุดท้าย (แม่นยำระดับ "ช่วยร่าง" เท่านั้น) | ปรับ regex ใน `parseCoverImageOcrText_` ได้ตามรูปแบบเอกสารจริงที่ใช้งาน โดยไม่กระทบ schema |
+| A11 | รูปแบบฟอร์มรับเอกสารใหม่ (เพิ่มใน Part 3) | ฟอร์ม submit แบบ POST ครั้งเดียวจบ (ไม่มี AJAX ตอนบันทึกจริง) | เพิ่ม AJAX step ภายหลังได้โดยไม่กระทบ schema |
+| A11b | Auto-fill จากภาพหน้าปกผลงานด้วย OCR — **ตัดออกพร้อม A4 (2026-09-02)** | เดิม: เลือกไฟล์ภาพ → JS ฝั่ง client อ่านเป็น base64 → `google.script.run` เรียก `ocrPreviewCoverImage()` → OCR แล้วแยกฟิลด์ด้วย regex ป้ายกำกับภาษาไทยเติมฟอร์มอัตโนมัติ — ตัดออกทั้งหมดพร้อม A4 | ไม่มี — เจ้าหน้าที่กรอกฟอร์มเองทั้งหมด |
 
 ---
 
@@ -101,7 +101,7 @@ Server-side (`Code.gs`) ตรวจทุกครั้งว่า action ท
 
 ### 4.5 Settings (key-value)
 `setting_key, setting_value, description, updated_at`
-Seed: `org_name`, `fiscal_year_current`, `last_seq_<ปี>`, `drive_folder_id_cover`, `drive_folder_id_attachment`, `ocr_provider`, `ocr_confidence_threshold`, `max_failed_search`, `search_lockout_minutes`, `revision_reason_options`, `web_app_base_url`
+Seed: `org_name`, `fiscal_year_current`, `last_seq_<ปี>`, `drive_folder_id_cover`, `drive_folder_id_attachment`, `max_failed_search`, `search_lockout_minutes`, `revision_reason_options`, `web_app_base_url`
 
 ### 4.6 AuditLog (การแก้ไขข้อมูลโดย Admin — ข้อกำหนด #8, #11)
 `audit_id, timestamp, user_email, action, work_id, field_changed, old_value, new_value`

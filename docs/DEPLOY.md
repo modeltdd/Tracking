@@ -24,15 +24,7 @@ clasp create --type webapp --title "ระบบติดตามสถาน�
 
 คำสั่งนี้จะสร้างไฟล์ `src/.clasp.json` ใหม่พร้อม `scriptId` ของ project — **เก็บค่า scriptId นี้ไว้** ใช้อ้างอิงตลอดไป (ถ้า clone โปรเจกต์นี้มาต่อจากที่มี `src/.clasp.json` อยู่แล้ว ให้ข้ามขั้นตอนนี้ ใช้ scriptId เดิม)
 
-### 2.2 เปิด Advanced Drive Service (จำเป็นสำหรับ OCR — A4)
-
-ระบบใช้ Drive API OCR อ่านภาพหน้าปกผลงาน (ฟรี ไม่ต้องเปิด billing บน Google Cloud ต่างจาก Cloud Vision) ต้องเปิดใช้งานก่อน:
-
-1. `clasp push` โค้ดเข้าไปก่อน (ขั้นตอน 2.3) — `appsscript.json` มี `enabledAdvancedServices: Drive v2` อยู่แล้ว
-2. เปิด Apps Script Editor (`clasp open`) → เมนูซ้าย **Services** → ถ้ายังไม่มี "Drive API" ให้กด **+ Add a service** → เลือก **Drive API** → เวอร์ชัน **v2** → Add
-3. ถ้า Editor แจ้งให้เปิด Drive API บน Google Cloud Console ด้วย ให้กดลิงก์ที่ระบบให้มาแล้วกด Enable (ปกติ Apps Script จัดการให้อัตโนมัติเมื่อใช้ default GCP project ของ script)
-
-### 2.3 Push โค้ด + ตรวจ syntax
+### 2.2 Push โค้ด + ตรวจ syntax
 
 ```
 cd src
@@ -40,17 +32,17 @@ node --check ... # (ดูรายละเอียด workflow ตรวจ s
 clasp push --force
 ```
 
-### 2.4 รัน installSystem() ครั้งแรก
+### 2.3 รัน installSystem() ครั้งแรก
 
 1. `clasp open` เปิด Apps Script Editor
 2. เลือกฟังก์ชัน `installSystem` จาก dropdown ด้านบน แล้วกด **Run**
-3. ระบบจะขอ Authorize OAuth scopes ตามที่ระบุใน `appsscript.json` (spreadsheets, drive, script.external_request, userinfo.email) — กด Allow
+3. ระบบจะขอ Authorize OAuth scopes ตามที่ระบุใน `appsscript.json` (spreadsheets, drive, userinfo.email) — กด Allow
 4. ดู **Log** (Ctrl+Enter) จะเจอลิงก์ Spreadsheet ที่สร้างขึ้นใหม่ (บันทึก `SPREADSHEET_ID` ไว้ใน Script Properties อัตโนมัติแล้ว ไม่ต้องตั้งเอง)
 5. ผู้ที่รัน `installSystem()` จะกลายเป็น **Admin คนแรก** โดยอัตโนมัติ (`seedFirstAdminUser_`) — เพิ่มเจ้าหน้าที่คนอื่นภายหลังจากหน้า Admin > ผู้ใช้งาน ในเว็บแอป ไม่ต้องแก้ชีต `Users` ตรงๆ
 
 รันซ้ำได้ปลอดภัย (idempotent) — จะไม่ทับข้อมูล/การตั้งค่าที่มีอยู่แล้ว
 
-### 2.5 Deploy เป็น Web App
+### 2.4 Deploy เป็น Web App
 
 1. ใน Apps Script Editor → **Deploy** → **New deployment**
 2. เลือกประเภท **Web app**
@@ -58,7 +50,7 @@ clasp push --force
 4. กด **Deploy** → คัดลอก Web app URL ที่ได้ (รูปแบบ `https://script.google.com/macros/s/<deploymentId>/exec`)
 5. **เก็บ deploymentId นี้ไว้** — ใช้ redeploy ทับ URL เดิมทุกครั้งที่อัปเดตโค้ดในอนาคต (ดูหัวข้อ 4) ไม่เช่นนั้น QR ที่พิมพ์ไปแล้วและลิงก์ที่แชร์ไว้จะใช้ไม่ได้
 
-### 2.6 ตั้งค่า Settings ในชีต
+### 2.5 ตั้งค่า Settings ในชีต
 
 เปิด Spreadsheet ฐานข้อมูล (ลิงก์จาก Log ขั้นตอน 2.4) → ชีต `Settings` → แก้ค่าเหล่านี้ให้ตรงหน่วยงานจริง:
 
@@ -66,13 +58,13 @@ clasp push --force
 |---|---|
 | `org_name` | ชื่อหน่วยงานที่แสดงบนหัวกระดาษ |
 | `tracking_no_prefix` | คำนำหน้าเลขติดตาม (ค่าเริ่มต้น `อวช11`) |
-| `web_app_base_url` | **วาง Web app URL จากขั้นตอน 2.5** — QR code ที่พิมพ์บนเอกสารใช้ค่านี้สร้างลิงก์ (`buildQrImageUrl_` ใน Register.gs) ถ้าเว้นว่างไว้ QR จะไม่มี URL เต็ม |
+| `web_app_base_url` | **วาง Web app URL จากขั้นตอน 2.4** — QR code ที่พิมพ์บนเอกสารใช้ค่านี้สร้างลิงก์ (`buildQrImageUrl_` ใน Register.gs) ถ้าเว้นว่างไว้ QR จะไม่มี URL เต็ม |
 | `drive_folder_id_cover` | Folder ID ใน Google Drive สำหรับเก็บภาพหน้าปก (สร้าง Folder ใหม่ → คัดลอก ID จาก URL ส่วนหลัง `/folders/`) — เว้นว่างได้ ระบบจะข้ามการอัปโหลดภาพ (ยังลงทะเบียนได้ปกติ แค่ไม่มีภาพแนบ) |
 | `drive_folder_id_attachment` | Folder ID สำหรับไฟล์แนบอื่น (เตรียมไว้สำหรับใช้งานต่อยอด) |
 
 ค่าที่เหลือ (`max_failed_search`, `revision_reason_options`, `work_type_options`, `career_level_options` ฯลฯ) มีค่าเริ่มต้นที่ใช้งานได้ทันที ปรับได้ภายหลังตามต้องการ — ดูความหมายแต่ละคีย์ในคอลัมน์ `description` ของชีตเอง
 
-### 2.7 ทดสอบก่อนใช้งานจริง
+### 2.6 ทดสอบก่อนใช้งานจริง
 
 1. เปิด Web app URL แบบ **ไม่ Login** (เช่น หน้าต่าง Incognito) — ต้องเจอฟอร์ม "ตรวจสอบสถานะผลงานวิชาการ" (โซนประชาชน)
 2. เปิดแบบ Login ด้วยบัญชี Admin คนแรก — ต้องเจอ Dashboard เจ้าหน้าที่ + เมนู "ผู้ดูแล" ที่ bottom-nav
@@ -97,8 +89,7 @@ clasp push --force
 
 **OAuth scopes ที่ระบบขอ** (ใน `appsscript.json`) และเหตุผล:
 - `spreadsheets` — อ่าน/เขียนฐานข้อมูล
-- `drive` — อัปโหลดภาพหน้าปก + OCR (Advanced Drive Service)
-- `script.external_request` — เรียก Google Chart API สร้างภาพ QR code
+- `drive` — อัปโหลดภาพหน้าปกเข้า Google Drive folder ที่ตั้งค่าไว้ (ผ่าน `DriveApp`)
 - `userinfo.email` — อ่านอีเมลผู้ Login เทียบกับชีต `Users`
 
 ---
