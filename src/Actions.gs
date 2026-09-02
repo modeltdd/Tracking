@@ -132,13 +132,28 @@ function performWorkAction_(ss, user, e) {
 
     case 'reassigned':
       var targetOrg = String(p.target_org || '').trim();
+      var targetStationKey = String(p.target_station || '').trim();
       var reassignNote = String(p.note || '').trim();
       if (!targetOrg) return { ok: false, errors: ['กรุณาเลือกหน่วยงานที่รับผิดชอบใหม่'] };
       if (!reassignNote) return { ok: false, errors: ['Admin ต้องระบุเหตุผลก่อนเปลี่ยนผู้รับผิดชอบ'] };
-      updates = { current_owner_org: targetOrg };
-      hist.to_org = targetOrg;
-      hist.note = reassignNote;
-      writeAuditLog_(user.user_email, 'reassigned', work.work_id, 'current_owner_org', work.current_owner_org, targetOrg);
+
+      if (targetStationKey) {
+        // ย้ายสถานีด้วย (ไม่ใช่แค่เปลี่ยนหน่วยงานเจ้าของ) — ใช้ตอนต้องดันงานย้อนกลับเข้าสถานีก่อนหน้า
+        // เช่น ส่งกลับเข้ารอบพิจารณาใหม่หลังเจ้าของผลงานแก้ไขเสร็จ ซึ่ง action forwarded ทำไม่ได้ (next_station_key ไปทางเดียว)
+        var targetStation = stationsMap[targetStationKey];
+        if (!targetStation) return { ok: false, errors: ['ไม่พบสถานีที่เลือก'] };
+        updates = { current_station_key: targetStation.station_key, current_owner_org: targetStation.org,
+          current_status_public: targetStation.public_status, handoff_pending: false, next_step_text: '' };
+        hist.to_station = targetStation.station_key;
+        hist.to_org = targetStation.org;
+        hist.note = reassignNote;
+        writeAuditLog_(user.user_email, 'reassigned', work.work_id, 'current_station_key', work.current_station_key, targetStation.station_key);
+      } else {
+        updates = { current_owner_org: targetOrg };
+        hist.to_org = targetOrg;
+        hist.note = reassignNote;
+        writeAuditLog_(user.user_email, 'reassigned', work.work_id, 'current_owner_org', work.current_owner_org, targetOrg);
+      }
       break;
 
     default:

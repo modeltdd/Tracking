@@ -330,11 +330,20 @@ function renderActionFormBody_(ss, work, station, action, baseUrl, token, errors
   } else if (action === 'reassigned') {
     var orgs = getDistinctStationOrgs_(ss);
     var currentTarget = prevValues.target_org || work.current_owner_org;
+    var stationsForReassign = listStationsSorted_(ss);
+    var currentStationTarget = prevValues.target_station || '';
     extraHtml = '<div class="field"><label>หน่วยงานที่รับผิดชอบใหม่</label><select class="input" name="target_org">' +
       orgs.map(function (o) {
         var sel = o === currentTarget ? ' selected' : '';
         return '<option' + sel + '>' + escapeHtml_(o) + '</option>';
       }).join('') + '</select></div>' +
+      '<div class="field"><label>ย้ายไปสถานี (ถ้าต้องการ — ไม่เลือกไว้ = คงสถานีเดิม เปลี่ยนแค่หน่วยงานรับผิดชอบ)</label>' +
+      '<select class="input" name="target_station"><option value="">— ไม่เปลี่ยนสถานี —</option>' +
+      stationsForReassign.map(function (s) {
+        var sel = s.station_key === currentStationTarget ? ' selected' : '';
+        return '<option value="' + escapeHtml_(s.station_key) + '"' + sel + '>' + escapeHtml_(s.station_name) + ' (' + escapeHtml_(s.org) + ')</option>';
+      }).join('') + '</select>' +
+      '<p class="hint" style="margin-top:4px">ใช้ตอนต้องดันงานย้อนกลับเข้าสถานีก่อนหน้า เช่น ส่งกลับเข้ารอบพิจารณาใหม่หลังแก้ไขงาน — เลือกแล้วหน่วยงานรับผิดชอบจะอิงตามสถานีที่เลือกแทนช่องด้านบน</p></div>' +
       '<div class="field"><label>เหตุผล</label><textarea class="input" name="note" rows="2">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
   }
 

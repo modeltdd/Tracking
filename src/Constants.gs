@@ -39,23 +39,29 @@ SHEET_HEADERS[SHEET.SEARCH_LOG] = [
   'log_id', 'timestamp', 'tracking_no_attempt', 'citizen_id_last4_attempt', 'success', 'session_token',
 ];
 
-// สถานี Workflow เริ่มต้น (ตรง docs/DESIGN.md ตาราง 3.1) — แก้ไขได้ภายหลังจากหน้า "จัดการ Workflow"
-// ไม่กระทบ record ที่มีอยู่ เพราะ Works อ้างสถานีด้วย station_key ไม่ใช่ลำดับแถว
+// สถานี Workflow เริ่มต้น — ตรงกระบวนการจริงที่ผู้ใช้ให้มา (2026-09-02) แทนชุดเดิม
+// แก้ไขได้ภายหลังจากหน้า "จัดการ Workflow" ไม่กระทบ record ที่มีอยู่ เพราะ Works อ้างสถานีด้วย station_key ไม่ใช่ลำดับแถว
+//
+// รอบพิจารณาที่ 2 (กรณี "แก้ไข") ไม่มีสถานีแยกต่างหาก — ใช้สถานี secretary_send/chair_schedule/
+// committee_review/secretary_announce ชุดเดิมซ้ำ โดย Admin ใช้ action "เปลี่ยนผู้รับผิดชอบ" (reassigned)
+// เลือกช่อง "ย้ายไปสถานี" กลับไปที่ secretary_send ด้วยตนเองหลังได้รับเอกสารที่แก้ไขแล้วกลับมา
+// (forwarded ทำไม่ได้เพราะ next_station_key ของ secretary_announce ชี้ไป final_announce ทางเดียว
+// ใช้กับทั้งเคสผ่าน/ไม่ผ่าน — ดู docs/DESIGN.md ก่อนแก้)
 var WORKSTATIONS_SEED = [
-  { key: 'received', order: 1, name: 'รับเรื่องจากหน่วยงานต้นทาง', org: 'กลุ่มงานบริหารทรัพยากรบุคคล',
+  { key: 'received', order: 1, name: 'รับเรื่องจากหน่วยงาน', org: 'สนง เขต',
     days: 3, next: 'checking', pub: 'received', receiveRole: 'เจ้าหน้าที่รับเอกสาร', approveRole: '-', notify: 'ไม่มี' },
-  { key: 'checking', order: 2, name: 'ตรวจสอบความครบถ้วนเอกสาร', org: 'กลุ่มงานบริหารทรัพยากรบุคคล',
-    days: 5, next: 'propose', pub: 'checking', receiveRole: 'เจ้าหน้าที่รับเอกสาร', approveRole: '-', notify: 'ไม่มี' },
-  { key: 'propose', order: 3, name: 'เสนอคณะกรรมการพิจารณา', org: 'กลุ่มงานพัฒนาบุคลากร',
-    days: 5, next: 'review', pub: 'in_review', receiveRole: 'เจ้าหน้าที่ผู้รับผิดชอบ', approveRole: '-', notify: 'ไม่มี' },
-  { key: 'review', order: 4, name: 'คณะกรรมการพิจารณา', org: 'คณะกรรมการประเมินผลงานวิชาการ',
-    days: 15, next: 'approve', pub: 'in_review', receiveRole: 'เลขานุการคณะกรรมการ', approveRole: 'คณะกรรมการ', notify: 'ไม่มี' },
-  { key: 'approve', order: 5, name: 'เสนอผู้บริหารอนุมัติ', org: 'ผู้บริหารสำนักงานเขตสุขภาพที่ 11',
-    days: 7, next: 'announce', pub: 'pending_approval', receiveRole: 'เลขานุการคณะกรรมการ', approveRole: 'ผู้อำนวยการเขตสุขภาพที่ 11', notify: 'ไม่มี' },
-  { key: 'announce', order: 6, name: 'แจ้งผลการพิจารณา', org: 'กลุ่มงานบริหารทรัพยากรบุคคล',
-    days: 3, next: 'closed', pub: 'result_announced', receiveRole: 'เจ้าหน้าที่รับเอกสาร', approveRole: '-', notify: 'เตรียมไว้สำหรับ LINE/SMS ในระยะถัดไป' },
-  { key: 'closed', order: 7, name: 'ปิดงาน/จัดเก็บเอกสาร', org: 'กลุ่มงานบริหารทรัพยากรบุคคล',
-    days: 2, next: '', pub: 'done', receiveRole: 'เจ้าหน้าที่รับเอกสาร', approveRole: '-', notify: 'ไม่มี' },
+  { key: 'checking', order: 2, name: 'ตรวจสอบเอกสาร', org: 'สนง เขต',
+    days: 5, next: 'secretary_send', pub: 'checking', receiveRole: 'เจ้าหน้าที่รับเอกสาร', approveRole: '-', notify: 'ไม่มี' },
+  { key: 'secretary_send', order: 3, name: 'เลขาส่งเอกสารให้กรรมการ', org: 'เลขา',
+    days: 3, next: 'chair_schedule', pub: 'in_review', receiveRole: 'เจ้าหน้าที่ผู้รับผิดชอบ', approveRole: '-', notify: 'ไม่มี' },
+  { key: 'chair_schedule', order: 4, name: 'ประธานนัดประชุม', org: 'ประธานกรรมการ',
+    days: 7, next: 'committee_review', pub: 'in_review', receiveRole: 'เจ้าหน้าที่ผู้รับผิดชอบ', approveRole: '-', notify: 'ไม่มี' },
+  { key: 'committee_review', order: 5, name: 'กรรมการประชุมพิจารณา', org: 'กรรมการ',
+    days: 15, next: 'secretary_announce', pub: 'in_review', receiveRole: 'เจ้าหน้าที่ผู้รับผิดชอบ', approveRole: 'กรรมการ', notify: 'ไม่มี' },
+  { key: 'secretary_announce', order: 6, name: 'เลขาแจ้งผลการพิจารณา มาที่ สนง เขต', org: 'เลขา',
+    days: 3, next: 'final_announce', pub: 'pending_approval', receiveRole: 'เจ้าหน้าที่ผู้รับผิดชอบ', approveRole: '-', notify: 'ไม่มี' },
+  { key: 'final_announce', order: 7, name: 'แจ้งผลหน่วยงาน (ผ่าน/ไม่ผ่าน)', org: 'สนง เขต',
+    days: 3, next: '', pub: 'done', receiveRole: 'เจ้าหน้าที่รับเอกสาร', approveRole: '-', notify: 'เตรียมไว้สำหรับ LINE/SMS ในระยะถัดไป' },
 ];
 
 // สถานะสาธารณะ 8 ค่า (ตรง docs/DESIGN.md 3.1) — ใช้อ้างอิงใน UI ชั้นถัดไป ยังไม่ใช้ใน Part 1
@@ -80,7 +86,7 @@ var ACTION_LABELS_ = {
   rejected: 'ไม่ผ่านการพิจารณา',
   terminated: 'ยุติกระบวนการ',
   closed: 'ปิดงาน (ข้ามขั้นตอนที่เหลือ)',
-  reassigned: 'เปลี่ยนผู้รับผิดชอบ',
+  reassigned: 'เปลี่ยนผู้รับผิดชอบ/ย้ายสถานี',
   edited: 'แก้ไขข้อมูล',
 };
 

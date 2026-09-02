@@ -57,6 +57,47 @@ function seedWorkStations_(ss) {
   });
 }
 
+/**
+ * ย้ายชีต WorkStations จากชุดเดิมมาเป็น WORKSTATIONS_SEED ปัจจุบัน (กระบวนการจริงที่ตกลงกัน 2026-09-02)
+ * รันด้วยตนเองจาก Apps Script Editor ครั้งเดียว — ล้างชีต WorkStations ทั้งหมดแล้วสร้างใหม่
+ *
+ * คำเตือน: งานที่มีอยู่แล้วในชีต Works ซึ่งอ้าง station_key ชุดเดิม (received/checking/propose/review/
+ * approve/announce/closed) จะหาไม่เจอสถานีอีกต่อไปหลังรันฟังก์ชันนี้ (findStationByKey_/getStationsMap_
+ * คืน null/undefined) ควรเคลียร์ข้อมูลทดสอบก่อน (clearSampleData()) หรือย้ายงานจริงด้วยตนเองก่อนรัน —
+ * ฟังก์ชันนี้จะแค่เตือนใน Log ไม่ได้บล็อกการรัน (ผู้ดูแลระบบต้องตรวจสอบเอง)
+ */
+function migrateWorkStationsToRealProcess_() {
+  var ss = getSpreadsheet_();
+  var existingWorks = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  if (existingWorks.length > 0) {
+    Logger.log('คำเตือน: พบงานอยู่ในระบบ ' + existingWorks.length + ' รายการ — งานเหล่านี้อ้างอิง station_key ' +
+      'ชุดเดิม ถ้าไม่ใช่ข้อมูลทดสอบที่เคลียร์ได้ ให้หยุดและตรวจสอบก่อน (สถานีเดิมจะหายไปหลังรันฟังก์ชันนี้)');
+  }
+
+  var sheet = ss.getSheetByName(SHEET.WORK_STATIONS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
+
+  var headers = SHEET_HEADERS[SHEET.WORK_STATIONS];
+  WORKSTATIONS_SEED.forEach(function (st) {
+    appendRowByHeader_(sheet, headers, {
+      station_key: st.key,
+      station_order: st.order,
+      station_name: st.name,
+      org: st.org,
+      standard_days: st.days,
+      next_station_key: st.next,
+      public_status: st.pub,
+      receive_role: st.receiveRole,
+      approve_role: st.approveRole,
+      notify_method: st.notify,
+      active: true,
+    });
+  });
+  Logger.log('ตั้งค่าสถานี Workflow ใหม่ตามกระบวนการจริงเรียบร้อย (' + WORKSTATIONS_SEED.length + ' สถานี) — ' +
+    'ตรวจสอบผลที่หน้า Admin > จัดการ Workflow');
+}
+
 /** seed ค่าตั้งต้นของ Settings — เติมเฉพาะ key ที่ยังไม่มี (ไม่ทับค่าที่ Admin ตั้งไปแล้ว) */
 function seedSettings_(ss) {
   var sheet = ss.getSheetByName(SHEET.SETTINGS);
