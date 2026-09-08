@@ -12,6 +12,19 @@ function doGet(e) {
 
   var email = getCurrentUserEmail_();
   if (!email) {
+    // เครื่องมือ debug ชั่วคราว (?debug=1) — ใช้หาสาเหตุตอนบัญชีที่ควรเป็นเจ้าหน้าที่กลับเห็นโซนสาธารณะ:
+    // Session.getActiveUser().getEmail() คืนค่าว่างได้แม้ login Google อยู่จริง ถ้าบัญชีนั้นไม่เคย authorize
+    // สคริปต์นี้มาก่อน (ต้องกด Allow ที่หน้าขอสิทธิ์อย่างน้อยครั้งเดียว) หรือ login เบราว์เซอร์ผิดบัญชี
+    if ((e.parameter || {}).debug === '1') {
+      return renderPage_('Debug: สถานะ Login', '' +
+        '<p><b>Session.getActiveUser().getEmail()</b> คืนค่าว่าง — ระบบเลยมองว่ายังไม่ได้ login จึงพาไปหน้าตรวจสอบสถานะสาธารณะ</p>' +
+        '<p>ตรวจสอบตามลำดับ:</p>' +
+        '<ol style="padding-left:20px;line-height:1.8;">' +
+        '<li>บัญชี Google ที่ login อยู่ในเบราว์เซอร์นี้ (มุมขวาบน) ตรงกับอีเมลที่เพิ่มไว้ในชีต Users หรือไม่</li>' +
+        '<li>บัญชีนี้เคยเปิดลิงก์นี้แล้วกด "Allow" ที่หน้าขอสิทธิ์ (OAuth consent) มาก่อนหรือยัง — ถ้าไม่เคย ให้ลอง sign out แล้ว sign in ใหม่ด้วยบัญชีนี้ หรือเปิดในโหมดไม่ระบุตัวตน (Incognito) แล้ว login ใหม่ตั้งแต่ต้น</li>' +
+        '<li>ถ้ายังไม่ได้ผล ลอง Deploy ใหม่เป็นเวอร์ชันใหม่ (New deployment) แทนการแก้ทับเวอร์ชันเดิม — บางครั้ง Apps Script ค้างสิทธิ์เก่าไว้กับเวอร์ชันเดิม</li>' +
+        '</ol>');
+    }
     // ผู้เยี่ยมชมไม่ได้ Login → โซนสาธารณะ (ตรวจสอบสถานะด้วยเลขติดตาม+last4, PublicTrack.gs)
     return handlePublicTrackGet_(e);
   }
