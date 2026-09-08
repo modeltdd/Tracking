@@ -11,30 +11,99 @@ var ACTIONS_ADMIN_ONLY_ = { closed: true, reassigned: true };
 
 /** สีปุ่มตามความหนักเบาของผลลัพธ์ */
 var ACTION_BUTTON_VARIANT_ = {
-  received: 'primary',
-  forwarded: 'primary',
   more_info: 'secondary',
-  revision_requested: 'warn',
-  rejected: 'danger',
   terminated: 'danger',
   closed: 'danger',
   reassigned: 'secondary',
 };
 
-/** คำนวณ action ที่ผู้ใช้คนนี้กดได้จริงกับงานนี้ ณ ขณะนี้ — ต้องเรียกซ้ำฝั่ง server ก่อนบันทึกทุกครั้ง (ห้ามเชื่อค่าจาก client) */
+/**
+ * คำนวณ action "อรรถประโยชน์" (utility) ที่ผู้ใช้คนนี้กดได้จริงกับงานนี้ ณ ขณะนี้ — แยกจากปุ่ม state
+ * transition หลัก (ดู computeEligibleTransitions_) เพราะ action พวกนี้ไม่ย้าย state ตาม workflow
+ * (more_info/terminated) หรือเป็น Admin override ที่ไม่ผูกกับ state ใดเป็นการเฉพาะ (closed/reassigned)
+ * ต้องเรียกซ้ำฝั่ง server ก่อนบันทึกทุกครั้ง (ห้ามเชื่อค่าจาก client)
+ */
 function computeEligibleActions_(work, station, user) {
   var isTerminal = TERMINAL_STATUSES_.indexOf(work.current_status_public) !== -1;
   var isAdmin = user.role === 'Admin';
   var isOwnerActive = !isTerminal && !work.handoff_pending && work.current_owner_org === user.organization;
-  var canReceive = !isTerminal && !!work.handoff_pending && !!station && station.org === user.organization;
-  var canForward = isOwnerActive && !!station && !!station.next_station_key;
 
   var list = [];
-  if (canReceive) list.push('received');
-  if (canForward) list.push('forwarded');
-  if (isOwnerActive) list.push('more_info', 'revision_requested', 'rejected', 'terminated');
+  if (isOwnerActive) list.push('more_info', 'terminated');
   if (isAdmin && !isTerminal) list.push('closed', 'reassigned');
   return list;
+}
+
+/**
+ * คำนวณ "ปุ่มเปลี่ยนสถานะ" (state transition) ที่ผู้ใช้คนนี้กดได้จริงกับงานนี้ ณ ขณะนี้ — โมเดล 24-state
+ * (WorkflowStates/WorkflowTransitions, 2026-09-08) แทนที่กลไก forwarded/received เดิม รองรับแตกสาย
+ * (1 state ไปได้หลายทาง เช่น state 7: ผ่าน/ไม่ผ่าน/แก้ไข 2 เดือน/แก้ไข 6 เดือน)
+ * ต้องเรียกซ้ำฝั่ง server ก่อนบันทึกทุกครั้ง (ห้ามเชื่อค่าจาก client)
+ */
+function computeEligibleTransitions_(ss, work, stateDef, user) {
+  var isTerminal = TERMINAL_STATUSES_.indexOf(work.current_status_public) !== -1;
+  if (isTerminal || !stateDef) return [];
+  var isAdmin = user.role === 'Admin';
+  var isResponsible = user.organization === resolveResponsibleOrg_(stateDef, work);
+  if (!isAdmin && !isResponsible) return [];
+
+  var transitions = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_TRANSITIONS));
+  return transitions.filter(function (t) {
+    return t.active && t.from_state === work.current_station_key;
+  });
+}
+
+/**
+ * ประมวลผล state transition ที่ส่งมาจากฟอร์ม (e.parameter.transition_id) — ตรวจสิทธิ์ซ้ำกับ
+ * computeEligibleTransitions_ เสมอ (ห้ามเชื่อ client), อัปเดต Works + StatusHistory (action='transition')
+ * คืน { ok:true, work_id, to_station } หรือ { ok:false, errors:[...], work }
+ */
+function performStateTransition_(ss, user, e) {
+  var p = (e && e.parameter) || {};
+  var workId = String(p.work_id || '').trim();
+  var transitionId = String(p.transition_id || '').trim();
+  var note = String(p.note || '').trim();
+
+  var work = findWorkById_(ss, workId);
+  if (!work) return { ok: false, errors: ['ไม่พบงานที่ระบุ'] };
+
+  var stationsMap = getStationsMap_(ss);
+  var stateDef = stationsMap[work.current_station_key];
+  var eligible = computeEligibleTransitions_(ss, work, stateDef, user);
+  var transition = null;
+  for (var i = 0; i < eligible.length; i++) {
+    if (eligible[i].transition_id === transitionId) { transition = eligible[i]; break; }
+  }
+  if (!transition) {
+    return { ok: false, errors: ['ไม่สามารถทำรายการนี้ได้ — สิทธิ์ไม่ตรงหรือสถานะของงานเปลี่ยนไปแล้ว กรุณาสแกนใหม่'], work: work };
+  }
+  if (transition.requires_note && !note) {
+    return { ok: false, errors: ['กรุณาระบุหมายเหตุ'], work: work };
+  }
+
+  var newState = stationsMap[transition.to_state];
+  if (!newState) return { ok: false, errors: ['ไม่พบ state ปลายทาง (' + transition.to_state + ')'], work: work };
+
+  var nowTs = now_();
+  var newOwnerOrg = resolveResponsibleOrg_(newState, work);
+  var updates = {
+    current_station_key: newState.station_key, current_status_public: newState.public_status,
+    handoff_pending: false, current_owner_org: newOwnerOrg,
+    current_handler_name: user.display_name || user.user_email, next_step_text: '',
+  };
+  if (transition.result_value) updates.evaluation_result = transition.result_value;
+  updateWorkRow_(ss, work.work_id, updates);
+
+  appendRowByHeader_(ss.getSheetByName(SHEET.STATUS_HISTORY), SHEET_HEADERS[SHEET.STATUS_HISTORY], {
+    history_id: Utilities.getUuid(), work_id: work.work_id, tracking_no: work.tracking_no, action: 'transition',
+    from_station: work.current_station_key, to_station: newState.station_key,
+    from_org: work.current_owner_org, to_org: newOwnerOrg,
+    action_by: user.user_email, action_by_org: user.organization, action_date: nowTs,
+    note: transition.button_label + (note ? ' — ' + note : ''),
+    revision_reasons: '', revision_due_date: '', attachment_url: '', created_at: nowTs,
+  });
+
+  return { ok: true, work_id: work.work_id, to_station: newState.station_key, action: 'transition' };
 }
 
 /**
@@ -68,51 +137,10 @@ function performWorkAction_(ss, user, e) {
   };
 
   switch (action) {
-    case 'received':
-      updates = {
-        handoff_pending: false, current_owner_org: station.org, current_status_public: station.public_status,
-        current_handler_name: user.display_name || user.user_email, next_step_text: '',
-      };
-      hist.to_org = station.org;
-      break;
-
-    case 'forwarded':
-      var nextStation = stationsMap[station.next_station_key];
-      if (!nextStation) return { ok: false, errors: ['สถานีนี้เป็นขั้นตอนสุดท้ายแล้ว ไม่มีสถานีถัดไปให้ส่งต่อ'] };
-      updates = {
-        current_station_key: nextStation.station_key, handoff_pending: true,
-        current_status_public: nextStation.public_status,
-        next_step_text: 'ส่งต่อแล้ว รอหน่วยงาน "' + nextStation.org + '" สแกนรับเอกสาร',
-      };
-      hist.to_station = nextStation.station_key;
-      hist.to_org = nextStation.org;
-      break;
-
     case 'more_info':
       var infoNote = String(p.note || '').trim();
       if (!infoNote) return { ok: false, errors: ['กรุณาระบุรายละเอียดที่ขอเพิ่มเติม'] };
       hist.note = infoNote;
-      break;
-
-    case 'revision_requested':
-      var reasons = [].concat((e.parameters && e.parameters.revision_reasons) || []).filter(function (x) { return x; });
-      var dueDate = String(p.revision_due_date || '').trim();
-      if (!reasons.length) return { ok: false, errors: ['กรุณาเลือกเหตุผลอย่างน้อย 1 ข้อ'] };
-      if (!dueDate) return { ok: false, errors: ['กรุณาระบุกำหนดวันส่งฉบับแก้ไขกลับ'] };
-      updates = {
-        current_status_public: 'need_revision', handoff_pending: true,
-        next_step_text: 'รอเจ้าของผลงานส่งฉบับแก้ไขกลับมาภายใน ' + dueDate + ' (สแกน QR แล้วกด "รับเอกสารและเริ่มดำเนินการ" เมื่อได้รับฉบับแก้ไข)',
-      };
-      hist.revision_reasons = reasons.join(', ');
-      hist.revision_due_date = dueDate;
-      hist.note = String(p.note || '').trim();
-      break;
-
-    case 'rejected':
-      var rejectNote = String(p.note || '').trim();
-      if (!rejectNote) return { ok: false, errors: ['กรุณาระบุเหตุผลที่ไม่ผ่านการพิจารณา'] };
-      updates = { current_status_public: 'result_announced', next_step_text: 'แจ้งผลแล้ว (ไม่ผ่านการพิจารณา)' };
-      hist.note = rejectNote;
       break;
 
     case 'terminated':
@@ -181,34 +209,49 @@ function renderScanRoute_(ss, user, params, baseUrl) {
   var stationsMap = getStationsMap_(ss);
   var station = stationsMap[work.current_station_key];
   var eligible = computeEligibleActions_(work, station, user);
+  var eligibleTransitions = computeEligibleTransitions_(ss, work, station, user);
 
   var doAction = String(params.do || '').trim();
+  var transId = String(params.trans || '').trim();
+
+  if (transId) {
+    var transitionMatch = null;
+    for (var i = 0; i < eligibleTransitions.length; i++) {
+      if (eligibleTransitions[i].transition_id === transId) { transitionMatch = eligibleTransitions[i]; break; }
+    }
+    if (!transitionMatch) {
+      return renderStaffPage_('สแกน QR', renderScanWorkBody_(work, station, eligible, eligibleTransitions, baseUrl, token,
+        ['ไม่สามารถทำรายการนี้ได้ในสถานะปัจจุบัน']), user, 'scan', baseUrl);
+    }
+    return renderStaffPage_('สแกน QR', renderTransitionFormBody_(work, transitionMatch, baseUrl, token, [], {}), user, 'scan', baseUrl);
+  }
+
   if (doAction) {
     if (eligible.indexOf(doAction) === -1) {
-      return renderStaffPage_('สแกน QR', renderScanWorkBody_(work, station, eligible, baseUrl, token,
+      return renderStaffPage_('สแกน QR', renderScanWorkBody_(work, station, eligible, eligibleTransitions, baseUrl, token,
         ['ไม่สามารถทำรายการนี้ได้ในสถานะปัจจุบัน']), user, 'scan', baseUrl);
     }
     return renderStaffPage_('สแกน QR', renderActionFormBody_(ss, work, station, doAction, baseUrl, token, [], {}), user, 'scan', baseUrl);
   }
 
-  return renderStaffPage_('สแกน QR', renderScanWorkBody_(work, station, eligible, baseUrl, token, []), user, 'scan', baseUrl);
+  return renderStaffPage_('สแกน QR', renderScanWorkBody_(work, station, eligible, eligibleTransitions, baseUrl, token, []), user, 'scan', baseUrl);
 }
 
-/** งานที่หน่วยงานนี้ถือครองอยู่จริง (รับแล้ว ไม่ใช่ระหว่างส่ง) และมีสถานีถัดไปให้ส่งต่อ — ใช้กับเมนู "ส่งต่อ" (ไม่ต้องสแกน QR ก่อน) */
+/** งานที่หน่วยงานนี้ทำ transition ต่อได้ ณ ขณะนี้ — ใช้กับเมนู "ส่งต่อ" (ไม่ต้องสแกน QR ก่อน) */
 function getForwardableWorks_(ss, org) {
   var stationsMap = getStationsMap_(ss);
   var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var fakeUser = { role: 'ผู้รับผิดชอบ', organization: org };
   return works.filter(function (w) {
-    if (w.handoff_pending || w.current_owner_org !== org) return false;
     if (TERMINAL_STATUSES_.indexOf(w.current_status_public) !== -1) return false;
     var station = stationsMap[w.current_station_key];
-    return !!(station && station.next_station_key);
+    return computeEligibleTransitions_(ss, w, station, fakeUser).length > 0;
   }).sort(byUpdatedAtDesc_);
 }
 
-/** รายชื่อบทบาท (receive_role/approve_role) ทั้งหมดที่ใช้อยู่จริงในชีต WorkStations (ไม่ซ้ำ) — ใช้เป็นตัวเลือก dropdown ในฟอร์มแก้ไขสถานี ของ Admin */
+/** รายชื่อบทบาท (receive_role/approve_role) ทั้งหมดที่ใช้อยู่จริงในชีต WorkflowStates (ไม่ซ้ำ) — ใช้เป็นตัวเลือก dropdown ในฟอร์มแก้ไขสถานี ของ Admin */
 function getDistinctStationRoles_(ss) {
-  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORK_STATIONS));
+  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_STATES));
   var seen = { '-': true };
   var out = ['-'];
   stations.forEach(function (s) {
@@ -220,13 +263,13 @@ function getDistinctStationRoles_(ss) {
   return out;
 }
 
-/** รายชื่อหน่วยงานทั้งหมดที่ปรากฏใน WorkStations (ไม่ซ้ำ) — ใช้เป็นตัวเลือกในฟอร์ม "เปลี่ยนผู้รับผิดชอบ" ของ Admin */
+/** รายชื่อหน่วยงานทั้งหมดที่ปรากฏใน WorkflowStates (ไม่ซ้ำ, ไม่รวม sentinel ORG_FROM) — ใช้เป็นตัวเลือกในฟอร์ม "เปลี่ยนผู้รับผิดชอบ" ของ Admin */
 function getDistinctStationOrgs_(ss) {
-  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORK_STATIONS));
+  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_STATES));
   var seen = {};
   var out = [];
   stations.forEach(function (s) {
-    if (s.org && !seen[s.org]) { seen[s.org] = true; out.push(s.org); }
+    if (s.org && s.org !== 'ORG_FROM' && !seen[s.org]) { seen[s.org] = true; out.push(s.org); }
   });
   return out;
 }

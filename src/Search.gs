@@ -85,10 +85,21 @@ function canViewWorkDetail_(work, user, history) {
   });
 }
 
-/** สถานีทั้งหมด ทำเป็น map ด้วย station_key (ใช้แสดงชื่อสถานีในหน้ารายละเอียด/คำนวณขอบเขตค้นหา) */
+/** สถานีทั้งหมด (โมเดล 24-state, WorkflowStates) ทำเป็น map ด้วย station_key
+ *  ใช้แสดงชื่อสถานีในหน้ารายละเอียด/คำนวณขอบเขตค้นหา/SLA ใกล้ครบกำหนด — เดิมอ่านจากชีต WorkStations
+ *  (7 สถานีเส้นตรง) เปลี่ยนมาอ่าน WorkflowStates แทน (2026-09-08) โดยตั้งใจคงชื่อฟังก์ชัน/รูปแบบผลลัพธ์
+ *  เดิมไว้ทุกประการ ให้โค้ดทุกจุดที่เรียกใช้ (Dashboard/Views/Actions) ทำงานต่อได้โดยไม่ต้องแก้ */
 function getStationsMap_(ss) {
-  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORK_STATIONS));
+  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_STATES));
   var map = {};
   stations.forEach(function (s) { map[s.station_key] = s; });
   return map;
+}
+
+/** หน่วยงานผู้รับผิดชอบที่แท้จริงของ state นี้สำหรับงานนี้ — 'ORG_FROM' เป็นค่าพิเศษใน
+ *  WorkflowStates.org แปลว่าให้ใช้ work.org_from (หน่วยงานต้นสังกัดผู้ยื่น) แทนค่าคงที่
+ *  เพราะ state ที่ผู้รับผิดชอบคือ "หน่วยงานต้นสังกัด/เจ้าของผลงาน" ต่างกันไปตามงานแต่ละชิ้น */
+function resolveResponsibleOrg_(stateDef, work) {
+  if (!stateDef) return '';
+  return stateDef.org === 'ORG_FROM' ? (work.org_from || '') : stateDef.org;
 }

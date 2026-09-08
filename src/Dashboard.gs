@@ -2,11 +2,15 @@
  * แดชบอร์ดเจ้าหน้าที่ — สรุปงานตามหน่วยงานของผู้ Login (docs/DESIGN.md ข้อ 3.3)
  *
  * กติกาการนับ (อ้างอิงตาราง Action ในข้อ 3.2 และสมมติฐาน A9):
- *   - งานรอรับ            = handoff_pending=true และหน่วยงานของสถานีปัจจุบัน (WorkStations.org) คือหน่วยงานตน
+ *   - งานรอรับ            = handoff_pending=true และหน่วยงานของสถานีปัจจุบัน (WorkflowStates.org) คือหน่วยงานตน
  *   - กำลังดำเนินการ       = current_owner_org = หน่วยงานตน, handoff_pending=false, ยังไม่ terminal
  *   - ส่งต่อแล้วรอปลายทางรับ = handoff_pending=true และประวัติล่าสุดเป็น action 'forwarded' จากหน่วยงานตน (from_org)
  *   - ใกล้ครบกำหนด/เกินกำหนด = อยู่ในกลุ่ม "กำลังดำเนินการ" + จำนวนวันในสถานีปัจจุบัน ≥ 80% / > 100% ของ standard_days
  *   - ส่งกลับแก้ไข         = current_status_public = 'need_revision' และประวัติล่าสุดของงานนั้นบันทึกโดยหน่วยงานตน (action_by_org)
+ *
+ * หมายเหตุ (2026-09-08, โมเดล 24-state): handoff_pending ไม่ใช้แล้ว (คลิกเดียวเปลี่ยน state เลย) — bucket
+ * "งานรอรับ"/"ส่งต่อแล้วรอปลายทางรับ" จะว่างเปล่าเสมอสำหรับงานที่เดินผ่าน state ใหม่ (ไม่ใช่บั๊ก แค่ไม่เกิดกรณีนี้อีก)
+ * ตัวคำนวณ "ใกล้ครบกำหนด/เกินกำหนด" ยังทำงานตามปกติ (ดู findStationEntryDate_ — เปลี่ยนไปจับ action='transition' แทน 'received')
  */
 
 var TERMINAL_STATUSES_ = ['done', 'terminated'];
@@ -14,7 +18,7 @@ var TERMINAL_STATUSES_ = ['done', 'terminated'];
 function computeDashboardMetrics_(ss, org) {
   var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
   var history = readSheetAsObjects_(ss.getSheetByName(SHEET.STATUS_HISTORY));
-  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORK_STATIONS));
+  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_STATES));
 
   var stationByKey = {};
   stations.forEach(function (s) { stationByKey[s.station_key] = s; });
@@ -74,7 +78,7 @@ function findStationEntryDate_(history, workId, stationKey) {
   var entryDate = null;
   history.forEach(function (h) {
     if (h.work_id !== workId || h.to_station !== stationKey) return;
-    if (h.action !== 'registered' && h.action !== 'received') return;
+    if (h.action !== 'registered' && h.action !== 'transition') return;
     entryDate = h.action_date;
   });
   return entryDate;

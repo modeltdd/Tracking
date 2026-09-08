@@ -136,6 +136,51 @@ function clearAllWorkData() {
     '(สถานี Workflow/ผู้ใช้งาน/Settings ยังอยู่เหมือนเดิม ไม่ถูกลบ)');
 }
 
+/**
+ * สร้าง+seed ชีต WorkflowStates/WorkflowTransitions (โมเดล 24-state รองรับแตกสาย/วนกลับ, 2026-09-08)
+ * แทนที่ชีต WorkStations เดิม (7 สถานีเส้นตรง) — ไม่ลบ WorkStations ทิ้ง (ห้ามลบข้อมูลเดิม) แค่เลิกใช้งาน
+ * รันด้วยตนเองจาก Apps Script Editor ครั้งเดียว — ปลอดภัยรันซ้ำได้ (ข้ามถ้าชีตมีข้อมูลอยู่แล้ว)
+ *
+ * คำเตือน: งานที่มีอยู่แล้วในชีต Works ซึ่งอ้าง station_key ชุดเดิม (received/checking/... จาก
+ * WORKSTATIONS_SEED) จะหาสถานีไม่เจอในระบบใหม่ (getStationsMap_ อ่านจาก WorkflowStates แล้ว) —
+ * ควรเคลียร์ข้อมูลทดสอบก่อน (clearAllWorkData()) หรือย้ายงานจริงด้วยตนเองก่อนรัน ฟังก์ชันนี้แค่เตือนใน Log
+ */
+function migrateToWorkflowStates() {
+  var ss = getSpreadsheet_();
+  var existingWorks = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  if (existingWorks.length > 0) {
+    Logger.log('คำเตือน: พบงานอยู่ในระบบ ' + existingWorks.length + ' รายการ — งานเหล่านี้อ้างอิง station_key ' +
+      'ชุดเดิม (7 สถานี) ถ้าไม่ใช่ข้อมูลทดสอบที่เคลียร์ได้ ให้หยุดและตรวจสอบก่อน (สถานีเดิมจะหาไม่เจอในระบบใหม่)');
+  }
+
+  var statesSheet = ensureSheet_(ss, SHEET.WORKFLOW_STATES, SHEET_HEADERS[SHEET.WORKFLOW_STATES]);
+  if (statesSheet.getLastRow() <= 1) {
+    WORKFLOW_STATES_SEED.forEach(function (st) {
+      appendRowByHeader_(statesSheet, SHEET_HEADERS[SHEET.WORKFLOW_STATES], {
+        station_key: st.key, station_order: st.order, station_name: st.name, org: st.org,
+        standard_days: st.days, public_status: st.pub, receive_role: '', approve_role: '', notify_method: '', active: true,
+      });
+    });
+  } else {
+    Logger.log('ชีต WorkflowStates มีข้อมูลอยู่แล้ว — ข้ามการ seed (ลบแถวเองแล้วรันใหม่ถ้าต้องการ reset)');
+  }
+
+  var transSheet = ensureSheet_(ss, SHEET.WORKFLOW_TRANSITIONS, SHEET_HEADERS[SHEET.WORKFLOW_TRANSITIONS]);
+  if (transSheet.getLastRow() <= 1) {
+    WORKFLOW_TRANSITIONS_SEED.forEach(function (t) {
+      appendRowByHeader_(transSheet, SHEET_HEADERS[SHEET.WORKFLOW_TRANSITIONS], {
+        transition_id: t.id, from_state: t.from, to_state: t.to, button_label: t.label,
+        requires_note: t.note, result_value: t.result, active: true,
+      });
+    });
+  } else {
+    Logger.log('ชีต WorkflowTransitions มีข้อมูลอยู่แล้ว — ข้ามการ seed (ลบแถวเองแล้วรันใหม่ถ้าต้องการ reset)');
+  }
+
+  Logger.log('ตั้งค่า Workflow แบบ 24-state เรียบร้อย (' + WORKFLOW_STATES_SEED.length + ' state, ' +
+    WORKFLOW_TRANSITIONS_SEED.length + ' เส้นทาง) — ตรวจสอบผลที่หน้า Admin > จัดการ Workflow');
+}
+
 /** seed ค่าตั้งต้นของ Settings — เติมเฉพาะ key ที่ยังไม่มี (ไม่ทับค่าที่ Admin ตั้งไปแล้ว) */
 function seedSettings_(ss) {
   var sheet = ss.getSheetByName(SHEET.SETTINGS);

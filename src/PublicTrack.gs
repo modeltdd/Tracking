@@ -61,12 +61,19 @@ function trackPublicStatus_(ss, e) {
   return { ok: true, session_token: sessionToken, work: work };
 }
 
-/** เหตุผล/กำหนดวันของคำขอแก้ไขล่าสุด — ใช้แสดงในหน้า "revision detail" สาธารณะ เมื่อสถานะ = need_revision */
+/** เหตุผล/กำหนดวันของคำขอแก้ไขล่าสุด — ใช้แสดงในหน้า "revision detail" สาธารณะ เมื่อสถานะ = need_revision
+ *  โมเดล 24-state (2026-09-08) ไม่มี action 'revision_requested' แยกอีกต่อไป — ใช้ note ของ transition ล่าสุด
+ *  (มี button_label ของเส้นทางที่เลือกอยู่แล้ว เช่น "ไม่ครบถ้วน → ส่งคืนหน่วยงาน — เอกสารไม่ครบถ้วน") แทน
+ *  ไม่มีกำหนดวันส่งกลับแบบ per-work ในโมเดลใหม่ (due_date เป็นนโยบายคงที่ตาม evaluation_result 2/6 เดือน ไม่ track ราย state) */
 function getLatestRevisionInfo_(ss, workId) {
   var history = getHistoryForWork_(ss, workId); // เก่า -> ใหม่
   for (var i = history.length - 1; i >= 0; i--) {
-    if (history[i].action === 'revision_requested') {
-      return { reasons: history[i].revision_reasons, due_date: history[i].revision_due_date, note: history[i].note };
+    var h = history[i];
+    if (h.action === 'revision_requested') {
+      return { reasons: h.revision_reasons, due_date: h.revision_due_date, note: h.note };
+    }
+    if (h.action === 'transition' && h.note) {
+      return { reasons: h.note, due_date: '', note: '' };
     }
   }
   return null;

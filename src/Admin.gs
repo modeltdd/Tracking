@@ -1,6 +1,6 @@
 /**
  * โซนผู้ดูแลระบบ (Admin) — docs/DESIGN.md ลำดับพัฒนา #7
- * จัดการ Workflow (WorkStations), ผู้ใช้งาน, Dashboard ผู้บริหาร (ทุกหน่วยงาน), Audit Log, รายงาน CSV
+ * จัดการ Workflow (WorkflowStates, โมเดล 24-state), ผู้ใช้งาน, Dashboard ผู้บริหาร (ทุกหน่วยงาน), Audit Log, รายงาน CSV
  * เข้าถึงได้เฉพาะ user.role === 'Admin' เท่านั้น — ตรวจซ้ำทั้งจุดเข้า GET (renderAdminRoute_) และทุกจุดเข้า POST (Code.gs)
  */
 
@@ -80,15 +80,15 @@ function computeExecMetrics_(ss) {
   return { totalWorks: works.length, statusCounts: statusCounts, orgList: orgList };
 }
 
-/* ---------- จัดการ Workflow (WorkStations) ---------- */
+/* ---------- จัดการ Workflow (WorkflowStates) ---------- */
 
 function listStationsSorted_(ss) {
-  return readSheetAsObjects_(ss.getSheetByName(SHEET.WORK_STATIONS))
+  return readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_STATES))
     .sort(function (a, b) { return Number(a.station_order) - Number(b.station_order); });
 }
 
 function findStationByKey_(ss, key) {
-  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORK_STATIONS));
+  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_STATES));
   for (var i = 0; i < stations.length; i++) {
     if (stations[i].station_key === key) return stations[i];
   }
@@ -106,7 +106,6 @@ function performAdminStationSave_(ss, user, e) {
     station_name: String(p.station_name || '').trim(),
     org: String(p.org || '').trim(),
     standard_days: String(p.standard_days || '').trim(),
-    next_station_key: String(p.next_station_key || '').trim(),
     public_status: String(p.public_status || '').trim(),
     receive_role: String(p.receive_role || '').trim(),
     approve_role: String(p.approve_role || '').trim(),
@@ -132,21 +131,21 @@ function performAdminStationSave_(ss, user, e) {
   values.standard_days = Number(values.standard_days);
 
   if (isNew) {
-    appendRowByHeader_(ss.getSheetByName(SHEET.WORK_STATIONS), SHEET_HEADERS[SHEET.WORK_STATIONS], values);
+    appendRowByHeader_(ss.getSheetByName(SHEET.WORKFLOW_STATES), SHEET_HEADERS[SHEET.WORKFLOW_STATES], values);
   } else {
     logFieldChanges_(user.user_email, 'edited_station', values.station_key, existing, values,
-      ['station_order', 'station_name', 'org', 'standard_days', 'next_station_key', 'public_status', 'receive_role', 'approve_role', 'notify_method', 'active']);
+      ['station_order', 'station_name', 'org', 'standard_days', 'public_status', 'receive_role', 'approve_role', 'notify_method', 'active']);
     updateWorkStationRow_(ss, values.station_key, values);
   }
   return { ok: true, isNew: isNew, station_key: values.station_key };
 }
 
 function updateWorkStationRow_(ss, stationKey, fields) {
-  var sheet = ss.getSheetByName(SHEET.WORK_STATIONS);
-  var headers = SHEET_HEADERS[SHEET.WORK_STATIONS];
+  var sheet = ss.getSheetByName(SHEET.WORKFLOW_STATES);
+  var headers = SHEET_HEADERS[SHEET.WORKFLOW_STATES];
   var keyCol = headers.indexOf('station_key') + 1;
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) throw new Error('ไม่พบสถานี (ชีต WorkStations ว่างเปล่า)');
+  if (lastRow < 2) throw new Error('ไม่พบสถานี (ชีต WorkflowStates ว่างเปล่า)');
   var keys = sheet.getRange(2, keyCol, lastRow - 1, 1).getValues();
   for (var i = 0; i < keys.length; i++) {
     if (keys[i][0] !== stationKey) continue;
@@ -260,7 +259,7 @@ var WORKS_CSV_COLUMNS_ = [
   'tracking_no', 'title_name', 'first_name', 'last_name', 'position', 'current_level', 'requested_level',
   'work_type', 'work_title', 'org_from', 'citizen_id_last4', 'phone', 'email', 'received_date',
   'current_station_key', 'current_status_public', 'handoff_pending', 'current_owner_org',
-  'current_handler_name', 'updated_at', 'next_step_text', 'created_by', 'created_at',
+  'current_handler_name', 'updated_at', 'next_step_text', 'created_by', 'created_at', 'evaluation_result',
 ];
 var AUDIT_CSV_COLUMNS_ = ['timestamp', 'user_email', 'action', 'work_id', 'field_changed', 'old_value', 'new_value'];
 

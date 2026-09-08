@@ -110,31 +110,50 @@ function renderForwardListBody_(org, works, stationsMap, baseUrl) {
   var listHtml = works.length
     ? works.map(function (w) {
         var station = stationsMap[w.current_station_key];
-        var next = station ? stationsMap[station.next_station_key] : null;
         return '' +
           '<div class="work-row">' +
           '<div class="work-main"><span class="tracking">' + escapeHtml_(w.tracking_no) + '</span>' +
           '<span class="worktitle">' + escapeHtml_(w.work_title || '-') + '</span>' +
-          '<span class="tl-meta">' + escapeHtml_(station ? station.station_name : '-') + ' &rarr; ' +
-          escapeHtml_(next ? next.station_name : '-') + '</span></div>' +
+          '<span class="tl-meta">' + escapeHtml_(station ? station.station_name : '-') + '</span></div>' +
           '<a class="btn-action btn-action-primary btn-action-sm" target="_top" href="' + baseUrl +
-          '?page=scan&t=' + encodeURIComponent(w.qr_token) + '&do=forwarded">ส่งต่อ</a>' +
+          '?page=scan&t=' + encodeURIComponent(w.qr_token) + '">ดำเนินการ</a>' +
           '</div>';
       }).join('')
-    : '<div class="empty">ไม่มีงานที่ส่งต่อได้ในขณะนี้ (ต้องกด "รับเอกสาร" ก่อน — ดูที่เมนู "สแกน QR")</div>';
+    : '<div class="empty">ไม่มีงานที่ต้องดำเนินการในขณะนี้</div>';
 
   return '' +
-    '<p class="scope-note">งานของหน่วยงาน <b>' + escapeHtml_(org) + '</b> ที่ส่งต่อได้ทันที</p>' +
+    '<p class="scope-note">งานของหน่วยงาน <b>' + escapeHtml_(org) + '</b> ที่ดำเนินการได้ทันที</p>' +
     '<section class="metric-card">' + listHtml + '</section>';
 }
 
 /** หน้าทะเบียนผลงานทั้งหมด (เฉพาะ ผู้รับผิดชอบ/Admin) — ช่องค้นหา + ตัวกรองสถานะ + ตาราง + pagination */
-function renderRegistryListBody_(pageResult, rp, totalAllCount, baseUrl, flashMessage) {
+function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, baseUrl, flashMessage) {
   var flashHtml = flashMessage ? '<div class="success-banner">' + escapeHtml_(flashMessage) + '</div>' : '';
 
-  var statusOptions = '<option value="">ทุกสถานะ</option>' + Object.keys(PUBLIC_STATUS_LABELS).map(function (k) {
-    var sel = rp.status === k ? ' selected' : '';
-    return '<option value="' + k + '"' + sel + '>' + escapeHtml_(PUBLIC_STATUS_LABELS[k]) + '</option>';
+  var stationsMap = getStationsMap_(ss);
+  var allStates = listStationsSorted_(ss);
+  var allWorks = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+
+  var stateOptions = '<option value="">ทุก state</option>' + allStates.map(function (s) {
+    var sel = rp.state === s.station_key ? ' selected' : '';
+    return '<option value="' + escapeHtml_(s.station_key) + '"' + sel + '>' + escapeHtml_(s.station_name) + '</option>';
+  }).join('');
+
+  var respOrgs = distinctValues_(allWorks, 'current_owner_org');
+  var respOptions = '<option value="">ทุกผู้รับผิดชอบ</option>' + respOrgs.map(function (o) {
+    var sel = rp.resp === o ? ' selected' : '';
+    return '<option value="' + escapeHtml_(o) + '"' + sel + '>' + escapeHtml_(o) + '</option>';
+  }).join('');
+
+  var orgFroms = distinctValues_(allWorks, 'org_from');
+  var orgOptions = '<option value="">ทุกหน่วยงาน</option>' + orgFroms.map(function (o) {
+    var sel = rp.org === o ? ' selected' : '';
+    return '<option value="' + escapeHtml_(o) + '"' + sel + '>' + escapeHtml_(o) + '</option>';
+  }).join('');
+
+  var resultOptions = '<option value="">ทุกผลการพิจารณา</option>' + REGISTRY_RESULT_OPTIONS_.map(function (r) {
+    var sel = rp.result === r ? ' selected' : '';
+    return '<option value="' + escapeHtml_(r) + '"' + sel + '>' + escapeHtml_(r) + '</option>';
   }).join('');
 
   var perOptions = REGISTRY_PER_PAGE_OPTIONS_.map(function (n) {
@@ -150,7 +169,14 @@ function renderRegistryListBody_(pageResult, rp, totalAllCount, baseUrl, flashMe
     '" placeholder="เลขทะเบียน / ชื่อเจ้าของผลงาน / ชื่อผลงาน / หน่วยงาน"></div>' +
     '</div>' +
     '<div class="field-row">' +
-    '<div class="field"><label>สถานะ</label><select class="input" name="status">' + statusOptions + '</select></div>' +
+    '<div class="field"><label>State</label><select class="input" name="state">' + stateOptions + '</select></div>' +
+    '<div class="field"><label>ผู้รับผิดชอบ</label><select class="input" name="resp">' + respOptions + '</select></div>' +
+    '</div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>หน่วยงาน</label><select class="input" name="org">' + orgOptions + '</select></div>' +
+    '<div class="field"><label>ผลการพิจารณา</label><select class="input" name="result">' + resultOptions + '</select></div>' +
+    '</div>' +
+    '<div class="field-row">' +
     '<div class="field"><label>แสดง</label><select class="input" name="per">' + perOptions + '</select></div>' +
     '</div>' +
     '<button class="btn-primary" type="submit">ค้นหา/กรอง</button>' +
@@ -158,31 +184,30 @@ function renderRegistryListBody_(pageResult, rp, totalAllCount, baseUrl, flashMe
 
   var rows = pageResult.items.map(function (w) {
     var ownerName = (w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '');
-    var statusLabel = PUBLIC_STATUS_LABELS[w.current_status_public] || w.current_status_public || '-';
-    var cls = STATUS_PILL_CLASS_[w.current_status_public] || 'pending';
+    var state = stationsMap[w.current_station_key];
     return '<tr>' +
       '<td>' + escapeHtml_(w.tracking_no) + '</td>' +
-      '<td>' + formatDateTh_(w.received_date) + '</td>' +
-      '<td>' + escapeHtml_(ownerName) + '</td>' +
       '<td>' + escapeHtml_(w.work_title || '-') + '</td>' +
+      '<td>' + escapeHtml_(w.org_from || '-') + '</td>' +
+      '<td>' + escapeHtml_(ownerName) + '</td>' +
+      '<td>' + escapeHtml_(state ? state.station_name : w.current_station_key) + '</td>' +
       '<td>' + escapeHtml_(w.current_owner_org || '-') + '</td>' +
-      '<td>' + escapeHtml_(w.work_type || '-') + '</td>' +
-      '<td><span class="pill pill-' + cls + '">' + escapeHtml_(statusLabel) + '</span></td>' +
       '<td>' + formatDateTh_(w.updated_at) + '</td>' +
-      '<td><a class="btn-action btn-action-primary btn-action-sm" target="_top" href="' + baseUrl + '?' +
-      buildRegistryQuery_(rp, { edit: w.work_id }) + '">อัปเดตสถานะ</a></td>' +
+      '<td><a class="btn-action btn-action-primary btn-action-sm" target="_top" href="' + baseUrl +
+      '?page=scan&t=' + encodeURIComponent(w.qr_token) + '">ดูรายละเอียด/จัดการ</a></td>' +
       '</tr>';
   }).join('');
 
   var tableHtml = pageResult.items.length
     ? '<div class="table-scroll"><table class="admin-table"><thead><tr>' +
-      '<th>เลขทะเบียน</th><th>วันที่รับเอกสาร</th><th>ชื่อเจ้าของผลงาน</th><th>ชื่อผลงาน/เรื่อง</th>' +
-      '<th>หน่วยงาน</th><th>ประเภทผลงาน</th><th>สถานะปัจจุบัน</th><th>วันที่อัปเดตล่าสุด</th><th>จัดการ</th>' +
+      '<th>เลขทะเบียน</th><th>ชื่อผลงาน</th><th>หน่วยงาน</th><th>เจ้าของผลงาน</th>' +
+      '<th>State ปัจจุบัน</th><th>ผู้รับผิดชอบ</th><th>วันที่อัปเดตล่าสุด</th><th>จัดการ</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>'
     : '<div class="empty">ไม่พบรายการที่ตรงกับเงื่อนไข</div>';
 
   var pagerHtml = '';
   if (pageResult.totalItems > 0) {
+    var hasFilter = rp.q || rp.state || rp.resp || rp.org || rp.result;
     var prevLink = pageResult.page > 1
       ? '<a target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { p: pageResult.page - 1 }) + '">&larr; ก่อนหน้า</a>'
       : '<span class="muted-link">&larr; ก่อนหน้า</span>';
@@ -191,50 +216,23 @@ function renderRegistryListBody_(pageResult, rp, totalAllCount, baseUrl, flashMe
       : '<span class="muted-link">ถัดไป &rarr;</span>';
     pagerHtml = '<div class="pager">' + prevLink +
       '<span>หน้า ' + pageResult.page + ' / ' + pageResult.totalPages + ' (ทั้งหมด ' + pageResult.totalItems + ' รายการ' +
-      (rp.q || rp.status ? ' จาก ' + totalAllCount : '') + ')</span>' + nextLink + '</div>';
+      (hasFilter ? ' จาก ' + totalAllCount : '') + ')</span>' + nextLink + '</div>';
   }
 
-  return flashHtml + filterFormHtml + '<section class="metric-card">' + tableHtml + pagerHtml + '</section>';
+  return flashHtml + filterFormHtml +
+    '<p class="hint" style="margin:0 0 10px">คลิก "ดูรายละเอียด/จัดการ" — เห็นได้ทุกรายการ แก้สถานะได้เฉพาะที่หน่วยงานตนรับผิดชอบ ณ state ปัจจุบันเท่านั้น</p>' +
+    '<section class="metric-card">' + tableHtml + pagerHtml + '</section>';
 }
 
-/** หน้าต่างแก้ไข (แทน Modal — codebase นี้ไม่มี client-side JS/AJAX มาก่อน ใช้หน้าฟอร์มเต็มหน้าตาม pattern เดียวกับปุ่ม action อื่น ๆ)
- *  แก้ current_status_public + หมายเหตุ + วันที่ดำเนินการ ของ 1 รายการที่เลือก — POST กลับ form_action=registry_status_update */
-function renderRegistryEditBody_(work, rp, baseUrl, errors, prevValues) {
-  prevValues = prevValues || {};
-  var v = function (key) { return key in prevValues ? prevValues[key] : ''; };
-  var errorHtml = (errors && errors.length)
-    ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
-    : '';
-
-  var currentStatus = v('new_status') || work.current_status_public;
-  var statusOptions = Object.keys(PUBLIC_STATUS_LABELS).map(function (k) {
-    var sel = currentStatus === k ? ' selected' : '';
-    return '<option value="' + k + '"' + sel + '>' + escapeHtml_(PUBLIC_STATUS_LABELS[k]) + '</option>';
-  }).join('');
-
-  var ownerName = (work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '');
-  var actionDateValue = v('action_date') || formatDateInput_(new Date());
-  var backHref = baseUrl + '?' + buildRegistryQuery_(rp, {});
-
-  return errorHtml +
-    '<div class="detail-card">' +
-    '<div class="detail-row"><span class="detail-label">เลขทะเบียน</span><span class="detail-value">' + escapeHtml_(work.tracking_no) + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">เจ้าของผลงาน</span><span class="detail-value">' + escapeHtml_(ownerName) + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">ชื่อผลงาน</span><span class="detail-value">' + escapeHtml_(work.work_title || '-') + '</span></div>' +
-    '</div>' +
-    '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form">' +
-    '<input type="hidden" name="form_action" value="registry_status_update">' +
-    '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
-    '<input type="hidden" name="return_q" value="' + escapeHtml_(rp.q) + '">' +
-    '<input type="hidden" name="return_status" value="' + escapeHtml_(rp.status) + '">' +
-    '<input type="hidden" name="return_p" value="' + rp.p + '">' +
-    '<input type="hidden" name="return_per" value="' + rp.per + '">' +
-    '<div class="field"><label>สถานะปัจจุบันของเอกสาร</label><select class="input" name="new_status">' + statusOptions + '</select></div>' +
-    '<div class="field"><label>วันที่ดำเนินการ/วันที่อัปเดต</label><input class="input" type="date" name="action_date" value="' + escapeHtml_(actionDateValue) + '"></div>' +
-    '<div class="field"><label>หมายเหตุ</label><textarea class="input" name="note" rows="3">' + escapeHtml_(v('note')) + '</textarea></div>' +
-    '<button class="btn-primary" type="submit">บันทึก</button>' +
-    '</form>' +
-    '<p><a target="_top" href="' + escapeHtml_(backHref) + '">&larr; กลับไปทะเบียนผลงานทั้งหมด</a></p>';
+/** ค่าไม่ซ้ำของฟิลด์หนึ่งจาก list of object (ไม่รวมค่าว่าง) — ใช้ทำตัวเลือก dropdown filter ของหน้าทะเบียน */
+function distinctValues_(rows, field) {
+  var seen = {};
+  var out = [];
+  rows.forEach(function (r) {
+    var v = r[field];
+    if (v && !seen[v]) { seen[v] = true; out.push(v); }
+  });
+  return out.sort();
 }
 
 /** หน้าค้นหา — ช่องค้นหา (GET) + ผลลัพธ์ (ค้นหาแล้วครอบคลุมทุกหน่วยงาน, ไม่ค้นหาแสดงเฉพาะหน่วยงานตน) */
@@ -287,7 +285,9 @@ function renderWorkDetailBody_(work, history, stationsMap, baseUrl) {
 
   var timelineHtml = history.length
     ? '<ul class="timeline">' + history.map(function (h) {
-        var label = ACTION_LABELS_[h.action] || h.action;
+        var label = h.action === 'transition'
+          ? (stationsMap[h.to_station] ? stationsMap[h.to_station].station_name : h.to_station)
+          : (ACTION_LABELS_[h.action] || h.action);
         return '<li class="tl-item">' +
           '<div class="tl-head"><b>' + escapeHtml_(label) + '</b><span class="tl-date">' + formatDateTh_(h.action_date) + '</span></div>' +
           '<div class="tl-meta">' + escapeHtml_(h.action_by_org || '-') + (h.action_by ? ' (' + escapeHtml_(h.action_by) + ')' : '') + '</div>' +
@@ -400,8 +400,8 @@ function renderScanEntryBody_(baseUrl, errorMsg) {
     '</form></div>';
 }
 
-/** การ์ดสรุปงาน + รายการปุ่ม action ที่กดได้จริง ณ ขณะนี้ (คำนวณจาก computeEligibleActions_ ฝั่ง Actions.gs) */
-function renderScanWorkBody_(work, station, eligible, baseUrl, token, errors) {
+/** การ์ดสรุปงาน + ปุ่มเปลี่ยนสถานะหลัก (จาก computeEligibleTransitions_) + ปุ่ม utility action เสริม (more_info/terminated/closed/reassigned) */
+function renderScanWorkBody_(work, station, eligible, eligibleTransitions, baseUrl, token, errors) {
   var errorHtml = (errors && errors.length)
     ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
     : '';
@@ -421,12 +421,24 @@ function renderScanWorkBody_(work, station, eligible, baseUrl, token, errors) {
     escapeHtml_(work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-')) + '</span></div>' +
     '</div>';
 
-  var buttonsHtml = eligible.length
+  var transitionButtonsHtml = eligibleTransitions.length
+    ? '<div class="action-list">' + eligibleTransitions.map(function (t) {
+        return '<a class="btn-action btn-action-primary" target="_top" href="' + baseUrl +
+          '?page=scan&t=' + encodeURIComponent(token) + '&trans=' + encodeURIComponent(t.transition_id) + '">' +
+          escapeHtml_(t.button_label) + '</a>';
+      }).join('') + '</div>'
+    : '';
+
+  var utilityButtonsHtml = eligible.length
     ? '<div class="action-list">' + eligible.map(function (a) {
         var variant = ACTION_BUTTON_VARIANT_[a] || 'secondary';
         return '<a class="btn-action btn-action-' + variant + '" target="_top" href="' + baseUrl +
           '?page=scan&t=' + encodeURIComponent(token) + '&do=' + a + '">' + escapeHtml_(ACTION_LABELS_[a] || a) + '</a>';
       }).join('') + '</div>'
+    : '';
+
+  var buttonsHtml = (transitionButtonsHtml || utilityButtonsHtml)
+    ? transitionButtonsHtml + utilityButtonsHtml
     : '<div class="empty">ไม่มีการกระทำที่ทำได้กับงานนี้ในขณะนี้ (อาจไม่ใช่หน่วยงานที่รับผิดชอบ หรืองานสิ้นสุดแล้ว)</div>';
 
   return errorHtml + summaryHtml + buttonsHtml +
@@ -450,28 +462,9 @@ function renderActionFormBody_(ss, work, station, action, baseUrl, token, errors
     '<input type="hidden" name="qr_token" value="' + escapeHtml_(token) + '">';
 
   var extraHtml = '';
-  if (action === 'forwarded') {
-    var stationsMap = getStationsMap_(ss);
-    var next = stationsMap[station.next_station_key];
-    extraHtml = '<p>ยืนยันส่งต่องาน <b>' + escapeHtml_(work.tracking_no) + '</b> ไปยังสถานี ' +
-      '<b>' + escapeHtml_(next ? next.station_name : '-') + '</b> (หน่วยงาน ' + escapeHtml_(next ? next.org : '-') + ')</p>';
-  } else if (action === 'received') {
-    extraHtml = '<p>ยืนยันรับเอกสาร <b>' + escapeHtml_(work.tracking_no) + '</b> และเริ่มดำเนินการที่สถานีนี้</p>';
-  } else if (action === 'more_info') {
+  if (action === 'more_info') {
     extraHtml = '<div class="field"><label>รายละเอียดที่ขอเพิ่มเติม</label>' +
       '<textarea class="input" name="note" rows="3">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
-  } else if (action === 'revision_requested') {
-    var reasonOptions = getSettingList_(ss, 'revision_reason_options', []);
-    var selectedReasons = [].concat(prevValues.revision_reasons || []);
-    extraHtml = '<div class="field"><label>เหตุผล (เลือกได้มากกว่า 1 ข้อ)</label>' +
-      reasonOptions.map(function (opt) {
-        var checked = selectedReasons.indexOf(opt) !== -1 ? ' checked' : '';
-        return '<label class="checkbox-row"><input type="checkbox" name="revision_reasons" value="' + escapeHtml_(opt) + '"' + checked + '> ' + escapeHtml_(opt) + '</label>';
-      }).join('') + '</div>' +
-      '<div class="field"><label>กำหนดวันส่งฉบับแก้ไขกลับ</label><input class="input" type="date" name="revision_due_date" value="' + escapeHtml_(prevValues.revision_due_date || '') + '"></div>' +
-      '<div class="field"><label>หมายเหตุเพิ่มเติม (ถ้ามี)</label><textarea class="input" name="note" rows="2">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
-  } else if (action === 'rejected') {
-    extraHtml = '<div class="field"><label>เหตุผลที่ไม่ผ่านการพิจารณา</label><textarea class="input" name="note" rows="3">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
   } else if (action === 'terminated') {
     extraHtml = '<div class="field"><label>เหตุผลที่ยุติกระบวนการ</label><textarea class="input" name="note" rows="3">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
   } else if (action === 'closed') {
@@ -501,6 +494,31 @@ function renderActionFormBody_(ss, work, station, action, baseUrl, token, errors
     '<h3 class="action-form-title">' + escapeHtml_(label) + '</h3>' +
     hiddenFields + extraHtml +
     '<button class="btn-primary" type="submit">ยืนยัน' + escapeHtml_(label) + '</button>' +
+    '</form>' +
+    '<p><a target="_top" href="' + baseUrl + '?page=scan&t=' + encodeURIComponent(token) + '">&larr; ยกเลิก กลับไปเลือกการกระทำ</a></p>';
+}
+
+/** ฟอร์มยืนยันเปลี่ยนสถานะ (state transition) — คู่กับ renderActionFormBody_ (utility action) แต่คีย์ด้วย transition_id
+ *  แทน action string เพราะ 1 state อาจมีได้หลายปุ่ม (คนละ transition_id แต่ to_state ต่างกัน) */
+function renderTransitionFormBody_(work, transition, baseUrl, token, errors, prevValues) {
+  prevValues = prevValues || {};
+  var errorHtml = (errors && errors.length)
+    ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+
+  var noteFieldHtml = '<div class="field"><label>หมายเหตุ' + (transition.requires_note ? '' : ' (ถ้ามี)') + '</label>' +
+    '<textarea class="input" name="note" rows="3">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
+
+  return errorHtml +
+    '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form">' +
+    '<h3 class="action-form-title">' + escapeHtml_(transition.button_label) + '</h3>' +
+    '<p>ยืนยันเปลี่ยนสถานะงาน <b>' + escapeHtml_(work.tracking_no) + '</b></p>' +
+    '<input type="hidden" name="form_action" value="state_transition">' +
+    '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
+    '<input type="hidden" name="transition_id" value="' + escapeHtml_(transition.transition_id) + '">' +
+    '<input type="hidden" name="qr_token" value="' + escapeHtml_(token) + '">' +
+    noteFieldHtml +
+    '<button class="btn-primary" type="submit">ยืนยัน' + escapeHtml_(transition.button_label) + '</button>' +
     '</form>' +
     '<p><a target="_top" href="' + baseUrl + '?page=scan&t=' + encodeURIComponent(token) + '">&larr; ยกเลิก กลับไปเลือกการกระทำ</a></p>';
 }
@@ -653,13 +671,6 @@ function renderStationFormBody_(ss, station, baseUrl, errors, prevValues) {
     ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
     : '';
 
-  var allStations = listStationsSorted_(ss);
-  var nextOptions = '<option value="">(ไม่มี — เป็นขั้นตอนสุดท้าย)</option>' +
-    allStations.filter(function (s) { return isNew || s.station_key !== station.station_key; }).map(function (s) {
-      var sel = v('next_station_key') === s.station_key ? ' selected' : '';
-      return '<option value="' + escapeHtml_(s.station_key) + '"' + sel + '>' + escapeHtml_(s.station_name) + '</option>';
-    }).join('');
-
   var statusOptions = Object.keys(PUBLIC_STATUS_LABELS).map(function (k) {
     var sel = v('public_status') === k ? ' selected' : '';
     return '<option value="' + k + '"' + sel + '>' + escapeHtml_(PUBLIC_STATUS_LABELS[k]) + '</option>';
@@ -695,8 +706,9 @@ function renderStationFormBody_(ss, station, baseUrl, errors, prevValues) {
     '<div class="field"><label>วันมาตรฐาน</label><input class="input" type="number" name="standard_days" value="' + escapeHtml_(v('standard_days')) + '"></div>' +
     '</div>' +
     '<div class="field"><label>ชื่อสถานี</label><input class="input" name="station_name" value="' + escapeHtml_(v('station_name')) + '"></div>' +
-    '<div class="field"><label>หน่วยงานรับผิดชอบ</label><input class="input" name="org" value="' + escapeHtml_(v('org')) + '"></div>' +
-    '<div class="field"><label>สถานีถัดไป</label><select class="input" name="next_station_key">' + nextOptions + '</select></div>' +
+    '<div class="field"><label>หน่วยงานรับผิดชอบ</label><input class="input" name="org" value="' + escapeHtml_(v('org')) + '">' +
+    '<p class="hint" style="margin-top:4px">พิมพ์ชื่อหน่วยงานตรง ๆ (เช่น สนง เขต, เลขา) หรือพิมพ์คำว่า <code>ORG_FROM</code> ' +
+    'ถ้าต้องการให้ state นี้เป็นความรับผิดชอบของ "หน่วยงานต้นสังกัดผู้ยื่น" (ต่างกันไปตามแต่ละงาน ไม่ใช่หน่วยงานคงที่)</p></div>' +
     '<div class="field"><label>สถานะสาธารณะที่แสดง</label><select class="input" name="public_status">' + statusOptions + '</select></div>' +
     '<div class="field"><label>บทบาทผู้รับเอกสาร</label>' + roleSelectHtml_('receive_role') + '</div>' +
     '<div class="field"><label>บทบาทผู้อนุมัติ</label>' + roleSelectHtml_('approve_role') + '</div>' +

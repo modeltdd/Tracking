@@ -21,7 +21,7 @@ function seedSampleData() {
 
   var stations = listStationsSorted_(ss).filter(function (s) { return s.active; });
   if (stations.length < 2) {
-    throw new Error('ต้องมีสถานี Workflow ที่เปิดใช้งานอย่างน้อย 2 สถานี (ตรวจสอบชีต WorkStations) ก่อนสร้างข้อมูลตัวอย่าง');
+    throw new Error('ต้องมีสถานี Workflow ที่เปิดใช้งานอย่างน้อย 2 สถานี (ตรวจสอบชีต WorkflowStates) ก่อนสร้างข้อมูลตัวอย่าง');
   }
   var byKey = {};
   stations.forEach(function (s) { byKey[s.station_key] = s; });
@@ -31,18 +31,10 @@ function seedSampleData() {
   var nearDays = Math.max(1, Math.ceil(Number(s0.standard_days) * 0.85));
   var overdueDays = Number(s0.standard_days) + 2;
 
-  // หาคู่สถานี "ต้นทาง → ปลายทาง" ที่หน่วยงานต่างกันจริง (ใช้ demo เคสส่งต่อข้ามหน่วยงาน) —
-  // ถ้าไม่พบเลย (ทุกสถานีเป็นหน่วยงานเดียวกันหมด) fallback เป็น s0 → สถานีถัดไปของ s0
-  var handoffOrigin = s0;
-  var handoffDest = byKey[s0.next_station_key] || stations[1];
-  for (var hi = 0; hi < stations.length; hi++) {
-    var candidateNext = byKey[stations[hi].next_station_key];
-    if (candidateNext && candidateNext.org !== stations[hi].org) {
-      handoffOrigin = stations[hi];
-      handoffDest = candidateNext;
-      break;
-    }
-  }
+  // state "ไม่ครบถ้วน-ส่งคืนหน่วยงาน" (s3_2) ถ้ามี — ใช้ demo หน่วยงานต้นสังกัด (ORG_FROM) เป็นผู้รับผิดชอบแบบไดนามิก
+  var incompleteState = byKey['s3_2'] || stations[1];
+  // state ที่เข้ารอบแก้ไข (s7_2) ถ้ามี — ใช้ demo ผลการพิจารณา "แก้ไข 2 เดือน"
+  var revisionState = byKey['s7_2'] || stations[Math.min(1, stations.length - 1)];
 
   var count = 0;
 
@@ -91,40 +83,40 @@ function seedSampleData() {
   });
   count++;
 
-  // 4) ส่งต่อแล้ว รอปลายทางรับ (awaitingDestination + pendingReceive)
+  // 4) ส่งคืนหน่วยงานเพราะเอกสารไม่ครบ (awaitingDestination เดิม — ตอนนี้ demo หน่วยงานต้นสังกัดแบบไดนามิก ORG_FROM แทน)
   insertSampleWork_(ss, {
     tracking_no: 'SAMPLE-004', citizen_id: '1100000000004',
     title_name: 'นางสาว', first_name: 'ปิยะดา', last_name: 'ก้าวไว', position: 'นักโภชนาการ',
     current_level: 'ชำนาญการ', requested_level: 'ชำนาญการพิเศษ', work_type: 'คู่มือ/แนวปฏิบัติ',
     work_title: 'คู่มือโภชนบำบัดผู้ป่วยไตเรื้อรัง (ตัวอย่าง)', org_from: 'โรงพยาบาลตัวอย่าง D',
-    current_station_key: handoffDest.station_key, current_status_public: handoffDest.public_status,
-    handoff_pending: true, current_owner_org: handoffOrigin.org,
-    next_step_text: 'ส่งต่อแล้ว รอหน่วยงาน "' + handoffDest.org + '" สแกนรับเอกสาร',
+    current_station_key: incompleteState.station_key, current_status_public: incompleteState.public_status,
+    handoff_pending: false, current_owner_org: resolveResponsibleOrg_(incompleteState, { org_from: 'โรงพยาบาลตัวอย่าง D' }),
+    next_step_text: 'รอหน่วยงานต้นสังกัดส่งเอกสารกลับมาให้ครบถ้วน',
     history: [
-      { action: 'registered', from_station: '', to_station: handoffOrigin.station_key, from_org: '', to_org: handoffOrigin.org,
-        action_by_org: handoffOrigin.org, action_date: daysAgo_(3), note: 'ข้อมูลตัวอย่าง' },
-      { action: 'forwarded', from_station: handoffOrigin.station_key, to_station: handoffDest.station_key,
-        from_org: handoffOrigin.org, to_org: handoffDest.org, action_by_org: handoffOrigin.org, action_date: daysAgo_(1), note: '' },
+      { action: 'registered', from_station: '', to_station: s0.station_key, from_org: '', to_org: s0.org,
+        action_by_org: s0.org, action_date: daysAgo_(3), note: 'ข้อมูลตัวอย่าง' },
+      { action: 'transition', from_station: s0.station_key, to_station: incompleteState.station_key,
+        from_org: s0.org, to_org: 'โรงพยาบาลตัวอย่าง D', action_by_org: s0.org, action_date: daysAgo_(1),
+        note: 'ไม่ครบถ้วน → ส่งคืนหน่วยงาน — เอกสารไม่ครบถ้วน (ตัวอย่าง)' },
     ],
   });
   count++;
 
-  // 5) ส่งกลับให้เจ้าของผลงานแก้ไข (returnedForRevision) — ใช้ทดสอบหน้า Tracking สาธารณะด้วย
+  // 5) เข้ารอบแก้ไข (returnedForRevision) — ใช้ทดสอบหน้า Tracking สาธารณะด้วย
   insertSampleWork_(ss, {
     tracking_no: 'SAMPLE-005', citizen_id: '1100000000005',
     title_name: 'นาย', first_name: 'ธนกร', last_name: 'รอแก้ไข', position: 'เภสัชกร',
     current_level: 'ปฏิบัติการ', requested_level: 'ชำนาญการ', work_type: 'ผลงานเชิงวิชาการ',
     work_title: 'การพัฒนาระบบติดตามการใช้ยาในผู้ป่วยโรคเรื้อรัง (ตัวอย่าง)', org_from: 'โรงพยาบาลตัวอย่าง E',
-    current_station_key: s0.station_key, current_status_public: 'need_revision',
-    handoff_pending: true, current_owner_org: s0.org,
-    next_step_text: 'รอเจ้าของผลงานส่งฉบับแก้ไขกลับมาภายใน ' + formatDateInput_(daysFromNow_(7)),
+    current_station_key: revisionState.station_key, current_status_public: revisionState.public_status,
+    handoff_pending: false, current_owner_org: revisionState.org, evaluation_result: 'แก้ไข 2 เดือน',
+    next_step_text: 'เริ่มกระบวนการแก้ไข (2 เดือน) — รอ สนง เขต แจ้งผลหน่วยงาน',
     history: [
       { action: 'registered', from_station: '', to_station: s0.station_key, from_org: '', to_org: s0.org,
         action_by_org: s0.org, action_date: daysAgo_(5), note: 'ข้อมูลตัวอย่าง' },
-      { action: 'revision_requested', from_station: s0.station_key, to_station: s0.station_key,
-        from_org: s0.org, to_org: s0.org, action_by_org: s0.org, action_date: daysAgo_(1),
-        revision_reasons: 'เอกสารไม่ครบถ้วน, ลายมือชื่อไม่ครบ', revision_due_date: formatDateInput_(daysFromNow_(7)),
-        note: 'กรุณาแนบสำเนาบัตรประชาชนและลายมือชื่อรับรองเพิ่มเติม (ตัวอย่าง)' },
+      { action: 'transition', from_station: s0.station_key, to_station: revisionState.station_key,
+        from_org: s0.org, to_org: revisionState.org, action_by_org: s0.org, action_date: daysAgo_(1),
+        note: 'แก้ไข 2 เดือน — ปรับปรุงแก้ไขไม่เป็นสาระสำคัญ (ตัวอย่าง)' },
     ],
   });
   count++;
@@ -188,6 +180,7 @@ function insertSampleWork_(ss, def) {
     next_step_text: def.next_step_text || '',
     created_by: SAMPLE_DATA_MARKER_,
     created_at: def.history[0].action_date,
+    evaluation_result: def.evaluation_result || '',
   });
 
   def.history.forEach(function (h) {

@@ -116,21 +116,29 @@ function doPost(e) {
     return renderStaffPage_('บันทึกสำเร็จ', renderActionSuccessBody_(actionResult, baseUrl), user, 'scan', baseUrl);
   }
 
-  if (formAction === 'registry_status_update') {
-    if (!canAccessRegistry_(user)) {
-      return renderStaffPage_('ไม่มีสิทธิ์เข้าถึง', renderStubBody_('เฉพาะบัญชีผู้รับผิดชอบ/ผู้ดูแลระบบเท่านั้นที่เข้าหน้านี้ได้', baseUrl), user, 'dashboard', baseUrl);
-    }
-    var returnRp = parseRegistryParams_({ q: e.parameter.return_q, status: e.parameter.return_status, p: e.parameter.return_p, per: e.parameter.return_per });
-    var registryResult = performRegistryStatusUpdate_(ss, user, e);
-    if (!registryResult.ok) {
-      var editWork = registryResult.work || findWorkById_(ss, e.parameter.work_id);
-      if (!editWork) {
-        return renderStaffPage_('ทะเบียนผลงานทั้งหมด', renderStubBody_('ไม่พบงานที่ระบุ', baseUrl), user, 'registry', baseUrl);
+  if (formAction === 'state_transition') {
+    var transToken = e.parameter.qr_token || '';
+    var transResult = performStateTransition_(ss, user, e);
+    if (!transResult.ok) {
+      var transWork = transResult.work || findWorkById_(ss, e.parameter.work_id);
+      if (!transWork) {
+        return renderStaffPage_('สแกน QR', renderScanEntryBody_(baseUrl, 'ไม่พบงานที่ระบุ'), user, 'scan', baseUrl);
       }
-      return renderStaffPage_('อัปเดตสถานะ',
-        renderRegistryEditBody_(editWork, returnRp, baseUrl, registryResult.errors, e.parameter), user, 'registry', baseUrl);
+      var stationsMapErr = getStationsMap_(ss);
+      var stateDefErr = stationsMapErr[transWork.current_station_key];
+      var eligibleErr = computeEligibleTransitions_(ss, transWork, stateDefErr, user);
+      var reTransition = null;
+      for (var i = 0; i < eligibleErr.length; i++) {
+        if (eligibleErr[i].transition_id === e.parameter.transition_id) { reTransition = eligibleErr[i]; break; }
+      }
+      if (!reTransition) {
+        return renderStaffPage_('สแกน QR', renderScanWorkBody_(transWork, stateDefErr, computeEligibleActions_(transWork, stateDefErr, user),
+          eligibleErr, baseUrl, transToken, transResult.errors), user, 'scan', baseUrl);
+      }
+      return renderStaffPage_('สแกน QR',
+        renderTransitionFormBody_(transWork, reTransition, baseUrl, transToken, transResult.errors, e.parameter), user, 'scan', baseUrl);
     }
-    return renderRegistryRoute_(ss, user, returnRp, baseUrl, 'บันทึกสถานะเรียบร้อยแล้ว');
+    return renderStaffPage_('บันทึกสำเร็จ', renderActionSuccessBody_(transResult, baseUrl), user, 'scan', baseUrl);
   }
 
   if (formAction === 'admin_station_save' || formAction === 'admin_user_save') {

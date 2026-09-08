@@ -118,10 +118,10 @@ function registerNewWork_(ss, user, e) {
 
 /** สถานีแรกของ Workflow (station_order ต่ำสุดที่ active) — อ่านจากชีตสด ไม่ hardcode เพราะ Admin ปรับลำดับได้ */
 function getFirstActiveStation_(ss) {
-  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORK_STATIONS))
+  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_STATES))
     .filter(function (s) { return s.active; })
     .sort(function (a, b) { return Number(a.station_order) - Number(b.station_order); });
-  if (!stations.length) throw new Error('ยังไม่มีสถานี Workflow ที่เปิดใช้งาน (ตรวจสอบชีต WorkStations)');
+  if (!stations.length) throw new Error('ยังไม่มีสถานี Workflow ที่เปิดใช้งาน (ตรวจสอบชีต WorkflowStates)');
   return stations[0];
 }
 

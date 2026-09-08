@@ -7,6 +7,8 @@ var SHEET = {
   WORKS: 'Works',
   STATUS_HISTORY: 'StatusHistory',
   WORK_STATIONS: 'WorkStations',
+  WORKFLOW_STATES: 'WorkflowStates',
+  WORKFLOW_TRANSITIONS: 'WorkflowTransitions',
   USERS: 'Users',
   SETTINGS: 'Settings',
   AUDIT_LOG: 'AuditLog',
@@ -19,7 +21,7 @@ SHEET_HEADERS[SHEET.WORKS] = [
   'title_name', 'first_name', 'last_name', 'position', 'current_level', 'requested_level',
   'work_type', 'work_title', 'org_from', 'phone', 'email', 'cover_image_url', 'received_date',
   'current_station_key', 'current_status_public', 'handoff_pending', 'current_owner_org',
-  'current_handler_name', 'updated_at', 'next_step_text', 'created_by', 'created_at',
+  'current_handler_name', 'updated_at', 'next_step_text', 'created_by', 'created_at', 'evaluation_result',
 ];
 SHEET_HEADERS[SHEET.STATUS_HISTORY] = [
   'history_id', 'work_id', 'tracking_no', 'action', 'from_station', 'to_station', 'from_org', 'to_org',
@@ -29,6 +31,15 @@ SHEET_HEADERS[SHEET.STATUS_HISTORY] = [
 SHEET_HEADERS[SHEET.WORK_STATIONS] = [
   'station_key', 'station_order', 'station_name', 'org', 'standard_days', 'next_station_key',
   'public_status', 'receive_role', 'approve_role', 'notify_method', 'active',
+];
+// เหมือน WORK_STATIONS เดิมทุกคอลัมน์ ตัดแค่ next_station_key ออก (1 state ไปได้หลายทางแล้ว ดู WORKFLOW_TRANSITIONS)
+// — คงชื่อคอลัมน์เดิมไว้เจตนา ให้ getStationsMap_/listStationsSorted_/ฯลฯ ใช้โค้ดเดิมได้โดยไม่ต้องแก้จุดอ่านข้อมูล
+SHEET_HEADERS[SHEET.WORKFLOW_STATES] = [
+  'station_key', 'station_order', 'station_name', 'org', 'standard_days',
+  'public_status', 'receive_role', 'approve_role', 'notify_method', 'active',
+];
+SHEET_HEADERS[SHEET.WORKFLOW_TRANSITIONS] = [
+  'transition_id', 'from_state', 'to_state', 'button_label', 'requires_note', 'result_value', 'active',
 ];
 SHEET_HEADERS[SHEET.USERS] = ['user_email', 'display_name', 'role', 'organization', 'active'];
 SHEET_HEADERS[SHEET.SETTINGS] = ['setting_key', 'setting_value', 'description', 'updated_at'];
@@ -63,6 +74,70 @@ var WORKSTATIONS_SEED = [
   { key: 'final_announce', order: 7, name: 'แจ้งผลหน่วยงาน (ผ่าน/ไม่ผ่าน)', org: 'สนง เขต',
     days: 3, next: '', pub: 'done', receiveRole: 'เจ้าหน้าที่รับเอกสาร', approveRole: '-', notify: 'เตรียมไว้สำหรับ LINE/SMS ในระยะถัดไป' },
 ];
+// WORKSTATIONS_SEED/ชีต WorkStations เดิมด้านบน "เลิกใช้งานแล้ว" (แทนที่ด้วย WORKFLOW_STATES_SEED/
+// WORKFLOW_TRANSITIONS_SEED ด้านล่าง — โมเดล 24-state รองรับแตกสาย/วนกลับ, 2026-09-08) — ไม่ลบทิ้ง
+// เพราะห้ามลบข้อมูลเดิม เก็บไว้เป็นหลักฐาน/ยังเปิดดูได้ในชีต Google Sheet ตามปกติ
+
+// 24 state ตามกระบวนการจริงที่ผู้ใช้กำหนด (2026-09-08) — org: 'ORG_FROM' = ค่าพิเศษ แปลว่าให้ resolve
+// เป็น work.org_from ของงานนั้น ๆ แทน (ดู resolveResponsibleOrg_ ใน Search.gs) เพราะแต่ละงานมีหน่วยงาน
+// ต้นสังกัดต่างกัน ไม่ใช่ org คงที่แบบ 4 หน่วยงานหลัก (สนง เขต/เลขา/ประธานกรรมการ/กรรมการ)
+var WORKFLOW_STATES_SEED = [
+  { key: 's1', order: 1, name: 'รับเรื่องจากหน่วยงาน', org: 'สนง เขต', days: 3, pub: 'received' },
+  { key: 's2', order: 2, name: 'ตรวจสอบเอกสาร', org: 'สนง เขต', days: 5, pub: 'checking' },
+  { key: 's3_1', order: 3, name: 'ครบถ้วน-ส่งเลขา', org: 'สนง เขต', days: 1, pub: 'checking' },
+  { key: 's3_2', order: 3, name: 'ไม่ครบถ้วน-ส่งคืนหน่วยงาน', org: 'ORG_FROM', days: 7, pub: 'need_revision' },
+  { key: 's4', order: 4, name: 'เลขาส่งเอกสารให้กรรมการ', org: 'เลขา', days: 3, pub: 'in_review' },
+  { key: 's5', order: 5, name: 'ประธานนัดประชุม', org: 'ประธานกรรมการ', days: 7, pub: 'in_review' },
+  { key: 's6', order: 6, name: 'กรรมการประชุมพิจารณา (รอสรุปผล)', org: 'กรรมการ', days: 15, pub: 'in_review' },
+  { key: 's7', order: 7, name: 'เลขาแจ้งผลการพิจารณามาที่ สนง เขต', org: 'เลขา', days: 3, pub: 'pending_approval' },
+  { key: 's7_1', order: 7, name: 'ผ่าน (ผ่านการประเมิน)', org: 'สนง เขต', days: 3, pub: 'pending_approval' },
+  { key: 's7_2', order: 7, name: 'แก้ไข 2 เดือน (ปรับปรุงแก้ไขไม่เป็นสาระสำคัญ)', org: 'สนง เขต', days: 3, pub: 'need_revision' },
+  { key: 's7_3', order: 7, name: 'แก้ไข 6 เดือน (ปรับปรุงแก้ไขสาระสำคัญ)', org: 'สนง เขต', days: 3, pub: 'need_revision' },
+  { key: 's7_4', order: 7, name: 'ไม่ผ่าน (ไม่ผ่านการประเมิน)', org: 'สนง เขต', days: 3, pub: 'pending_approval' },
+  { key: 's8_1', order: 8, name: 'สนง เขต แจ้งผลหน่วยงาน', org: 'สนง เขต', days: 5, pub: 'need_revision' },
+  { key: 's8_2', order: 8, name: 'หน่วยงานแจ้งผลเจ้าของผลงาน', org: 'ORG_FROM', days: 5, pub: 'need_revision' },
+  { key: 's8_3', order: 8, name: 'เจ้าของผลงานแก้ไขเอกสาร', org: 'ORG_FROM', days: 45, pub: 'need_revision' },
+  { key: 's8_4', order: 8, name: 'เจ้าของผลงานส่งเอกสารแก้ไขกลับหน่วยงาน', org: 'ORG_FROM', days: 5, pub: 'need_revision' },
+  { key: 's8_5', order: 8, name: 'หน่วยงานส่งเอกสารแก้ไขกลับ สนง เขต', org: 'ORG_FROM', days: 5, pub: 'need_revision' },
+  { key: 's8_6', order: 8, name: 'สนง เขต ส่งเอกสารแก้ไขให้เลขา', org: 'สนง เขต', days: 3, pub: 'in_review' },
+  { key: 's9_1', order: 9, name: 'เลขาส่งเอกสารให้กรรมการ ครั้งที่ 2', org: 'เลขา', days: 3, pub: 'in_review' },
+  { key: 's9_2', order: 9, name: 'ประธานนัดประชุม ครั้งที่ 2', org: 'ประธานกรรมการ', days: 7, pub: 'in_review' },
+  { key: 's9_3', order: 9, name: 'กรรมการประชุมพิจารณา ครั้งที่ 2', org: 'กรรมการ', days: 15, pub: 'in_review' },
+  { key: 's9_4', order: 9, name: 'เลขาแจ้งผลการพิจารณา ครั้งที่ 2 มาที่ สนง เขต', org: 'เลขา', days: 3, pub: 'pending_approval' },
+  { key: 's10', order: 10, name: 'แจ้งผลหน่วยงาน (ผ่าน/ไม่ผ่าน)', org: 'สนง เขต', days: 3, pub: 'done' },
+];
+
+// เส้นทาง (transition) ระหว่าง state — 1 state ไปได้หลายทางถ้ามีมากกว่า 1 แถวที่ from ตรงกัน (จุดตัดสินใจ)
+// result_value: ถ้าไม่ว่าง จะเขียนลง Works.evaluation_result ตอนกดปุ่มนี้ (ใช้เป็นตัวกรอง "ผลการพิจารณา")
+var WORKFLOW_TRANSITIONS_SEED = [
+  { id: 's1_s2', from: 's1', to: 's2', label: 'รับเอกสารและเริ่มตรวจสอบ', note: false, result: '' },
+  { id: 's2_s3_1', from: 's2', to: 's3_1', label: 'ครบถ้วน → ส่งเลขา', note: false, result: '' },
+  { id: 's2_s3_2', from: 's2', to: 's3_2', label: 'ไม่ครบถ้วน → ส่งคืนหน่วยงาน', note: true, result: '' },
+  { id: 's3_1_s4', from: 's3_1', to: 's4', label: 'ส่งเอกสารให้เลขาแล้ว', note: false, result: '' },
+  { id: 's3_2_s2', from: 's3_2', to: 's2', label: 'ส่งเอกสารกลับมาแล้ว (ตรวจสอบใหม่)', note: false, result: '' },
+  { id: 's4_s5', from: 's4', to: 's5', label: 'ส่งให้ประธานนัดประชุมแล้ว', note: false, result: '' },
+  { id: 's5_s6', from: 's5', to: 's6', label: 'นัดประชุมแล้ว → เข้าสู่การพิจารณา', note: false, result: '' },
+  { id: 's6_s7', from: 's6', to: 's7', label: 'สรุปผลแล้ว → แจ้ง สนง เขต', note: false, result: '' },
+  { id: 's7_s7_1', from: 's7', to: 's7_1', label: 'ผ่าน', note: false, result: 'ผ่าน' },
+  { id: 's7_s7_2', from: 's7', to: 's7_2', label: 'แก้ไข 2 เดือน', note: false, result: 'แก้ไข 2 เดือน' },
+  { id: 's7_s7_3', from: 's7', to: 's7_3', label: 'แก้ไข 6 เดือน', note: false, result: 'แก้ไข 6 เดือน' },
+  { id: 's7_s7_4', from: 's7', to: 's7_4', label: 'ไม่ผ่าน', note: false, result: 'ไม่ผ่าน' },
+  { id: 's7_1_s10', from: 's7_1', to: 's10', label: 'แจ้งผลหน่วยงาน', note: false, result: '' },
+  { id: 's7_4_s10', from: 's7_4', to: 's10', label: 'แจ้งผลหน่วยงาน', note: false, result: '' },
+  { id: 's7_2_s8_1', from: 's7_2', to: 's8_1', label: 'เริ่มกระบวนการแก้ไข (2 เดือน)', note: false, result: '' },
+  { id: 's7_3_s8_1', from: 's7_3', to: 's8_1', label: 'เริ่มกระบวนการแก้ไข (6 เดือน)', note: false, result: '' },
+  { id: 's8_1_s8_2', from: 's8_1', to: 's8_2', label: 'แจ้งผลหน่วยงานแล้ว', note: false, result: '' },
+  { id: 's8_2_s8_3', from: 's8_2', to: 's8_3', label: 'แจ้งเจ้าของผลงานแล้ว', note: false, result: '' },
+  { id: 's8_3_s8_4', from: 's8_3', to: 's8_4', label: 'เจ้าของผลงานแก้ไขเสร็จแล้ว', note: false, result: '' },
+  { id: 's8_4_s8_5', from: 's8_4', to: 's8_5', label: 'ส่งเอกสารแก้ไขกลับ สนง เขต แล้ว', note: false, result: '' },
+  { id: 's8_5_s8_6', from: 's8_5', to: 's8_6', label: 'ส่งเอกสารแก้ไขให้เลขาแล้ว', note: false, result: '' },
+  { id: 's8_6_s9_1', from: 's8_6', to: 's9_1', label: 'เข้าสู่รอบพิจารณาที่ 2', note: false, result: '' },
+  { id: 's9_1_s9_2', from: 's9_1', to: 's9_2', label: 'ส่งให้ประธานนัดประชุม (รอบ 2)', note: false, result: '' },
+  { id: 's9_2_s9_3', from: 's9_2', to: 's9_3', label: 'นัดประชุมแล้ว (รอบ 2)', note: false, result: '' },
+  { id: 's9_3_s9_4', from: 's9_3', to: 's9_4', label: 'สรุปผลแล้ว → แจ้ง สนง เขต (รอบ 2)', note: false, result: '' },
+  { id: 's9_4_s10_pass', from: 's9_4', to: 's10', label: 'ผ่าน (รอบ 2)', note: false, result: 'ผ่าน' },
+  { id: 's9_4_s10_fail', from: 's9_4', to: 's10', label: 'ไม่ผ่าน (รอบ 2)', note: false, result: 'ไม่ผ่าน' },
+];
 
 // สถานะสาธารณะ 8 ค่า (ตรง docs/DESIGN.md 3.1) — ใช้อ้างอิงใน UI ชั้นถัดไป ยังไม่ใช้ใน Part 1
 var PUBLIC_STATUS_LABELS = {
@@ -89,6 +164,7 @@ var ACTION_LABELS_ = {
   reassigned: 'เปลี่ยนผู้รับผิดชอบ/ย้ายสถานี',
   edited: 'แก้ไขข้อมูล',
   status_updated: 'ปรับสถานะ (ทะเบียนผลงานทั้งหมด)',
+  transition: 'เปลี่ยนสถานะ',
 };
 
 // ค่าตั้งต้นของ Settings (key-value) — ตรง docs/DESIGN.md 4.5 / A-list ในหัวข้อ 2
