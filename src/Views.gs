@@ -785,7 +785,7 @@ var STAFF_CSS_ = '' +
   '.topbar-title{font-weight:700;font-size:1.05rem;}' +
   '.topbar-user{font-size:.8rem;opacity:.9;text-align:right;}' +
   '.orgtag{display:block;font-size:.72rem;opacity:.8;}' +
-  '.content{max-width:640px;margin:0 auto;padding:14px 12px 12px;}' +
+  '.content{width:80%;max-width:1600px;margin:0 auto;padding:14px 12px 12px;box-sizing:border-box;}' +
   '.scope-note{font-size:.85rem;color:var(--muted);margin:2px 4px 12px;}' +
   '.metric-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 2px rgba(20,40,55,.06);}' +
   '.metric-head{display:flex;justify-content:space-between;align-items:baseline;}' +
