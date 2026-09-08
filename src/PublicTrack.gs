@@ -72,11 +72,21 @@ function getLatestRevisionInfo_(ss, workId) {
   return null;
 }
 
-/** doGet ฝั่งผู้เยี่ยมชม (ไม่ Login) — ออก session_token ใหม่ทุกครั้งที่เปิดฟอร์มหน้าแรก */
-function handlePublicTrackGet_() {
+/**
+ * doGet ฝั่งผู้เยี่ยมชม (ไม่ Login) — ออก session_token ใหม่ทุกครั้งที่เปิดฟอร์มหน้าแรก
+ * ถ้ามาจากสแกน QR บนเอกสาร (?t=) เติมเลขติดตามให้อัตโนมัติ — เจ้าของผลงานกรอกแค่เลขบัตร 4 ตัวท้ายยืนยันตัวตนต่อ
+ * (QR อย่างเดียวไม่พอเปิดดูสถานะ ต้องรู้เลขบัตรด้วย กันคนอื่นที่เห็นเอกสารแอบดูข้อมูล)
+ */
+function handlePublicTrackGet_(e) {
   var baseUrl = getWebAppUrl_();
   var sessionToken = randomToken_(16);
-  return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ', renderPublicTrackFormBody_(baseUrl, sessionToken, [], {}));
+  var token = String((e && e.parameter && e.parameter.t) || '').trim();
+  var prevValues = {};
+  if (token) {
+    var work = findWorkByQrToken_(getSpreadsheet_(), token);
+    if (work) prevValues.tracking_no = work.tracking_no;
+  }
+  return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ', renderPublicTrackFormBody_(baseUrl, sessionToken, [], prevValues));
 }
 
 /** doPost form_action=track_status — ไม่ต้องมี user (เรียกก่อนตรวจสิทธิ์เจ้าหน้าที่ใน doPost) */

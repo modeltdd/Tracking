@@ -13,7 +13,7 @@ function doGet(e) {
   var email = getCurrentUserEmail_();
   if (!email) {
     // ผู้เยี่ยมชมไม่ได้ Login → โซนสาธารณะ (ตรวจสอบสถานะด้วยเลขติดตาม+last4, PublicTrack.gs)
-    return handlePublicTrackGet_();
+    return handlePublicTrackGet_(e);
   }
 
   var user = findUserByEmail_(email);
