@@ -395,7 +395,7 @@ function renderPublicTrackFormBody_(baseUrl, sessionToken, errors, prevValues) {
     '<button class="btn-primary" type="submit">ตรวจสอบสถานะ</button>' +
     '</form>' +
     '<div class="qr-scan-divider"><span>หรือ</span></div>' +
-    '<input type="file" accept="image/*" capture="environment" id="qr-photo-input" style="display:none">' +
+    '<input type="file" accept="image/*" capture="environment" id="qr-photo-input" data-base-url="' + escapeHtml_(baseUrl) + '" style="display:none">' +
     '<button type="button" id="qr-photo-btn" class="btn-action btn-action-secondary" style="display:none">' +
     'ถ่ายรูป / เลือกรูป QR เพื่อค้นหา</button>' +
     '<p id="qr-photo-msg" class="hint" style="display:none"></p>' +
@@ -443,7 +443,9 @@ var QR_PHOTO_SCAN_SCRIPT_ = '' +
   'if (!result) { msg.textContent = "ไม่พบ QR Code ในรูปภาพ กรุณาลองใหม่ หรือกรอกเลขติดตามด้วยตนเองด้านบน"; return; }' +
   'var m = result.data.match(/(?:^|[?&])t=([A-Za-z0-9]+)/);' +
   'if (!m) { msg.textContent = "รูปนี้ไม่ใช่ QR ของระบบตรวจสอบผลงานวิชาการ"; return; }' +
-  'var target = location.href.split("?")[0] + "?t=" + encodeURIComponent(m[1]);' +
+  // location.href ในนี้คือ URL ของ iframe sandbox (googleusercontent.com) ไม่ใช่ URL จริงของ Web App —
+  // ต้องใช้ baseUrl ที่ฝั่ง server คำนวณมาให้ (getWebAppUrl_) ผ่าน data-base-url แทนเสมอ
+  'var target = input.dataset.baseUrl + "?t=" + encodeURIComponent(m[1]);' +
   // iframe sandbox ของ HtmlService บางครั้งบล็อก top-navigation ที่สั่งจาก JS แบบ async (หลุด user-activation
   // window ไปแล้วตอน image decode เสร็จ) — ลองสั่งไปเลยเผื่อได้ พร้อมโชว์ลิงก์ตัวจริงคลิกเองไว้กันค้าง
   // (ลิงก์ target=_top ธรรมดาผ่านสิทธิ์เสมอ เพราะนับเป็น user gesture ใหม่ตอนคลิก — pattern เดียวกับทั้งระบบ)
