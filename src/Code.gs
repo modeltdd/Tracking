@@ -39,6 +39,8 @@ function routeStaffPage_(e, user) {
     case 'forward':
       var forwardWorks = getForwardableWorks_(ss, user.organization);
       return renderStaffPage_('ส่งต่อ', renderForwardListBody_(user.organization, forwardWorks, getStationsMap_(ss), baseUrl), user, 'forward', baseUrl);
+    case 'registry':
+      return renderRegistryRoute_(ss, user, params, baseUrl, '');
     case 'search':
       var query = params.q || '';
       var results = searchWorks_(ss, user.organization, query);
@@ -103,6 +105,23 @@ function doPost(e) {
         user, 'scan', baseUrl);
     }
     return renderStaffPage_('บันทึกสำเร็จ', renderActionSuccessBody_(actionResult, baseUrl), user, 'scan', baseUrl);
+  }
+
+  if (formAction === 'registry_status_update') {
+    if (!canAccessRegistry_(user)) {
+      return renderStaffPage_('ไม่มีสิทธิ์เข้าถึง', renderStubBody_('เฉพาะบัญชีผู้รับผิดชอบ/ผู้ดูแลระบบเท่านั้นที่เข้าหน้านี้ได้', baseUrl), user, 'dashboard', baseUrl);
+    }
+    var returnRp = parseRegistryParams_({ q: e.parameter.return_q, status: e.parameter.return_status, p: e.parameter.return_p, per: e.parameter.return_per });
+    var registryResult = performRegistryStatusUpdate_(ss, user, e);
+    if (!registryResult.ok) {
+      var editWork = registryResult.work || findWorkById_(ss, e.parameter.work_id);
+      if (!editWork) {
+        return renderStaffPage_('ทะเบียนผลงานทั้งหมด', renderStubBody_('ไม่พบงานที่ระบุ', baseUrl), user, 'registry', baseUrl);
+      }
+      return renderStaffPage_('อัปเดตสถานะ',
+        renderRegistryEditBody_(editWork, returnRp, baseUrl, registryResult.errors, e.parameter), user, 'registry', baseUrl);
+    }
+    return renderRegistryRoute_(ss, user, returnRp, baseUrl, 'บันทึกสถานะเรียบร้อยแล้ว');
   }
 
   if (formAction === 'admin_station_save' || formAction === 'admin_user_save') {

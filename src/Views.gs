@@ -20,6 +20,7 @@ var NAV_ITEMS_ = [
   { page: 'scan', label: 'สแกน QR', icon: '⌗' },
   { page: 'forward', label: 'ส่งต่อ', icon: '→' },
   { page: 'search', label: 'ค้นหา', icon: '⌕' },
+  { page: 'registry', label: 'ทะเบียน', icon: '▤', registryOnly: true },
   { page: 'admin', label: 'ผู้ดูแล', icon: '⚙', adminOnly: true },
 ];
 
@@ -37,7 +38,9 @@ var METRIC_SECTIONS_ = [
  *  กัน relative href พังใน iframe sandbox ของ HtmlService (ดูคอมเมนต์ getWebAppUrl_ ใน Utils.gs) */
 function renderStaffPage_(title, bodyHtml, user, activePage, baseUrl) {
   var navHtml = NAV_ITEMS_.filter(function (item) {
-    return !item.adminOnly || user.role === 'Admin';
+    if (item.adminOnly && user.role !== 'Admin') return false;
+    if (item.registryOnly && !canAccessRegistry_(user)) return false;
+    return true;
   }).map(function (item) {
     var isActive = item.page === activePage;
     return '<a class="navitem' + (isActive ? ' active' : '') + '" target="_top" href="' + baseUrl + '?page=' + item.page + '">' +
@@ -123,6 +126,115 @@ function renderForwardListBody_(org, works, stationsMap, baseUrl) {
   return '' +
     '<p class="scope-note">งานของหน่วยงาน <b>' + escapeHtml_(org) + '</b> ที่ส่งต่อได้ทันที</p>' +
     '<section class="metric-card">' + listHtml + '</section>';
+}
+
+/** หน้าทะเบียนผลงานทั้งหมด (เฉพาะ ผู้รับผิดชอบ/Admin) — ช่องค้นหา + ตัวกรองสถานะ + ตาราง + pagination */
+function renderRegistryListBody_(pageResult, rp, totalAllCount, baseUrl, flashMessage) {
+  var flashHtml = flashMessage ? '<div class="success-banner">' + escapeHtml_(flashMessage) + '</div>' : '';
+
+  var statusOptions = '<option value="">ทุกสถานะ</option>' + Object.keys(PUBLIC_STATUS_LABELS).map(function (k) {
+    var sel = rp.status === k ? ' selected' : '';
+    return '<option value="' + k + '"' + sel + '>' + escapeHtml_(PUBLIC_STATUS_LABELS[k]) + '</option>';
+  }).join('');
+
+  var perOptions = REGISTRY_PER_PAGE_OPTIONS_.map(function (n) {
+    var sel = rp.per === n ? ' selected' : '';
+    return '<option value="' + n + '"' + sel + '>' + n + ' รายการ/หน้า</option>';
+  }).join('');
+
+  var filterFormHtml = '' +
+    '<form method="get" target="_top" action="' + baseUrl + '" class="reg-form" style="margin-bottom:12px;">' +
+    '<input type="hidden" name="page" value="registry">' +
+    '<div class="field-row">' +
+    '<div class="field"><label>ค้นหา</label><input class="input" type="text" name="q" value="' + escapeHtml_(rp.q) +
+    '" placeholder="เลขทะเบียน / ชื่อเจ้าของผลงาน / ชื่อผลงาน / หน่วยงาน"></div>' +
+    '</div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>สถานะ</label><select class="input" name="status">' + statusOptions + '</select></div>' +
+    '<div class="field"><label>แสดง</label><select class="input" name="per">' + perOptions + '</select></div>' +
+    '</div>' +
+    '<button class="btn-primary" type="submit">ค้นหา/กรอง</button>' +
+    '</form>';
+
+  var rows = pageResult.items.map(function (w) {
+    var ownerName = (w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '');
+    var statusLabel = PUBLIC_STATUS_LABELS[w.current_status_public] || w.current_status_public || '-';
+    var cls = STATUS_PILL_CLASS_[w.current_status_public] || 'pending';
+    return '<tr>' +
+      '<td>' + escapeHtml_(w.tracking_no) + '</td>' +
+      '<td>' + formatDateTh_(w.received_date) + '</td>' +
+      '<td>' + escapeHtml_(ownerName) + '</td>' +
+      '<td>' + escapeHtml_(w.work_title || '-') + '</td>' +
+      '<td>' + escapeHtml_(w.current_owner_org || '-') + '</td>' +
+      '<td>' + escapeHtml_(w.work_type || '-') + '</td>' +
+      '<td><span class="pill pill-' + cls + '">' + escapeHtml_(statusLabel) + '</span></td>' +
+      '<td>' + formatDateTh_(w.updated_at) + '</td>' +
+      '<td><a class="btn-action btn-action-primary btn-action-sm" target="_top" href="' + baseUrl + '?' +
+      buildRegistryQuery_(rp, { edit: w.work_id }) + '">อัปเดตสถานะ</a></td>' +
+      '</tr>';
+  }).join('');
+
+  var tableHtml = pageResult.items.length
+    ? '<div class="table-scroll"><table class="admin-table"><thead><tr>' +
+      '<th>เลขทะเบียน</th><th>วันที่รับเอกสาร</th><th>ชื่อเจ้าของผลงาน</th><th>ชื่อผลงาน/เรื่อง</th>' +
+      '<th>หน่วยงาน</th><th>ประเภทผลงาน</th><th>สถานะปัจจุบัน</th><th>วันที่อัปเดตล่าสุด</th><th>จัดการ</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+    : '<div class="empty">ไม่พบรายการที่ตรงกับเงื่อนไข</div>';
+
+  var pagerHtml = '';
+  if (pageResult.totalItems > 0) {
+    var prevLink = pageResult.page > 1
+      ? '<a target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { p: pageResult.page - 1 }) + '">&larr; ก่อนหน้า</a>'
+      : '<span class="muted-link">&larr; ก่อนหน้า</span>';
+    var nextLink = pageResult.page < pageResult.totalPages
+      ? '<a target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { p: pageResult.page + 1 }) + '">ถัดไป &rarr;</a>'
+      : '<span class="muted-link">ถัดไป &rarr;</span>';
+    pagerHtml = '<div class="pager">' + prevLink +
+      '<span>หน้า ' + pageResult.page + ' / ' + pageResult.totalPages + ' (ทั้งหมด ' + pageResult.totalItems + ' รายการ' +
+      (rp.q || rp.status ? ' จาก ' + totalAllCount : '') + ')</span>' + nextLink + '</div>';
+  }
+
+  return flashHtml + filterFormHtml + '<section class="metric-card">' + tableHtml + pagerHtml + '</section>';
+}
+
+/** หน้าต่างแก้ไข (แทน Modal — codebase นี้ไม่มี client-side JS/AJAX มาก่อน ใช้หน้าฟอร์มเต็มหน้าตาม pattern เดียวกับปุ่ม action อื่น ๆ)
+ *  แก้ current_status_public + หมายเหตุ + วันที่ดำเนินการ ของ 1 รายการที่เลือก — POST กลับ form_action=registry_status_update */
+function renderRegistryEditBody_(work, rp, baseUrl, errors, prevValues) {
+  prevValues = prevValues || {};
+  var v = function (key) { return key in prevValues ? prevValues[key] : ''; };
+  var errorHtml = (errors && errors.length)
+    ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+
+  var currentStatus = v('new_status') || work.current_status_public;
+  var statusOptions = Object.keys(PUBLIC_STATUS_LABELS).map(function (k) {
+    var sel = currentStatus === k ? ' selected' : '';
+    return '<option value="' + k + '"' + sel + '>' + escapeHtml_(PUBLIC_STATUS_LABELS[k]) + '</option>';
+  }).join('');
+
+  var ownerName = (work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '');
+  var actionDateValue = v('action_date') || formatDateInput_(new Date());
+  var backHref = baseUrl + '?' + buildRegistryQuery_(rp, {});
+
+  return errorHtml +
+    '<div class="detail-card">' +
+    '<div class="detail-row"><span class="detail-label">เลขทะเบียน</span><span class="detail-value">' + escapeHtml_(work.tracking_no) + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">เจ้าของผลงาน</span><span class="detail-value">' + escapeHtml_(ownerName) + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">ชื่อผลงาน</span><span class="detail-value">' + escapeHtml_(work.work_title || '-') + '</span></div>' +
+    '</div>' +
+    '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form">' +
+    '<input type="hidden" name="form_action" value="registry_status_update">' +
+    '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
+    '<input type="hidden" name="return_q" value="' + escapeHtml_(rp.q) + '">' +
+    '<input type="hidden" name="return_status" value="' + escapeHtml_(rp.status) + '">' +
+    '<input type="hidden" name="return_p" value="' + rp.p + '">' +
+    '<input type="hidden" name="return_per" value="' + rp.per + '">' +
+    '<div class="field"><label>สถานะปัจจุบันของเอกสาร</label><select class="input" name="new_status">' + statusOptions + '</select></div>' +
+    '<div class="field"><label>วันที่ดำเนินการ/วันที่อัปเดต</label><input class="input" type="date" name="action_date" value="' + escapeHtml_(actionDateValue) + '"></div>' +
+    '<div class="field"><label>หมายเหตุ</label><textarea class="input" name="note" rows="3">' + escapeHtml_(v('note')) + '</textarea></div>' +
+    '<button class="btn-primary" type="submit">บันทึก</button>' +
+    '</form>' +
+    '<p><a target="_top" href="' + escapeHtml_(backHref) + '">&larr; กลับไปทะเบียนผลงานทั้งหมด</a></p>';
 }
 
 /** หน้าค้นหา — ช่องค้นหา (GET) + ผลลัพธ์ (ค้นหาแล้วครอบคลุมทุกหน่วยงาน, ไม่ค้นหาแสดงเฉพาะหน่วยงานตน) */
@@ -705,6 +817,10 @@ var STAFF_CSS_ = '' +
   '.btn-primary{width:100%;padding:12px;border:none;border-radius:10px;background:var(--teal);color:#fff;font-size:1rem;font-weight:700;font-family:inherit;margin-top:6px;}' +
   '.error-banner{background:#fdecec;border:1px solid var(--danger);color:var(--danger);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:.85rem;}' +
   '.error-banner ul{margin:6px 0 0;padding-left:18px;}' +
+  '.success-banner{background:#e8f6ee;border:1px solid #2f9e57;color:#1f7a40;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:.85rem;font-weight:600;}' +
+  '.pager{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;font-size:.8rem;flex-wrap:wrap;}' +
+  '.pager a{color:var(--teal);text-decoration:none;font-weight:600;}' +
+  '.muted-link{color:var(--muted);}' +
   '.success-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:24px;text-align:center;}' +
   '.success-title{color:var(--done);font-weight:700;font-size:1.1rem;margin:0 0 8px;}' +
   '.tracking-big{font-size:1.4rem;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;margin:0 0 14px;}' +

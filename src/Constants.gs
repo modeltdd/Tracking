@@ -88,6 +88,7 @@ var ACTION_LABELS_ = {
   closed: 'ปิดงาน (ข้ามขั้นตอนที่เหลือ)',
   reassigned: 'เปลี่ยนผู้รับผิดชอบ/ย้ายสถานี',
   edited: 'แก้ไขข้อมูล',
+  status_updated: 'ปรับสถานะ (ทะเบียนผลงานทั้งหมด)',
 };
 
 // ค่าตั้งต้นของ Settings (key-value) — ตรง docs/DESIGN.md 4.5 / A-list ในหัวข้อ 2
