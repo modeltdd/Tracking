@@ -81,30 +81,34 @@ var WORKSTATIONS_SEED = [
 // 24 state ตามกระบวนการจริงที่ผู้ใช้กำหนด (2026-09-08) — org: 'ORG_FROM' = ค่าพิเศษ แปลว่าให้ resolve
 // เป็น work.org_from ของงานนั้น ๆ แทน (ดู resolveResponsibleOrg_ ใน Search.gs) เพราะแต่ละงานมีหน่วยงาน
 // ต้นสังกัดต่างกัน ไม่ใช่ org คงที่แบบ 4 หน่วยงานหลัก (สนง เขต/เลขา/ประธานกรรมการ/กรรมการ)
+// order เก็บเป็น "String" เจตนา (ไม่ใช่ Number) เพื่อรองรับเลขลำดับย่อยแบบทศนิยม เช่น "3.1"/"8.4" โดยไม่ชนกับ
+// สถานีอื่นในกลุ่มเดียวกัน (เดิมทุกสถานีในกลุ่ม 7.x/8.x/9.x ใช้เลขเต็มซ้ำกันหมด เช่น 7,7,7,7,7 ทำให้คอลัมน์
+// "ลำดับ" ในหน้า Admin แสดงซ้ำกันจนแยกไม่ออก) เรียงลำดับด้วย compareStationOrder_() (Utils.gs, parseFloat
+// เทียบเชิงตัวเลขจริง ไม่ใช่เทียบ string ตรงๆ ที่จะทำให้ "10" มาก่อน "2")
 var WORKFLOW_STATES_SEED = [
-  { key: 's1', order: 1, name: 'รับเรื่องจากหน่วยงาน', org: 'สนง เขต', days: 3, pub: 'received' },
-  { key: 's2', order: 2, name: 'ตรวจสอบเอกสาร', org: 'สนง เขต', days: 5, pub: 'checking' },
-  { key: 's3_1', order: 3, name: 'ครบถ้วน-ส่งเลขา', org: 'สนง เขต', days: 1, pub: 'checking' },
-  { key: 's3_2', order: 3, name: 'ไม่ครบถ้วน-ส่งคืนหน่วยงาน', org: 'ORG_FROM', days: 7, pub: 'need_revision' },
-  { key: 's4', order: 4, name: 'เลขาส่งเอกสารให้กรรมการ', org: 'เลขา', days: 3, pub: 'in_review' },
-  { key: 's5', order: 5, name: 'ประธานนัดประชุม', org: 'ประธานกรรมการ', days: 7, pub: 'in_review' },
-  { key: 's6', order: 6, name: 'กรรมการประชุมพิจารณา (รอสรุปผล)', org: 'กรรมการ', days: 15, pub: 'in_review' },
-  { key: 's7', order: 7, name: 'เลขาแจ้งผลการพิจารณามาที่ สนง เขต', org: 'เลขา', days: 3, pub: 'pending_approval' },
-  { key: 's7_1', order: 7, name: 'ผ่าน (ผ่านการประเมิน)', org: 'สนง เขต', days: 3, pub: 'pending_approval' },
-  { key: 's7_2', order: 7, name: 'แก้ไข 2 เดือน (ปรับปรุงแก้ไขไม่เป็นสาระสำคัญ)', org: 'สนง เขต', days: 3, pub: 'need_revision' },
-  { key: 's7_3', order: 7, name: 'แก้ไข 6 เดือน (ปรับปรุงแก้ไขสาระสำคัญ)', org: 'สนง เขต', days: 3, pub: 'need_revision' },
-  { key: 's7_4', order: 7, name: 'ไม่ผ่าน (ไม่ผ่านการประเมิน)', org: 'สนง เขต', days: 3, pub: 'pending_approval' },
-  { key: 's8_1', order: 8, name: 'สนง เขต แจ้งผลหน่วยงาน', org: 'สนง เขต', days: 5, pub: 'need_revision' },
-  { key: 's8_2', order: 8, name: 'หน่วยงานแจ้งผลเจ้าของผลงาน', org: 'ORG_FROM', days: 5, pub: 'need_revision' },
-  { key: 's8_3', order: 8, name: 'เจ้าของผลงานแก้ไขเอกสาร', org: 'ORG_FROM', days: 45, pub: 'need_revision' },
-  { key: 's8_4', order: 8, name: 'เจ้าของผลงานส่งเอกสารแก้ไขกลับหน่วยงาน', org: 'ORG_FROM', days: 5, pub: 'need_revision' },
-  { key: 's8_5', order: 8, name: 'หน่วยงานส่งเอกสารแก้ไขกลับ สนง เขต', org: 'ORG_FROM', days: 5, pub: 'need_revision' },
-  { key: 's8_6', order: 8, name: 'สนง เขต ส่งเอกสารแก้ไขให้เลขา', org: 'สนง เขต', days: 3, pub: 'in_review' },
-  { key: 's9_1', order: 9, name: 'เลขาส่งเอกสารให้กรรมการ ครั้งที่ 2', org: 'เลขา', days: 3, pub: 'in_review' },
-  { key: 's9_2', order: 9, name: 'ประธานนัดประชุม ครั้งที่ 2', org: 'ประธานกรรมการ', days: 7, pub: 'in_review' },
-  { key: 's9_3', order: 9, name: 'กรรมการประชุมพิจารณา ครั้งที่ 2', org: 'กรรมการ', days: 15, pub: 'in_review' },
-  { key: 's9_4', order: 9, name: 'เลขาแจ้งผลการพิจารณา ครั้งที่ 2 มาที่ สนง เขต', org: 'เลขา', days: 3, pub: 'pending_approval' },
-  { key: 's10', order: 10, name: 'แจ้งผลหน่วยงาน (ผ่าน/ไม่ผ่าน)', org: 'สนง เขต', days: 3, pub: 'done' },
+  { key: 's1', order: '1', name: 'รับเรื่องจากหน่วยงาน', org: 'สนง เขต', days: 3, pub: 'received' },
+  { key: 's2', order: '2', name: 'ตรวจสอบเอกสาร', org: 'สนง เขต', days: 5, pub: 'checking' },
+  { key: 's3_1', order: '3.1', name: 'ครบถ้วน-ส่งเลขา', org: 'สนง เขต', days: 1, pub: 'checking' },
+  { key: 's3_2', order: '3.2', name: 'ไม่ครบถ้วน-ส่งคืนหน่วยงาน', org: 'ORG_FROM', days: 7, pub: 'need_revision' },
+  { key: 's4', order: '4', name: 'เลขาส่งเอกสารให้กรรมการ', org: 'เลขา', days: 3, pub: 'in_review' },
+  { key: 's5', order: '5', name: 'ประธานนัดประชุม', org: 'ประธานกรรมการ', days: 7, pub: 'in_review' },
+  { key: 's6', order: '6', name: 'กรรมการประชุมพิจารณา (รอสรุปผล)', org: 'กรรมการ', days: 15, pub: 'in_review' },
+  { key: 's7', order: '7', name: 'เลขาแจ้งผลการพิจารณามาที่ สนง เขต', org: 'เลขา', days: 3, pub: 'pending_approval' },
+  { key: 's7_1', order: '7.1', name: 'ผ่าน (ผ่านการประเมิน)', org: 'สนง เขต', days: 3, pub: 'pending_approval' },
+  { key: 's7_2', order: '7.2', name: 'แก้ไข 2 เดือน (ปรับปรุงแก้ไขไม่เป็นสาระสำคัญ)', org: 'สนง เขต', days: 3, pub: 'need_revision' },
+  { key: 's7_3', order: '7.3', name: 'แก้ไข 6 เดือน (ปรับปรุงแก้ไขสาระสำคัญ)', org: 'สนง เขต', days: 3, pub: 'need_revision' },
+  { key: 's7_4', order: '7.4', name: 'ไม่ผ่าน (ไม่ผ่านการประเมิน)', org: 'สนง เขต', days: 3, pub: 'pending_approval' },
+  { key: 's8_1', order: '8.1', name: 'สนง เขต แจ้งผลหน่วยงาน', org: 'สนง เขต', days: 5, pub: 'need_revision' },
+  { key: 's8_2', order: '8.2', name: 'หน่วยงานแจ้งผลเจ้าของผลงาน', org: 'ORG_FROM', days: 5, pub: 'need_revision' },
+  { key: 's8_3', order: '8.3', name: 'เจ้าของผลงานแก้ไขเอกสาร', org: 'ORG_FROM', days: 45, pub: 'need_revision' },
+  { key: 's8_4', order: '8.4', name: 'เจ้าของผลงานส่งเอกสารแก้ไขกลับหน่วยงาน', org: 'ORG_FROM', days: 5, pub: 'need_revision' },
+  { key: 's8_5', order: '8.5', name: 'หน่วยงานส่งเอกสารแก้ไขกลับ สนง เขต', org: 'ORG_FROM', days: 5, pub: 'need_revision' },
+  { key: 's8_6', order: '8.6', name: 'สนง เขต ส่งเอกสารแก้ไขให้เลขา', org: 'สนง เขต', days: 3, pub: 'in_review' },
+  { key: 's9_1', order: '9.1', name: 'เลขาส่งเอกสารให้กรรมการ ครั้งที่ 2', org: 'เลขา', days: 3, pub: 'in_review' },
+  { key: 's9_2', order: '9.2', name: 'ประธานนัดประชุม ครั้งที่ 2', org: 'ประธานกรรมการ', days: 7, pub: 'in_review' },
+  { key: 's9_3', order: '9.3', name: 'กรรมการประชุมพิจารณา ครั้งที่ 2', org: 'กรรมการ', days: 15, pub: 'in_review' },
+  { key: 's9_4', order: '9.4', name: 'เลขาแจ้งผลการพิจารณา ครั้งที่ 2 มาที่ สนง เขต', org: 'เลขา', days: 3, pub: 'pending_approval' },
+  { key: 's10', order: '10', name: 'แจ้งผลหน่วยงาน (ผ่าน/ไม่ผ่าน)', org: 'สนง เขต', days: 3, pub: 'done' },
 ];
 
 // เส้นทาง (transition) ระหว่าง state — 1 state ไปได้หลายทางถ้ามีมากกว่า 1 แถวที่ from ตรงกัน (จุดตัดสินใจ)

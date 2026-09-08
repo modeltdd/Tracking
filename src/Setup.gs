@@ -198,6 +198,37 @@ function fixWebAppBaseUrl() {
     'QR เก่าที่พิมพ์ไปแล้วต้องเปิดงานนั้นแล้วกด "พิมพ์ QR ใหม่" ทีละใบ');
 }
 
+/**
+ * แก้ไข station_order ของชีต WorkflowStates ที่มีอยู่แล้วให้ตรงกับ WORKFLOW_STATES_SEED ปัจจุบัน (2026-09-08 ปรับ
+ * ให้เป็นเลขลำดับย่อยแบบทศนิยม เช่น "3.1"/"8.4" แทนเลขเต็มซ้ำกัน เช่น 7,7,7,7,7 ที่ทำให้คอลัมน์ "ลำดับ" อ่านไม่ออก)
+ * แก้เฉพาะคอลัมน์ station_order ทีละแถวด้วย station_key เดิม ไม่แตะคอลัมน์อื่น/ไม่กระทบ Works หรือ StatusHistory
+ * ปลอดภัยรันซ้ำได้ — รันครั้งเดียวจาก Editor (จำเป็นเฉพาะกรณีเคยรัน migrateToWorkflowStates() ไปแล้วก่อนแก้ไขนี้)
+ */
+function fixWorkflowStateOrders() {
+  var ss = getSpreadsheet_();
+  var sheet = ss.getSheetByName(SHEET.WORKFLOW_STATES);
+  if (!sheet) {
+    Logger.log('ไม่พบชีต WorkflowStates — ยังไม่เคยรัน migrateToWorkflowStates() ไม่ต้องรันฟังก์ชันนี้ (seed ใหม่ถูกต้องอยู่แล้ว)');
+    return;
+  }
+  var orderByKey = {};
+  WORKFLOW_STATES_SEED.forEach(function (st) { orderByKey[st.key] = st.order; });
+
+  // เขียนทับทุกแถวเสมอ (ไม่เช็คว่าค่าตรงกันแล้วข้าม) เพราะถึงค่าตัวเลขจะตรงกันแล้ว (เช่น 7 vs "7") เซลล์เดิม
+  // อาจยังเป็น Number อยู่ ไม่ใช่ Text ตามที่ต้องการ — บังคับเขียนใหม่ทุกครั้งให้ชัวร์ว่าเป็น string จริง
+  var updated = 0;
+  var existing = readSheetAsObjects_(sheet);
+  existing.forEach(function (row) {
+    var correctOrder = orderByKey[row.station_key];
+    if (correctOrder !== undefined) {
+      updateWorkStationRow_(ss, row.station_key, { station_order: correctOrder });
+      updated++;
+    }
+  });
+  Logger.log('แก้ไข station_order เรียบร้อย ' + updated + ' แถว (จากทั้งหมด ' + existing.length + ' state) — ' +
+    'ตรวจสอบผลที่หน้า Admin > จัดการ Workflow');
+}
+
 /** seed ค่าตั้งต้นของ Settings — เติมเฉพาะ key ที่ยังไม่มี (ไม่ทับค่าที่ Admin ตั้งไปแล้ว) */
 function seedSettings_(ss) {
   var sheet = ss.getSheetByName(SHEET.SETTINGS);

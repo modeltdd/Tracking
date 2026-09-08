@@ -729,7 +729,8 @@ function renderStationFormBody_(ss, station, baseUrl, errors, prevValues) {
         '<input type="hidden" name="station_key" value="' + escapeHtml_(station.station_key) + '">') +
     '</div>' +
     '<div class="field-row">' +
-    '<div class="field"><label>ลำดับ</label><input class="input" type="number" name="station_order" value="' + escapeHtml_(v('station_order')) + '"></div>' +
+    '<div class="field"><label>ลำดับ</label><input class="input" type="text" inputmode="decimal" pattern="[0-9]+(\.[0-9]+)?" ' +
+    'placeholder="เช่น 8 หรือ 8.1" name="station_order" value="' + escapeHtml_(v('station_order')) + '"></div>' +
     '<div class="field"><label>วันมาตรฐาน</label><input class="input" type="number" name="standard_days" value="' + escapeHtml_(v('standard_days')) + '"></div>' +
     '</div>' +
     '<div class="field"><label>ชื่อสถานี</label><input class="input" name="station_name" value="' + escapeHtml_(v('station_name')) + '"></div>' +

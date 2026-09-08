@@ -84,7 +84,7 @@ function computeExecMetrics_(ss) {
 
 function listStationsSorted_(ss) {
   return readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_STATES))
-    .sort(function (a, b) { return Number(a.station_order) - Number(b.station_order); });
+    .sort(function (a, b) { return compareStationOrder_(a.station_order, b.station_order); });
 }
 
 function findStationByKey_(ss, key) {
@@ -117,7 +117,7 @@ function performAdminStationSave_(ss, user, e) {
   if (!/^[a-zA-Z0-9_]+$/.test(values.station_key)) errors.push('รหัสสถานี (station_key) ต้องเป็นตัวอักษรอังกฤษ/ตัวเลข/underscore เท่านั้น');
   if (!values.station_name) errors.push('ชื่อสถานีห้ามว่าง');
   if (!values.org) errors.push('หน่วยงานห้ามว่าง');
-  if (!values.station_order || isNaN(Number(values.station_order))) errors.push('ลำดับสถานีต้องเป็นตัวเลข');
+  if (!/^[0-9]+(\.[0-9]+)?$/.test(values.station_order)) errors.push('ลำดับสถานีต้องเป็นตัวเลข เช่น 8 หรือ 8.1 (ไม่ใส่ช่องว่าง/ตัวอักษร)');
   if (!values.standard_days || isNaN(Number(values.standard_days))) errors.push('จำนวนวันมาตรฐานต้องเป็นตัวเลข');
   if (!PUBLIC_STATUS_LABELS[values.public_status]) errors.push('สถานะสาธารณะที่เลือกไม่ถูกต้อง');
 
@@ -127,7 +127,7 @@ function performAdminStationSave_(ss, user, e) {
 
   if (errors.length) return { ok: false, errors: errors, values: values, isNew: isNew };
 
-  values.station_order = Number(values.station_order);
+  // station_order คงเป็น string เจตนา (รองรับ "8.1") — แปลงเป็น Number แค่ standard_days
   values.standard_days = Number(values.standard_days);
 
   if (isNew) {

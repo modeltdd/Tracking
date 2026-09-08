@@ -120,7 +120,7 @@ function registerNewWork_(ss, user, e) {
 function getFirstActiveStation_(ss) {
   var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_STATES))
     .filter(function (s) { return s.active; })
-    .sort(function (a, b) { return Number(a.station_order) - Number(b.station_order); });
+    .sort(function (a, b) { return compareStationOrder_(a.station_order, b.station_order); });
   if (!stations.length) throw new Error('ยังไม่มีสถานี Workflow ที่เปิดใช้งาน (ตรวจสอบชีต WorkflowStates)');
   return stations[0];
 }

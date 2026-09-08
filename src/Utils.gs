@@ -115,6 +115,12 @@ function maskNameForPublic_(titleName, firstName, lastName) {
   return String(titleName || '').trim() + ' ' + maskPart(firstName) + ' ' + maskPart(lastName);
 }
 
+/** เทียบ station_order สำหรับเรียงลำดับสถานี Workflow — เก็บเป็น text (รองรับ "3.1"/"8.4") แต่ต้อง
+ *  เทียบเชิงตัวเลขจริง (parseFloat) ไม่ใช่เทียบ string ตรง ๆ ที่จะทำให้ "10" มาก่อน "2" ผิดลำดับ */
+function compareStationOrder_(a, b) {
+  return parseFloat(a) - parseFloat(b);
+}
+
 /** สร้างรหัสสุ่มสำหรับ QR token / session token ฯลฯ (ตัวอักษร+ตัวเลข ตัดตัวที่อ่านสับสนออก) */
 function randomToken_(length) {
   var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ตัด O/0, I/1 กันอ่านผิด
