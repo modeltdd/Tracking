@@ -127,8 +127,22 @@ function renderForwardListBody_(org, works, stationsMap, baseUrl) {
 }
 
 /** หน้าทะเบียนผลงานทั้งหมด (เฉพาะ ผู้รับผิดชอบ/Admin) — ช่องค้นหา + ตัวกรองสถานะ + ตาราง + pagination */
-function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, baseUrl, flashMessage) {
+function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts, baseUrl, flashMessage) {
   var flashHtml = flashMessage ? '<div class="success-banner">' + escapeHtml_(flashMessage) + '</div>' : '';
+
+  var tileDefs = [
+    { key: '', label: 'ทั้งหมด', count: bucketCounts.all },
+    { key: 'progress', label: 'อยู่ระหว่างดำเนินการ', count: bucketCounts.progress },
+    { key: 'revision', label: 'รอแก้ไข', count: bucketCounts.revision },
+    { key: 'done', label: 'เสร็จสิ้น', count: bucketCounts.done },
+    { key: 'overdue', label: 'ค้างนาน', count: bucketCounts.overdue },
+  ];
+  var tilesHtml = '<div class="registry-tiles">' + tileDefs.map(function (t) {
+    var active = rp.bucket === t.key ? ' active' : '';
+    return '<a class="registry-tile' + active + '" target="_top" href="' + baseUrl + '?' +
+      buildRegistryQuery_(rp, { bucket: t.key, p: 1 }) + '">' +
+      '<span class="registry-tile-count">' + t.count + '</span><span class="registry-tile-label">' + escapeHtml_(t.label) + '</span></a>';
+  }).join('') + '</div>';
 
   var stationsMap = getStationsMap_(ss);
   var allStates = listStationsSorted_(ss);
@@ -207,7 +221,7 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, baseUrl, fla
 
   var pagerHtml = '';
   if (pageResult.totalItems > 0) {
-    var hasFilter = rp.q || rp.state || rp.resp || rp.org || rp.result;
+    var hasFilter = rp.q || rp.state || rp.resp || rp.org || rp.result || rp.bucket;
     var prevLink = pageResult.page > 1
       ? '<a target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { p: pageResult.page - 1 }) + '">&larr; ก่อนหน้า</a>'
       : '<span class="muted-link">&larr; ก่อนหน้า</span>';
@@ -219,7 +233,7 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, baseUrl, fla
       (hasFilter ? ' จาก ' + totalAllCount : '') + ')</span>' + nextLink + '</div>';
   }
 
-  return flashHtml + filterFormHtml +
+  return flashHtml + tilesHtml + filterFormHtml +
     '<p class="hint" style="margin:0 0 10px">คลิก "ดูรายละเอียด/จัดการ" — เห็นได้ทุกรายการ แก้สถานะได้เฉพาะที่หน่วยงานตนรับผิดชอบ ณ state ปัจจุบันเท่านั้น</p>' +
     '<section class="metric-card">' + tableHtml + pagerHtml + '</section>';
 }
@@ -359,9 +373,10 @@ function renderPublicTrackFormBody_(baseUrl, sessionToken, errors, prevValues) {
 
 /** ผลตรวจสอบสถานะสาธารณะ — เฉพาะฟิลด์ที่เปิดเผยได้ (ไม่มีชื่อ-สกุล/ผู้ดำเนินการ/timeline ภายใน)
  *  ถ้าสถานะ = need_revision แสดงกล่อง "รายการที่ต้องแก้ไข" (revision detail) แยกจากการ์ดสถานะหลัก */
-function renderPublicResultBody_(work, revisionInfo, baseUrl) {
+function renderPublicResultBody_(work, revisionInfo, steps, baseUrl) {
   var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
   var label = PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public || '-';
+  var maskedName = maskNameForPublic_(work.title_name, work.first_name, work.last_name);
 
   var revisionHtml = '';
   if (work.current_status_public === 'need_revision' && revisionInfo) {
@@ -374,14 +389,26 @@ function renderPublicResultBody_(work, revisionInfo, baseUrl) {
       '</div>';
   }
 
+  var stepperHtml = '';
+  if (steps) {
+    stepperHtml = '<div class="pub-stepper">' + steps.map(function (s) {
+      var icon = s.state === 'done' ? '✓' : (s.state === 'current' ? '●' : '');
+      return '<div class="pub-step pub-step-' + s.state + '">' +
+        '<span class="pub-step-icon">' + icon + '</span><span class="pub-step-label">' + escapeHtml_(s.label) + '</span></div>';
+    }).join('') + '</div>';
+  }
+
   return '' +
     '<div class="detail-card">' +
     '<div class="detail-head"><span class="tracking-big">' + escapeHtml_(work.tracking_no) + '</span>' +
     '<span class="pill pill-' + cls + '">' + escapeHtml_(label) + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">เจ้าของผลงาน</span><span class="detail-value">' + escapeHtml_(maskedName) + '</span></div>' +
     '<div class="detail-row"><span class="detail-label">ชื่อผลงาน</span><span class="detail-value">' + escapeHtml_(work.work_title || '-') + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">วันที่รับเอกสาร</span><span class="detail-value">' + formatDateTh_(work.received_date) + '</span></div>' +
     '<div class="detail-row"><span class="detail-label">อัปเดตล่าสุด</span><span class="detail-value">' + formatDateTh_(work.updated_at) + '</span></div>' +
     (work.next_step_text ? '<div class="detail-row"><span class="detail-label">ขั้นตอนถัดไป</span><span class="detail-value">' + escapeHtml_(work.next_step_text) + '</span></div>' : '') +
     '</div>' +
+    stepperHtml +
     revisionHtml +
     '<p><a target="_top" href="' + baseUrl + '">&larr; ตรวจสอบรายการอื่น</a></p>';
 }
@@ -844,6 +871,12 @@ var STAFF_CSS_ = '' +
   '.error-banner{background:#fdecec;border:1px solid var(--danger);color:var(--danger);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:.85rem;}' +
   '.error-banner ul{margin:6px 0 0;padding-left:18px;}' +
   '.success-banner{background:#e8f6ee;border:1px solid #2f9e57;color:#1f7a40;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:.85rem;font-weight:600;}' +
+  '.registry-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px;}' +
+  '.registry-tile{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-decoration:none;text-align:center;}' +
+  '.registry-tile-count{display:block;font-size:1.3rem;font-weight:700;color:var(--navy);}' +
+  '.registry-tile-label{display:block;font-size:.72rem;color:var(--muted);margin-top:2px;}' +
+  '.registry-tile.active{border-color:var(--teal);background:#e8f6f6;}' +
+  '.registry-tile.active .registry-tile-count{color:var(--teal);}' +
   '.pager{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;font-size:.8rem;flex-wrap:wrap;}' +
   '.pager a{color:var(--teal);text-decoration:none;font-weight:600;}' +
   '.muted-link{color:var(--muted);}' +
@@ -888,4 +921,16 @@ var STAFF_CSS_ = '' +
 var PUBLIC_CSS_ = '' +
   '.public-body{padding-bottom:24px;}' +
   '.revision-box{background:#fdf6e3;border:1px solid var(--revision);border-radius:12px;padding:14px 16px;margin-bottom:12px;}' +
-  '.revision-title{color:var(--revision);font-weight:700;margin:0 0 6px;}';
+  '.revision-title{color:var(--revision);font-weight:700;margin:0 0 6px;}' +
+  '.pub-stepper{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px;}' +
+  '.pub-step{display:flex;align-items:center;gap:12px;padding:6px 0;position:relative;}' +
+  '.pub-step:not(:last-child){padding-bottom:20px;}' +
+  '.pub-step:not(:last-child)::before{content:"";position:absolute;left:11px;top:26px;bottom:-4px;width:2px;background:var(--border);}' +
+  '.pub-step-icon{flex-shrink:0;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;' +
+  'font-size:.8rem;font-weight:700;background:#fff;border:2px solid var(--border);color:var(--muted);z-index:1;}' +
+  '.pub-step-label{font-size:.88rem;color:var(--muted);}' +
+  '.pub-step-done .pub-step-icon{background:var(--teal);border-color:var(--teal);color:#fff;}' +
+  '.pub-step-done .pub-step-label{color:var(--text);}' +
+  '.pub-step-done:not(:last-child)::before{background:var(--teal);}' +
+  '.pub-step-current .pub-step-icon{background:var(--navy);border-color:var(--navy);color:#fff;}' +
+  '.pub-step-current .pub-step-label{color:var(--navy);font-weight:700;}';

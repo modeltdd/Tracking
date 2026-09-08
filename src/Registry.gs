@@ -29,14 +29,35 @@ function getAllWorksForRegistry_(ss) {
   });
 }
 
-/** กรองด้วยคำค้น (เลขทะเบียน/ชื่อเจ้าของผลงาน/ชื่อผลงาน/หน่วยงาน) + state/ผู้รับผิดชอบ/หน่วยงาน/ผลการพิจารณา */
-function filterRegistryWorks_(works, rp) {
+/** สรุปตัวเลข 4 กลุ่มสำหรับ tile บนหัวหน้าทะเบียน (คลิกกรองได้) — ค้างนานคำนวณด้วย dueBucketFor_ เดิม (Dashboard.gs) */
+function computeRegistryBuckets_(ss, works) {
+  var history = readSheetAsObjects_(ss.getSheetByName(SHEET.STATUS_HISTORY));
+  var stationsMap = getStationsMap_(ss);
+  var buckets = { all: works.length, progress: 0, revision: 0, done: 0, overdue: 0 };
+  var overdueIds = {};
+  works.forEach(function (w) {
+    if (w.current_status_public === 'need_revision') buckets.revision++;
+    else if (TERMINAL_STATUSES_.indexOf(w.current_status_public) !== -1) buckets.done++;
+    else buckets.progress++;
+    var station = stationsMap[w.current_station_key];
+    if (dueBucketFor_(history, w, station) === 'overdue') { buckets.overdue++; overdueIds[w.work_id] = true; }
+  });
+  return { counts: buckets, overdueIds: overdueIds };
+}
+
+/** กรองด้วยคำค้น (เลขทะเบียน/ชื่อเจ้าของผลงาน/ชื่อผลงาน/หน่วยงาน) + state/ผู้รับผิดชอบ/หน่วยงาน/ผลการพิจารณา/bucket tile
+ *  overdueIds: ผลลัพธ์จาก computeRegistryBuckets_().overdueIds — ต้องคำนวณแยกล่วงหน้าเพราะ overdue ต้องใช้ StatusHistory */
+function filterRegistryWorks_(works, rp, overdueIds) {
   var needle = String(rp.q || '').trim().toLowerCase();
   return works.filter(function (w) {
     if (rp.state && w.current_station_key !== rp.state) return false;
     if (rp.resp && w.current_owner_org !== rp.resp) return false;
     if (rp.org && w.org_from !== rp.org) return false;
     if (rp.result && w.evaluation_result !== rp.result) return false;
+    if (rp.bucket === 'revision' && w.current_status_public !== 'need_revision') return false;
+    if (rp.bucket === 'done' && TERMINAL_STATUSES_.indexOf(w.current_status_public) === -1) return false;
+    if (rp.bucket === 'progress' && (w.current_status_public === 'need_revision' || TERMINAL_STATUSES_.indexOf(w.current_status_public) !== -1)) return false;
+    if (rp.bucket === 'overdue' && !(overdueIds && overdueIds[w.work_id])) return false;
     if (!needle) return true;
     var ownerName = ((w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '')).toLowerCase();
     return String(w.tracking_no || '').toLowerCase().indexOf(needle) !== -1 ||
@@ -65,12 +86,13 @@ function parseRegistryParams_(params) {
     resp: String(params.resp || '').trim(),
     org: String(params.org || '').trim(),
     result: String(params.result || '').trim(),
+    bucket: String(params.bucket || '').trim(),
     p: parseInt(params.p, 10) || 1,
     per: parseInt(params.per, 10) || REGISTRY_PER_PAGE_OPTIONS_[1],
   };
 }
 
-/** เส้นทางหน้าทะเบียนผลงานทั้งหมด (GET) — ลิสต์ + ค้นหา/กรอง + แบ่งหน้าเท่านั้น (แก้ไขไปที่หน้าสแกน QR แทน) */
+/** เส้นทางหน้าทะเบียนผลงานทั้งหมด (GET) — สรุปตัวเลข (tile) + ลิสต์ + ค้นหา/กรอง + แบ่งหน้า (แก้ไขไปที่หน้าสแกน QR แทน) */
 function renderRegistryRoute_(ss, user, params, baseUrl, flashMessage) {
   if (!canAccessRegistry_(user)) {
     return renderStaffPage_('ไม่มีสิทธิ์เข้าถึง', renderStubBody_('เฉพาะบัญชีผู้รับผิดชอบ/ผู้ดูแลระบบเท่านั้นที่เข้าหน้านี้ได้', baseUrl), user, 'dashboard', baseUrl);
@@ -78,15 +100,16 @@ function renderRegistryRoute_(ss, user, params, baseUrl, flashMessage) {
 
   var rp = parseRegistryParams_(params);
   var all = getAllWorksForRegistry_(ss);
-  var filtered = filterRegistryWorks_(all, rp);
+  var bucketData = computeRegistryBuckets_(ss, all);
+  var filtered = filterRegistryWorks_(all, rp, bucketData.overdueIds);
   var pageResult = paginateList_(filtered, rp.p, rp.per);
   return renderStaffPage_('ทะเบียนผลงานทั้งหมด',
-    renderRegistryListBody_(ss, pageResult, rp, all.length, baseUrl, flashMessage), user, 'registry', baseUrl);
+    renderRegistryListBody_(ss, pageResult, rp, all.length, bucketData.counts, baseUrl, flashMessage), user, 'registry', baseUrl);
 }
 
-/** ต่อ query string จาก parseRegistryParams_() บวก override เฉพาะจุด — ใช้สร้างลิงก์แบ่งหน้า */
+/** ต่อ query string จาก parseRegistryParams_() บวก override เฉพาะจุด — ใช้สร้างลิงก์แบ่งหน้า/tile */
 function buildRegistryQuery_(rp, overrides) {
-  var merged = { q: rp.q, state: rp.state, resp: rp.resp, org: rp.org, result: rp.result, p: rp.p, per: rp.per };
+  var merged = { q: rp.q, state: rp.state, resp: rp.resp, org: rp.org, result: rp.result, bucket: rp.bucket, p: rp.p, per: rp.per };
   Object.keys(overrides || {}).forEach(function (k) { merged[k] = overrides[k]; });
   var parts = ['page=registry'];
   if (merged.q) parts.push('q=' + encodeURIComponent(merged.q));
@@ -94,6 +117,7 @@ function buildRegistryQuery_(rp, overrides) {
   if (merged.resp) parts.push('resp=' + encodeURIComponent(merged.resp));
   if (merged.org) parts.push('org=' + encodeURIComponent(merged.org));
   if (merged.result) parts.push('result=' + encodeURIComponent(merged.result));
+  if (merged.bucket) parts.push('bucket=' + encodeURIComponent(merged.bucket));
   if (merged.p && merged.p !== 1) parts.push('p=' + merged.p);
   if (merged.per && merged.per !== REGISTRY_PER_PAGE_OPTIONS_[1]) parts.push('per=' + merged.per);
   return parts.join('&');

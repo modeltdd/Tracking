@@ -151,6 +151,11 @@ var PUBLIC_STATUS_LABELS = {
   terminated: 'ยุติกระบวนการ',
 };
 
+// ลำดับขั้นตอนคงที่สำหรับ Step Progress หน้าสาธารณะ (ใช้ป้าย PUBLIC_STATUS_LABELS จริงเป็นหลัก ไม่ใช่ชื่อสมมติ)
+// ครอบคลุมทั้งเส้นทางปกติและเส้นทาง "รอแก้ไข" ไว้ในลำดับเดียวเสมอ — ระบบจะทำเครื่องหมาย ✓/●/ยังไม่ถึง
+// ตามที่งานนั้นเคยผ่านจริงหรือไม่ (ไม่ได้แปลว่าทุกงานต้องผ่านทุกขั้น เช่นงานที่ไม่เคยถูกขอแก้ไขจะไม่ติ๊ก "รอแก้ไข")
+var PUBLIC_STEP_SEQUENCE_ = ['received', 'checking', 'in_review', 'need_revision', 'pending_approval', 'done'];
+
 // ป้ายชื่อ action ใน StatusHistory (ตรง docs/DESIGN.md 4.2) — ใช้แสดงบน Timeline หน้ารายละเอียดงาน
 var ACTION_LABELS_ = {
   registered: 'ลงทะเบียนรับเรื่อง',

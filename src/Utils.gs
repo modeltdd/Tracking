@@ -103,6 +103,18 @@ function formatDateTh_(date) {
   }
 }
 
+/** ปกปิดชื่อ-สกุลสำหรับแสดงบนหน้าสาธารณะ (docs/DESIGN.md A10) — 2 ตัวอักษรแรกของชื่อ/สกุล ตามด้วย "***"
+ *  เช่น "นาย นภ*** ทุม***" — คำนำหน้าไม่ใช่ข้อมูลระบุตัวตน แสดงเต็มได้ ใช้กับหน้าติดตามสถานะสาธารณะเท่านั้น
+ *  (หน้าเจ้าหน้าที่/Admin ยังเห็นชื่อเต็มตามเดิม ไม่เปลี่ยน) */
+function maskNameForPublic_(titleName, firstName, lastName) {
+  function maskPart(s) {
+    s = String(s || '').trim();
+    if (!s) return '-';
+    return s.slice(0, 2) + '***';
+  }
+  return String(titleName || '').trim() + ' ' + maskPart(firstName) + ' ' + maskPart(lastName);
+}
+
 /** สร้างรหัสสุ่มสำหรับ QR token / session token ฯลฯ (ตัวอักษร+ตัวเลข ตัดตัวที่อ่านสับสนออก) */
 function randomToken_(length) {
   var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // ตัด O/0, I/1 กันอ่านผิด

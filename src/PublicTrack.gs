@@ -80,6 +80,37 @@ function getLatestRevisionInfo_(ss, workId) {
 }
 
 /**
+ * Step Progress หน้าสาธารณะ — ลำดับคงที่ 6 ขั้น (PUBLIC_STEP_SEQUENCE_, Constants.gs) ใช้ป้ายสถานะสาธารณะ
+ * จริงของระบบเป็นหลัก (ไม่ใช่ชื่อสมมติ) แต่ละขั้นทำเครื่องหมาย:
+ *   done    = งานนี้เคยมีสถานะเป็นค่านี้จริงมาก่อน (เช็คจาก public_status ของทุกสถานีที่เคยผ่าน)
+ *   current = ตรงกับสถานะปัจจุบันเป๊ะ
+ *   upcoming = ยังไม่เคยถึง (ปล่อยว่าง ไม่ติ๊กมั่วว่า "ผ่านแล้ว" ทั้งที่งานนี้อาจไม่เคยถูกขอแก้ไขเลยก็ได้)
+ * งานที่ terminated (ยุติกระบวนการ) ไม่แสดง stepper เพราะไม่ใช่เส้นทางปกติ — โชว์ pill สถานะเฉยๆ พอ
+ */
+function buildPublicMacroSteps_(history, stationsMap, currentStatus) {
+  if (currentStatus === 'terminated') return null;
+  var visited = {};
+  history.forEach(function (h) {
+    if (!h.to_station) return;
+    var st = stationsMap[h.to_station];
+    if (st && st.public_status) visited[st.public_status] = true;
+  });
+  visited[currentStatus] = true;
+  return PUBLIC_STEP_SEQUENCE_.map(function (key) {
+    var state = key === currentStatus ? 'current' : (visited[key] ? 'done' : 'upcoming');
+    return { key: key, label: PUBLIC_STATUS_LABELS[key], state: state };
+  });
+}
+
+/** ประกอบข้อมูลที่หน้าผลลัพธ์สาธารณะต้องใช้ทั้งหมด (revision info + step progress) — เรียกจากทั้ง GET (QR) และ POST (กรอกเอง) */
+function buildPublicResultData_(ss, work) {
+  var revisionInfo = work.current_status_public === 'need_revision' ? getLatestRevisionInfo_(ss, work.work_id) : null;
+  var history = getHistoryForWork_(ss, work.work_id);
+  var stationsMap = getStationsMap_(ss);
+  return { revisionInfo: revisionInfo, steps: buildPublicMacroSteps_(history, stationsMap, work.current_status_public) };
+}
+
+/**
  * doGet ฝั่งผู้เยี่ยมชม (ไม่ Login) — สแกน QR บนเอกสาร (?t=) เข้าดูสถานะได้ทันที ไม่ต้องกรอกเลขบัตรซ้ำ
  * (2026-09-08 ตัดขั้นกรอกเลขบัตรยืนยันตัวตนออกสำหรับเส้นทางนี้ตามคำขอ — ผู้ที่เห็น/ถ่ายภาพ QR บนเอกสาร
  * จะเปิดดูสถานะได้เลย; ไม่มี t หรือหา QR ไม่เจอ ยังคงใช้ฟอร์มกรอกเลขติดตาม+เลขบัตร 4 ตัวท้ายตามเดิม)
@@ -92,8 +123,8 @@ function handlePublicTrackGet_(e) {
     var work = findWorkByQrToken_(ss, token);
     if (work) {
       writeSearchLog_(ss, work.tracking_no, '(QR)', true, randomToken_(16));
-      var revisionInfo = work.current_status_public === 'need_revision' ? getLatestRevisionInfo_(ss, work.work_id) : null;
-      return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(work, revisionInfo, baseUrl));
+      var data = buildPublicResultData_(ss, work);
+      return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(work, data.revisionInfo, data.steps, baseUrl));
     }
   }
   var sessionToken = randomToken_(16);
@@ -108,7 +139,6 @@ function handlePublicTrackPost_(ss, e) {
     return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ',
       renderPublicTrackFormBody_(baseUrl, result.session_token, result.errors, { tracking_no: (e.parameter || {}).tracking_no }));
   }
-  var revisionInfo = result.work.current_status_public === 'need_revision'
-    ? getLatestRevisionInfo_(ss, result.work.work_id) : null;
-  return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(result.work, revisionInfo, baseUrl));
+  var data = buildPublicResultData_(ss, result.work);
+  return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(result.work, data.revisionInfo, data.steps, baseUrl));
 }
