@@ -33,6 +33,29 @@ var METRIC_SECTIONS_ = [
   { key: 'returnedForRevision', label: 'ส่งกลับแก้ไข', hint: 'รอเจ้าของผลงานส่งฉบับแก้ไขกลับมา' },
 ];
 
+/**
+ * แจ้งผู้ใช้ว่า "กำลังทำงาน" เมื่อกดปุ่ม/ลิงก์ — ทุกหน้าเป็น server-render เต็มหน้าปกติ (ไม่มี AJAX) ปุ่มที่กด
+ * แล้วเงียบจนกว่าจะโหลดหน้าใหม่เสร็จทำให้ดูเหมือนกดไม่ติด โดยเฉพาะเน็ตช้า — สคริปต์นี้แค่ปิดปุ่ม/เปลี่ยนข้อความ
+ * ทันทีตอนกด ไม่ยุ่งกับ logic ใดๆ ฝั่ง server ใช้ร่วมทั้งโซนเจ้าหน้าที่และโซนสาธารณะ (แทรกท้ายทุกหน้า)
+ */
+var LOADING_FEEDBACK_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'document.querySelectorAll("form").forEach(function (f) {' +
+  'f.addEventListener("submit", function () {' +
+  'var btn = f.querySelector("button[type=submit]");' +
+  'if (btn && !btn.disabled) { btn.textContent = "กำลังดำเนินการ..."; btn.disabled = true; btn.style.opacity = "0.6"; }' +
+  '});' +
+  '});' +
+  'document.querySelectorAll("a.btn-action, a.btn-primary").forEach(function (a) {' +
+  'a.addEventListener("click", function () {' +
+  'if (a.dataset.loading) return;' +
+  'a.dataset.loading = "1"; a.textContent = "กำลังโหลด..."; a.style.opacity = "0.6"; a.style.pointerEvents = "none";' +
+  '});' +
+  '});' +
+  '});' +
+  '</script>';
+
 /** ครอบหน้าเจ้าหน้าที่ด้วยเชลล์เต็มรูปแบบ: header ผู้ใช้ + เนื้อหา + bottom-nav
  *  baseUrl: URL เต็มของ Web App (จาก getWebAppUrl_()) — ลิงก์ภายในทุกอันต้อง absolute + target="_top"
  *  กัน relative href พังใน iframe sandbox ของ HtmlService (ดูคอมเมนต์ getWebAppUrl_ ใน Utils.gs) */
@@ -62,6 +85,7 @@ function renderStaffPage_(title, bodyHtml, user, activePage, baseUrl) {
     '<main class="content">' + bodyHtml + '</main>' +
     '<a class="fab" target="_top" href="' + baseUrl + '?page=register" title="รับเอกสารใหม่">+</a>' +
     '<nav class="bottomnav">' + navHtml + '</nav>' +
+    LOADING_FEEDBACK_SCRIPT_ +
     '</body></html>';
 
   return HtmlService.createHtmlOutput(html)
@@ -345,6 +369,7 @@ function renderPublicPage_(title, bodyHtml) {
     '</head><body class="public-body">' +
     '<header class="topbar"><div class="topbar-title">' + escapeHtml_(title) + '</div></header>' +
     '<main class="content">' + bodyHtml + '</main>' +
+    LOADING_FEEDBACK_SCRIPT_ +
     '</body></html>';
   return HtmlService.createHtmlOutput(html)
     .setTitle(title)
