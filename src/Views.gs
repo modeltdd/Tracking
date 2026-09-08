@@ -544,6 +544,17 @@ function renderStationFormBody_(ss, station, baseUrl, errors, prevValues) {
     ? (prevValues.active === true || prevValues.active === '1')
     : (station ? !!station.active : true);
 
+  var roleChoices = getDistinctStationRoles_(ss);
+  var roleSelectHtml_ = function (fieldName) {
+    var current = v(fieldName);
+    var opts = roleChoices.slice();
+    if (current && opts.indexOf(current) === -1) opts.push(current);
+    return '<select class="input" name="' + fieldName + '">' + opts.map(function (r) {
+      var sel = current === r ? ' selected' : '';
+      return '<option value="' + escapeHtml_(r) + '"' + sel + '>' + escapeHtml_(r) + '</option>';
+    }).join('') + '</select>';
+  };
+
   return errorHtml +
     '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form">' +
     '<input type="hidden" name="form_action" value="admin_station_save">' +
@@ -562,8 +573,8 @@ function renderStationFormBody_(ss, station, baseUrl, errors, prevValues) {
     '<div class="field"><label>หน่วยงานรับผิดชอบ</label><input class="input" name="org" value="' + escapeHtml_(v('org')) + '"></div>' +
     '<div class="field"><label>สถานีถัดไป</label><select class="input" name="next_station_key">' + nextOptions + '</select></div>' +
     '<div class="field"><label>สถานะสาธารณะที่แสดง</label><select class="input" name="public_status">' + statusOptions + '</select></div>' +
-    '<div class="field"><label>บทบาทผู้รับเอกสาร</label><input class="input" name="receive_role" value="' + escapeHtml_(v('receive_role')) + '"></div>' +
-    '<div class="field"><label>บทบาทผู้อนุมัติ</label><input class="input" name="approve_role" value="' + escapeHtml_(v('approve_role')) + '"></div>' +
+    '<div class="field"><label>บทบาทผู้รับเอกสาร</label>' + roleSelectHtml_('receive_role') + '</div>' +
+    '<div class="field"><label>บทบาทผู้อนุมัติ</label>' + roleSelectHtml_('approve_role') + '</div>' +
     '<div class="field"><label>วิธีแจ้งเตือน</label><input class="input" name="notify_method" value="' + escapeHtml_(v('notify_method')) + '"></div>' +
     '<label class="checkbox-row"><input type="checkbox" name="active" value="1"' + (activeChecked ? ' checked' : '') + '> เปิดใช้งานสถานีนี้</label>' +
     '<button class="btn-primary" type="submit">บันทึก</button>' +

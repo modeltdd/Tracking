@@ -206,6 +206,20 @@ function getForwardableWorks_(ss, org) {
   }).sort(byUpdatedAtDesc_);
 }
 
+/** รายชื่อบทบาท (receive_role/approve_role) ทั้งหมดที่ใช้อยู่จริงในชีต WorkStations (ไม่ซ้ำ) — ใช้เป็นตัวเลือก dropdown ในฟอร์มแก้ไขสถานี ของ Admin */
+function getDistinctStationRoles_(ss) {
+  var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORK_STATIONS));
+  var seen = { '-': true };
+  var out = ['-'];
+  stations.forEach(function (s) {
+    [s.receive_role, s.approve_role].forEach(function (r) {
+      r = String(r || '').trim();
+      if (r && !seen[r]) { seen[r] = true; out.push(r); }
+    });
+  });
+  return out;
+}
+
 /** รายชื่อหน่วยงานทั้งหมดที่ปรากฏใน WorkStations (ไม่ซ้ำ) — ใช้เป็นตัวเลือกในฟอร์ม "เปลี่ยนผู้รับผิดชอบ" ของ Admin */
 function getDistinctStationOrgs_(ss) {
   var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORK_STATIONS));
