@@ -98,6 +98,26 @@ function migrateWorkStationsToRealProcess() {
     'ตรวจสอบผลที่หน้า Admin > จัดการ Workflow');
 }
 
+/**
+ * ย้าย role ในชีต Users จากชุดเดิม 4 แบบ (Admin/เจ้าหน้าที่รับเอกสาร/เจ้าหน้าที่ผู้รับผิดชอบ/ผู้ดูข้อมูลอย่างเดียว)
+ * มาเป็น 2 แบบ (Admin/ผู้รับผิดชอบ) ตามโครงสร้างผู้ใช้งานใหม่ที่ตกลงกัน 2026-09-08 — บทบาทเดิมไม่เคยมีผลต่อ
+ * สิทธิ์กดปุ่ม action จริง (อิงจาก organization เป็นหลัก, role มีผลแค่ Admin เท่านั้น) จึงรวมเหลือ role เดียวได้
+ * โดยไม่กระทบการทำงาน — รันด้วยตนเองจาก Apps Script Editor ครั้งเดียว
+ */
+function migrateUserRolesToResponsible() {
+  var ss = getSpreadsheet_();
+  var sheet = ss.getSheetByName(SHEET.USERS);
+  var users = readSheetAsObjects_(sheet);
+  var changed = 0;
+  users.forEach(function (u) {
+    if (u.role !== 'Admin' && u.role !== 'ผู้รับผิดชอบ') {
+      updateUserRow_(ss, u.user_email, { role: 'ผู้รับผิดชอบ' });
+      changed++;
+    }
+  });
+  Logger.log('แก้ไข role ผู้ใช้งานเป็น "ผู้รับผิดชอบ" แล้ว ' + changed + ' บัญชี (จากทั้งหมด ' + users.length + ' บัญชี)');
+}
+
 /** seed ค่าตั้งต้นของ Settings — เติมเฉพาะ key ที่ยังไม่มี (ไม่ทับค่าที่ Admin ตั้งไปแล้ว) */
 function seedSettings_(ss) {
   var sheet = ss.getSheetByName(SHEET.SETTINGS);

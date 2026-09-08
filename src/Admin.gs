@@ -4,7 +4,7 @@
  * เข้าถึงได้เฉพาะ user.role === 'Admin' เท่านั้น — ตรวจซ้ำทั้งจุดเข้า GET (renderAdminRoute_) และทุกจุดเข้า POST (Code.gs)
  */
 
-var ADMIN_ROLE_OPTIONS_ = ['Admin', 'เจ้าหน้าที่รับเอกสาร', 'เจ้าหน้าที่ผู้รับผิดชอบ', 'ผู้ดูข้อมูลอย่างเดียว'];
+var ADMIN_ROLE_OPTIONS_ = ['Admin', 'ผู้รับผิดชอบ'];
 
 /** จุดเข้าโซน Admin ทั้งหมด (?page=admin) — แยกหน้าย่อยด้วย ?tab= */
 function renderAdminRoute_(ss, user, params, baseUrl) {
