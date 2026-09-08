@@ -302,9 +302,22 @@ function renderWorkDetailBody_(work, history, stationsMap, baseUrl) {
     '<div class="detail-head"><span class="tracking-big">' + escapeHtml_(work.tracking_no) + '</span>' +
     '<span class="pill pill-' + cls + '">' + escapeHtml_(statusLabel) + '</span></div>' +
     fieldsHtml + coverHtml +
+    '<p><a target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
     '</div>' +
     '<section class="metric-card"><div class="metric-head"><span class="metric-label">ประวัติการดำเนินการ</span></div>' + timelineHtml + '</section>' +
     '<p><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>';
+}
+
+/** หน้าพิมพ์ QR ใหม่ — qr_token เดิมไม่เปลี่ยน จึงสร้างภาพ QR เดิมซ้ำได้ทุกเมื่อ (ใช้ตอน QR บนเอกสารเสีย/หาย) */
+function renderQrPrintBody_(work, qrImageUrl, baseUrl) {
+  return '' +
+    '<div class="success-card">' +
+    '<p class="tracking-big">' + escapeHtml_(work.tracking_no) + '</p>' +
+    '<img class="qr-img" src="' + escapeHtml_(qrImageUrl) + '" alt="QR code เอกสาร ' + escapeHtml_(work.tracking_no) + '">' +
+    '<p class="hint">พิมพ์/แปะ QR นี้ไว้บนเอกสาร ใช้สแกนรับงานที่สถานีถัดไป</p>' +
+    '<button class="btn-primary no-print" type="button" onclick="window.print()">พิมพ์ QR นี้</button>' +
+    '</div>' +
+    '<p class="no-print"><a target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(work.work_id) + '">&larr; กลับหน้ารายละเอียด</a></p>';
 }
 
 /** ครอบหน้าโซนสาธารณะ (ไม่ Login) — topbar เรียบๆ ไม่มี bottom-nav/FAB ของเจ้าหน้าที่ ใช้ CSS ชุดเดียวกับ STAFF_CSS_ */
@@ -786,6 +799,7 @@ var STAFF_CSS_ = '' +
   '.topbar-user{font-size:.8rem;opacity:.9;text-align:right;}' +
   '.orgtag{display:block;font-size:.72rem;opacity:.8;}' +
   '.content{width:80%;max-width:1600px;margin:0 auto;padding:14px 12px 12px;box-sizing:border-box;}' +
+  '@media print{.topbar,.bottomnav,.fab,.no-print{display:none!important;}.content{width:100%;padding:0;}}' +
   '.scope-note{font-size:.85rem;color:var(--muted);margin:2px 4px 12px;}' +
   '.metric-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 2px rgba(20,40,55,.06);}' +
   '.metric-head{display:flex;justify-content:space-between;align-items:baseline;}' +

@@ -56,6 +56,15 @@ function routeStaffPage_(e, user) {
       }
       var stationsMap = getStationsMap_(ss);
       return renderStaffPage_('รายละเอียดผลงาน', renderWorkDetailBody_(work, workHistory, stationsMap, baseUrl), user, 'search', baseUrl);
+    case 'qrprint':
+      var qrWork = findWorkById_(ss, params.id);
+      if (!qrWork) {
+        return renderStaffPage_('ไม่พบรายการ', renderStubBody_('ไม่พบงานที่ระบุ (work_id: ' + params.id + ')', baseUrl), user, 'search', baseUrl);
+      }
+      if (!canViewWorkDetail_(qrWork, user, getHistoryForWork_(ss, qrWork.work_id))) {
+        return renderStaffPage_('ไม่มีสิทธิ์เข้าถึง', renderStubBody_('งานนี้ไม่เกี่ยวข้องกับหน่วยงานของท่าน', baseUrl), user, 'search', baseUrl);
+      }
+      return renderStaffPage_('พิมพ์ QR', renderQrPrintBody_(qrWork, buildQrImageUrl_(ss, qrWork.qr_token), baseUrl), user, 'search', baseUrl);
     case 'register':
       return renderStaffPage_('รับเอกสารใหม่', renderRegisterFormBody_(ss, {}, [], baseUrl), user, 'register', baseUrl);
     case 'dashboard':
