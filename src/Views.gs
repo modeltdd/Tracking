@@ -404,12 +404,13 @@ function renderPublicTrackFormBody_(baseUrl, sessionToken, errors, prevValues) {
 }
 
 /** ปุ่ม "ถ่ายรูป/เลือกรูป QR" บนหน้าตรวจสอบสถานะสาธารณะ — ค้นหาแบบที่ 2 นอกเหนือจากกรอกเลขติดตามเอง
- *  ใช้ BarcodeDetector มาตรฐานเบราว์เซอร์ (ไม่มีในทุกเบราว์เซอร์) — 2026-09-08 แก้จากที่เคยซ่อนปุ่มไปเงียบๆ
- *  ถ้าเบราว์เซอร์ไม่รองรับ (ผู้ใช้จริงเจอปัญหา "ไม่ขึ้นอะไร" งงว่าทำไมไม่มีปุ่ม) ตอนนี้ "แสดงปุ่มเสมอ" แล้วเช็ค
- *  รองรับตอนกด ถ้าไม่รองรับจะบอกข้อความชัดเจนแทนเงียบหาย ถอดรหัสจากรูปที่ถ่าย/เลือกโดยตรง (ไม่ใช้กล้อง
- *  live-stream — ง่ายกว่า/รองรับกว้างกว่า) รู้จัก QR ทั้งแบบมี URL เต็ม (?t=XXXX) และแบบเก่าที่ยังไม่ได้ตั้งค่า
- *  web_app_base_url (แค่ t=XXXX ตรงๆ) */
+ *  2026-09-08 เปลี่ยนจาก BarcodeDetector (API มาตรฐานเบราว์เซอร์ แต่ Chrome บนเดสก์ท็อป/หลายแพลตฟอร์มไม่มี
+ *  จริง แม้ property จะมีอยู่ก็ตาม — ผู้ใช้จริงเจอปัญหาปุ่มไม่ทำงานใน Chrome) มาใช้ไลบรารี jsQR แทน (pure JS,
+ *  ถอดรหัสจาก canvas ตรงๆ ไม่พึ่ง browser API ที่ยังรองรับไม่ทั่วถึง — ทำงานได้ในเบราว์เซอร์สมัยใหม่แทบทุกตัว
+ *  รวม Chrome desktop) โหลดจาก CDN (jsdelivr) — ถอดรหัสจากรูปที่ถ่าย/เลือกโดยตรง (ไม่ใช้กล้อง live-stream)
+ *  รู้จัก QR ทั้งแบบมี URL เต็ม (?t=XXXX) และแบบเก่าที่ยังไม่ได้ตั้งค่า web_app_base_url (แค่ t=XXXX ตรงๆ) */
 var QR_PHOTO_SCAN_SCRIPT_ = '' +
+  '<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>' +
   '<script>' +
   'document.addEventListener("DOMContentLoaded", function () {' +
   'var btn = document.getElementById("qr-photo-btn");' +
@@ -418,9 +419,9 @@ var QR_PHOTO_SCAN_SCRIPT_ = '' +
   'if (!btn || !input) return;' +
   'btn.style.display = "block";' +
   'btn.addEventListener("click", function () {' +
-  'if (!("BarcodeDetector" in window)) {' +
+  'if (typeof jsQR !== "function") {' +
   'msg.style.display = "block";' +
-  'msg.textContent = "เบราว์เซอร์นี้ยังไม่รองรับการอ่าน QR จากรูปภาพ กรุณากรอกเลขติดตามด้วยตนเองด้านบนแทน";' +
+  'msg.textContent = "โหลดตัวอ่าน QR ไม่สำเร็จ (เช็คอินเทอร์เน็ต) กรุณากรอกเลขติดตามด้วยตนเองด้านบนแทน";' +
   'return;' +
   '}' +
   'input.click();' +
@@ -429,20 +430,25 @@ var QR_PHOTO_SCAN_SCRIPT_ = '' +
   'var file = input.files && input.files[0];' +
   'if (!file) return;' +
   'msg.style.display = "block"; msg.textContent = "กำลังอ่าน QR Code จากรูป...";' +
-  'createImageBitmap(file).then(function (bitmap) {' +
-  'var detector = new BarcodeDetector({ formats: ["qr_code"] });' +
-  'return detector.detect(bitmap);' +
-  '}).then(function (codes) {' +
-  'if (!codes.length) { msg.textContent = "ไม่พบ QR Code ในรูปภาพ กรุณาลองใหม่ หรือกรอกเลขติดตามด้วยตนเองด้านบน"; return; }' +
-  'var raw = codes[0].rawValue || "";' +
-  'var m = raw.match(/(?:^|[?&])t=([A-Za-z0-9]+)/);' +
+  'var img = new Image();' +
+  'var objectUrl = URL.createObjectURL(file);' +
+  'img.onload = function () {' +
+  'var canvas = document.createElement("canvas");' +
+  'canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;' +
+  'var ctx = canvas.getContext("2d");' +
+  'ctx.drawImage(img, 0, 0);' +
+  'var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);' +
+  'URL.revokeObjectURL(objectUrl);' +
+  'var result = jsQR(imageData.data, imageData.width, imageData.height);' +
+  'if (!result) { msg.textContent = "ไม่พบ QR Code ในรูปภาพ กรุณาลองใหม่ หรือกรอกเลขติดตามด้วยตนเองด้านบน"; return; }' +
+  'var m = result.data.match(/(?:^|[?&])t=([A-Za-z0-9]+)/);' +
   'if (!m) { msg.textContent = "รูปนี้ไม่ใช่ QR ของระบบตรวจสอบผลงานวิชาการ"; return; }' +
   'msg.textContent = "พบ QR แล้ว กำลังเปิดสถานะเอกสาร...";' +
   'var base = location.href.split("?")[0];' +
   'window.top.location.href = base + "?t=" + encodeURIComponent(m[1]);' +
-  '}).catch(function () {' +
-  'msg.textContent = "เบราว์เซอร์นี้อ่าน QR จากรูปไม่สำเร็จ (อาจไม่รองรับฟีเจอร์นี้เต็มรูปแบบ) กรุณาลองใหม่ หรือกรอกเลขติดตามด้วยตนเองด้านบน";' +
-  '});' +
+  '};' +
+  'img.onerror = function () { URL.revokeObjectURL(objectUrl); msg.textContent = "เปิดไฟล์รูปนี้ไม่สำเร็จ กรุณาลองใหม่ หรือกรอกเลขติดตามด้วยตนเองด้านบน"; };' +
+  'img.src = objectUrl;' +
   '});' +
   '});' +
   '</script>';
