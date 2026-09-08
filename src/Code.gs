@@ -49,6 +49,9 @@ function routeStaffPage_(e, user) {
         return renderStaffPage_('ไม่พบรายการ', renderStubBody_('ไม่พบงานที่ระบุ (work_id: ' + params.id + ')', baseUrl), user, 'search', baseUrl);
       }
       var workHistory = getHistoryForWork_(ss, params.id);
+      if (!canViewWorkDetail_(work, user, workHistory)) {
+        return renderStaffPage_('ไม่มีสิทธิ์เข้าถึง', renderStubBody_('งานนี้ไม่เกี่ยวข้องกับหน่วยงานของท่าน จึงไม่สามารถดูรายละเอียดได้', baseUrl), user, 'search', baseUrl);
+      }
       var stationsMap = getStationsMap_(ss);
       return renderStaffPage_('รายละเอียดผลงาน', renderWorkDetailBody_(work, workHistory, stationsMap, baseUrl), user, 'search', baseUrl);
     case 'register':

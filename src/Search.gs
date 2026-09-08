@@ -71,6 +71,20 @@ function getHistoryForWork_(ss, workId) {
     .sort(function (a, b) { return new Date(a.created_at).getTime() - new Date(b.created_at).getTime(); });
 }
 
+/**
+ * สิทธิ์เปิดดูรายละเอียดงานเดี่ยว (หน้า detail มีข้อมูลส่วนบุคคลเต็ม: ชื่อ-สกุล, เลขบัตร 4 ตัวท้าย, เบอร์โทร, อีเมล)
+ * ค้นหาข้ามหน่วยงานได้ (searchWorks_) ไม่ได้แปลว่าดูรายละเอียดได้ทุกงาน — ต้องเกี่ยวข้องกับงานนั้นจริง:
+ * Admin เห็นทุกงาน, หรือหน่วยงานตนเองเป็นเจ้าของอยู่ตอนนี้ / เป็นต้นสังกัดผู้ยื่น / เคยรับ-ส่งงานนี้มาก่อน (ดูจาก StatusHistory)
+ */
+function canViewWorkDetail_(work, user, history) {
+  if (user.role === 'Admin') return true;
+  if (work.current_owner_org === user.organization) return true;
+  if (work.org_from === user.organization) return true;
+  return history.some(function (h) {
+    return h.from_org === user.organization || h.to_org === user.organization;
+  });
+}
+
 /** สถานีทั้งหมด ทำเป็น map ด้วย station_key (ใช้แสดงชื่อสถานีในหน้ารายละเอียด/คำนวณขอบเขตค้นหา) */
 function getStationsMap_(ss) {
   var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORK_STATIONS));
