@@ -73,20 +73,24 @@ function getLatestRevisionInfo_(ss, workId) {
 }
 
 /**
- * doGet ฝั่งผู้เยี่ยมชม (ไม่ Login) — ออก session_token ใหม่ทุกครั้งที่เปิดฟอร์มหน้าแรก
- * ถ้ามาจากสแกน QR บนเอกสาร (?t=) เติมเลขติดตามให้อัตโนมัติ — เจ้าของผลงานกรอกแค่เลขบัตร 4 ตัวท้ายยืนยันตัวตนต่อ
- * (QR อย่างเดียวไม่พอเปิดดูสถานะ ต้องรู้เลขบัตรด้วย กันคนอื่นที่เห็นเอกสารแอบดูข้อมูล)
+ * doGet ฝั่งผู้เยี่ยมชม (ไม่ Login) — สแกน QR บนเอกสาร (?t=) เข้าดูสถานะได้ทันที ไม่ต้องกรอกเลขบัตรซ้ำ
+ * (2026-09-08 ตัดขั้นกรอกเลขบัตรยืนยันตัวตนออกสำหรับเส้นทางนี้ตามคำขอ — ผู้ที่เห็น/ถ่ายภาพ QR บนเอกสาร
+ * จะเปิดดูสถานะได้เลย; ไม่มี t หรือหา QR ไม่เจอ ยังคงใช้ฟอร์มกรอกเลขติดตาม+เลขบัตร 4 ตัวท้ายตามเดิม)
  */
 function handlePublicTrackGet_(e) {
   var baseUrl = getWebAppUrl_();
-  var sessionToken = randomToken_(16);
   var token = String((e && e.parameter && e.parameter.t) || '').trim();
-  var prevValues = {};
   if (token) {
-    var work = findWorkByQrToken_(getSpreadsheet_(), token);
-    if (work) prevValues.tracking_no = work.tracking_no;
+    var ss = getSpreadsheet_();
+    var work = findWorkByQrToken_(ss, token);
+    if (work) {
+      writeSearchLog_(ss, work.tracking_no, '(QR)', true, randomToken_(16));
+      var revisionInfo = work.current_status_public === 'need_revision' ? getLatestRevisionInfo_(ss, work.work_id) : null;
+      return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(work, revisionInfo, baseUrl));
+    }
   }
-  return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ', renderPublicTrackFormBody_(baseUrl, sessionToken, [], prevValues));
+  var sessionToken = randomToken_(16);
+  return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ', renderPublicTrackFormBody_(baseUrl, sessionToken, [], {}));
 }
 
 /** doPost form_action=track_status — ไม่ต้องมี user (เรียกก่อนตรวจสิทธิ์เจ้าหน้าที่ใน doPost) */
