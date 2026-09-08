@@ -404,18 +404,27 @@ function renderPublicTrackFormBody_(baseUrl, sessionToken, errors, prevValues) {
 }
 
 /** ปุ่ม "ถ่ายรูป/เลือกรูป QR" บนหน้าตรวจสอบสถานะสาธารณะ — ค้นหาแบบที่ 2 นอกเหนือจากกรอกเลขติดตามเอง
- *  ใช้ BarcodeDetector มาตรฐานเบราว์เซอร์ (ไม่มีในทุกเบราว์เซอร์ — ตรวจสอบก่อน ถ้าไม่รองรับซ่อนปุ่มไปเงียบๆ
- *  เหลือแค่ฟอร์มกรอกเองแบบเดิม) ถอดรหัสจากรูปที่ถ่าย/เลือกโดยตรง (ไม่ใช้กล้อง live-stream — ง่ายกว่า/รองรับกว้างกว่า)
- *  รู้จัก QR ทั้งแบบมี URL เต็ม (?t=XXXX) และแบบเก่าที่ยังไม่ได้ตั้งค่า web_app_base_url (แค่ t=XXXX ตรงๆ) */
+ *  ใช้ BarcodeDetector มาตรฐานเบราว์เซอร์ (ไม่มีในทุกเบราว์เซอร์) — 2026-09-08 แก้จากที่เคยซ่อนปุ่มไปเงียบๆ
+ *  ถ้าเบราว์เซอร์ไม่รองรับ (ผู้ใช้จริงเจอปัญหา "ไม่ขึ้นอะไร" งงว่าทำไมไม่มีปุ่ม) ตอนนี้ "แสดงปุ่มเสมอ" แล้วเช็ค
+ *  รองรับตอนกด ถ้าไม่รองรับจะบอกข้อความชัดเจนแทนเงียบหาย ถอดรหัสจากรูปที่ถ่าย/เลือกโดยตรง (ไม่ใช้กล้อง
+ *  live-stream — ง่ายกว่า/รองรับกว้างกว่า) รู้จัก QR ทั้งแบบมี URL เต็ม (?t=XXXX) และแบบเก่าที่ยังไม่ได้ตั้งค่า
+ *  web_app_base_url (แค่ t=XXXX ตรงๆ) */
 var QR_PHOTO_SCAN_SCRIPT_ = '' +
   '<script>' +
   'document.addEventListener("DOMContentLoaded", function () {' +
   'var btn = document.getElementById("qr-photo-btn");' +
   'var input = document.getElementById("qr-photo-input");' +
   'var msg = document.getElementById("qr-photo-msg");' +
-  'if (!btn || !input || !("BarcodeDetector" in window)) return;' +
+  'if (!btn || !input) return;' +
   'btn.style.display = "block";' +
-  'btn.addEventListener("click", function () { input.click(); });' +
+  'btn.addEventListener("click", function () {' +
+  'if (!("BarcodeDetector" in window)) {' +
+  'msg.style.display = "block";' +
+  'msg.textContent = "เบราว์เซอร์นี้ยังไม่รองรับการอ่าน QR จากรูปภาพ กรุณากรอกเลขติดตามด้วยตนเองด้านบนแทน";' +
+  'return;' +
+  '}' +
+  'input.click();' +
+  '});' +
   'input.addEventListener("change", function () {' +
   'var file = input.files && input.files[0];' +
   'if (!file) return;' +
@@ -432,7 +441,7 @@ var QR_PHOTO_SCAN_SCRIPT_ = '' +
   'var base = location.href.split("?")[0];' +
   'window.top.location.href = base + "?t=" + encodeURIComponent(m[1]);' +
   '}).catch(function () {' +
-  'msg.textContent = "อ่าน QR Code จากรูปนี้ไม่สำเร็จ กรุณาลองใหม่ หรือกรอกเลขติดตามด้วยตนเองด้านบน";' +
+  'msg.textContent = "เบราว์เซอร์นี้อ่าน QR จากรูปไม่สำเร็จ (อาจไม่รองรับฟีเจอร์นี้เต็มรูปแบบ) กรุณาลองใหม่ หรือกรอกเลขติดตามด้วยตนเองด้านบน";' +
   '});' +
   '});' +
   '});' +
