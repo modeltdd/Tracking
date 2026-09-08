@@ -181,6 +181,23 @@ function migrateToWorkflowStates() {
     WORKFLOW_TRANSITIONS_SEED.length + ' เส้นทาง) — ตรวจสอบผลที่หน้า Admin > จัดการ Workflow');
 }
 
+/**
+ * ตั้งค่า Settings.web_app_base_url ให้อัตโนมัติจาก URL ของ Web App ที่ deploy อยู่ตอนนี้ (ScriptApp.getService().getUrl())
+ * แก้ปัญหา QR ไม่มี URL เต็ม (กล้องอ่านได้แค่ "t=XXXXXXXX" เป็นข้อความค้นหา ไม่ใช่ลิงก์) — รันครั้งเดียวจาก Editor
+ * หลังรันแล้ว QR เก่าที่พิมพ์ไปแล้วยังผิดอยู่ (qr_token เดิมไม่เปลี่ยน) ต้องพิมพ์ใหม่ทีละใบ (ปุ่ม "พิมพ์ QR ใหม่")
+ */
+function fixWebAppBaseUrl() {
+  var ss = getSpreadsheet_();
+  var url = getWebAppUrl_();
+  if (!url) {
+    Logger.log('หา URL ของ Web App ไม่เจอ (ScriptApp.getService().getUrl() คืนค่าว่าง) — ต้อง Deploy เป็น Web App ก่อนอย่างน้อย 1 ครั้ง');
+    return;
+  }
+  setSetting_(ss, 'web_app_base_url', url, 'URL ของ Web App หลัง Deploy ครั้งแรก — ใช้สร้างลิงก์ QR Code');
+  Logger.log('ตั้งค่า web_app_base_url = ' + url + ' เรียบร้อย — QR ใหม่จะมีลิงก์ครบถ้วน ' +
+    'QR เก่าที่พิมพ์ไปแล้วต้องเปิดงานนั้นแล้วกด "พิมพ์ QR ใหม่" ทีละใบ');
+}
+
 /** seed ค่าตั้งต้นของ Settings — เติมเฉพาะ key ที่ยังไม่มี (ไม่ทับค่าที่ Admin ตั้งไปแล้ว) */
 function seedSettings_(ss) {
   var sheet = ss.getSheetByName(SHEET.SETTINGS);
