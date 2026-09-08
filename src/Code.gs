@@ -27,7 +27,10 @@ function doGet(e) {
 /** เจ้าหน้าที่ผ่านการตรวจสอบสิทธิ์แล้ว — เลือกหน้าตาม ?page= (ค่าเริ่มต้น dashboard) */
 function routeStaffPage_(e, user) {
   var params = (e && e.parameter) || {};
-  var page = params.page || (params.t ? 'scan' : 'dashboard');
+  // ไม่ระบุ ?page= และไม่ได้มาจากลิงก์ QR (?t=) เลย = เพิ่ง login เข้ามาตรงๆ — ผู้รับผิดชอบเข้าทะเบียนผลงาน
+  // เป็นหน้าแรกทันที (งานประจำวันคือดูทะเบียน+อัปเดตสถานะ) ส่วน Admin ยังเข้า Dashboard/ภาพรวมก่อนเหมือนเดิม
+  var defaultPage = user.role === 'Admin' ? 'dashboard' : 'registry';
+  var page = params.page || (params.t ? 'scan' : defaultPage);
   var ss = getSpreadsheet_();
   var baseUrl = getWebAppUrl_();
 

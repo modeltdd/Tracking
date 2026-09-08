@@ -106,7 +106,12 @@ function renderDashboardBody_(user, metrics, baseUrl) {
       '</section>';
   }).join('');
 
+  var registryLinkHtml = canAccessRegistry_(user)
+    ? '<a class="btn-action btn-action-primary" target="_top" href="' + baseUrl + '?page=registry" style="display:block;margin-bottom:14px;">เปิดทะเบียนผลงานทั้งหมด &rarr;</a>'
+    : '';
+
   return '' +
+    registryLinkHtml +
     '<p class="scope-note">แสดงงานของหน่วยงาน: <b>' + escapeHtml_(user.organization) + '</b></p>' +
     sections;
 }
