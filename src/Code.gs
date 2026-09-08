@@ -36,6 +36,9 @@ function routeStaffPage_(e, user) {
       return renderAdminRoute_(ss, user, params, baseUrl);
     case 'scan':
       return renderScanRoute_(ss, user, params, baseUrl);
+    case 'forward':
+      var forwardWorks = getForwardableWorks_(ss, user.organization);
+      return renderStaffPage_('ส่งต่อ', renderForwardListBody_(user.organization, forwardWorks, getStationsMap_(ss), baseUrl), user, 'forward', baseUrl);
     case 'search':
       var query = params.q || '';
       var results = searchWorks_(ss, user.organization, query);

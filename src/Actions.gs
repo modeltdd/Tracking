@@ -194,6 +194,18 @@ function renderScanRoute_(ss, user, params, baseUrl) {
   return renderStaffPage_('สแกน QR', renderScanWorkBody_(work, station, eligible, baseUrl, token, []), user, 'scan', baseUrl);
 }
 
+/** งานที่หน่วยงานนี้ถือครองอยู่จริง (รับแล้ว ไม่ใช่ระหว่างส่ง) และมีสถานีถัดไปให้ส่งต่อ — ใช้กับเมนู "ส่งต่อ" (ไม่ต้องสแกน QR ก่อน) */
+function getForwardableWorks_(ss, org) {
+  var stationsMap = getStationsMap_(ss);
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  return works.filter(function (w) {
+    if (w.handoff_pending || w.current_owner_org !== org) return false;
+    if (TERMINAL_STATUSES_.indexOf(w.current_status_public) !== -1) return false;
+    var station = stationsMap[w.current_station_key];
+    return !!(station && station.next_station_key);
+  }).sort(byUpdatedAtDesc_);
+}
+
 /** รายชื่อหน่วยงานทั้งหมดที่ปรากฏใน WorkStations (ไม่ซ้ำ) — ใช้เป็นตัวเลือกในฟอร์ม "เปลี่ยนผู้รับผิดชอบ" ของ Admin */
 function getDistinctStationOrgs_(ss) {
   var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORK_STATIONS));

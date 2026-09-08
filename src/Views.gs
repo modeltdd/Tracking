@@ -18,6 +18,7 @@ var STATUS_PILL_CLASS_ = {
 var NAV_ITEMS_ = [
   { page: 'dashboard', label: 'หน้าแรก', icon: '⌂' },
   { page: 'scan', label: 'สแกน QR', icon: '⌗' },
+  { page: 'forward', label: 'ส่งต่อ', icon: '→' },
   { page: 'search', label: 'ค้นหา', icon: '⌕' },
   { page: 'admin', label: 'ผู้ดูแล', icon: '⚙', adminOnly: true },
 ];
@@ -99,6 +100,29 @@ function renderWorkList_(works, showAll, baseUrl) {
   }).join('');
   var more = (!showAll && works.length > 5) ? '<div class="empty">และอีก ' + (works.length - 5) + ' รายการ</div>' : '';
   return rows + more;
+}
+
+/** เมนู "ส่งต่อ" แยก — รายการงานที่หน่วยงานนี้ถือครองอยู่และส่งต่อได้ทันที ไม่ต้องสแกน QR ก่อน (คลิกปุ่มแล้วไปหน้ายืนยันส่งต่อเลย) */
+function renderForwardListBody_(org, works, stationsMap, baseUrl) {
+  var listHtml = works.length
+    ? works.map(function (w) {
+        var station = stationsMap[w.current_station_key];
+        var next = station ? stationsMap[station.next_station_key] : null;
+        return '' +
+          '<div class="work-row">' +
+          '<div class="work-main"><span class="tracking">' + escapeHtml_(w.tracking_no) + '</span>' +
+          '<span class="worktitle">' + escapeHtml_(w.work_title || '-') + '</span>' +
+          '<span class="tl-meta">' + escapeHtml_(station ? station.station_name : '-') + ' &rarr; ' +
+          escapeHtml_(next ? next.station_name : '-') + '</span></div>' +
+          '<a class="btn-action btn-action-primary btn-action-sm" target="_top" href="' + baseUrl +
+          '?page=scan&t=' + encodeURIComponent(w.qr_token) + '&do=forwarded">ส่งต่อ</a>' +
+          '</div>';
+      }).join('')
+    : '<div class="empty">ไม่มีงานที่ส่งต่อได้ในขณะนี้ (ต้องกด "รับเอกสาร" ก่อน — ดูที่เมนู "สแกน QR")</div>';
+
+  return '' +
+    '<p class="scope-note">งานของหน่วยงาน <b>' + escapeHtml_(org) + '</b> ที่ส่งต่อได้ทันที</p>' +
+    '<section class="metric-card">' + listHtml + '</section>';
 }
 
 /** หน้าค้นหา — ช่องค้นหา (GET) + ผลลัพธ์ (ค้นหาแล้วครอบคลุมทุกหน่วยงาน, ไม่ค้นหาแสดงเฉพาะหน่วยงานตน) */
@@ -697,6 +721,7 @@ var STAFF_CSS_ = '' +
   '.btn-action-secondary{background:var(--navy);}' +
   '.btn-action-warn{background:var(--revision);}' +
   '.btn-action-danger{background:var(--danger);}' +
+  '.btn-action-sm{display:inline-block;padding:9px 16px;flex-shrink:0;}' +
   '.action-form-title{color:var(--navy);margin:0 0 12px;font-size:1rem;}' +
   '.checkbox-row{display:flex;align-items:center;gap:8px;font-size:.88rem;padding:4px 0;}' +
   '.admin-tabs{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;}' +
