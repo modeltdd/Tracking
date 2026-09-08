@@ -61,10 +61,25 @@ clasp push --force
 | `web_app_base_url` | **วาง Web app URL จากขั้นตอน 2.4** — QR code ที่พิมพ์บนเอกสารใช้ค่านี้สร้างลิงก์ (`buildQrImageUrl_` ใน Register.gs) ถ้าเว้นว่างไว้ QR จะไม่มี URL เต็ม |
 | `drive_folder_id_cover` | Folder ID ใน Google Drive สำหรับเก็บภาพหน้าปก (สร้าง Folder ใหม่ → คัดลอก ID จาก URL ส่วนหลัง `/folders/`) — เว้นว่างได้ ระบบจะข้ามการอัปโหลดภาพ (ยังลงทะเบียนได้ปกติ แค่ไม่มีภาพแนบ) |
 | `drive_folder_id_attachment` | Folder ID สำหรับไฟล์แนบอื่น (เตรียมไว้สำหรับใช้งานต่อยอด) |
+| `google_oauth_client_id` | Client ID จาก Google Cloud Console (ดูขั้นตอน 2.6) — จำเป็นถ้าเจ้าหน้าที่ Login ด้วย Gmail ส่วนตัว เว้นว่างได้ถ้าใช้ Google Workspace domain องค์กรทั้งหมด |
 
 ค่าที่เหลือ (`max_failed_search`, `revision_reason_options`, `work_type_options`, `career_level_options` ฯลฯ) มีค่าเริ่มต้นที่ใช้งานได้ทันที ปรับได้ภายหลังตามต้องการ — ดูความหมายแต่ละคีย์ในคอลัมน์ `description` ของชีตเอง
 
-### 2.6 ทดสอบก่อนใช้งานจริง
+### 2.6 ตั้งค่า Google OAuth Client ID (จำเป็นถ้าเจ้าหน้าที่ใช้ Gmail ส่วนตัว)
+
+**ทำไมต้องมีขั้นนี้**: `Session.getActiveUser().getEmail()` (ที่ระบบใช้ระบุตัวตนเจ้าหน้าที่ตอน Login) **คืนค่าว่างเสมอ** สำหรับผู้ Login ด้วย Gmail ส่วนตัว (ไม่ใช่บัญชี Google Workspace ขององค์กร) ภายใต้การตั้งค่า `executeAs: USER_DEPLOYING` ที่ระบบนี้ใช้ — เป็นข้อจำกัดของแพลตฟอร์ม Google เอง แก้ด้วยการตั้งค่าไม่ได้ (ดูรายละเอียดเหตุผลใน `docs/DESIGN.md` ข้อ A19) ระบบจึงมีทาง sign-in สำรองผ่าน Google Identity Services (GIS) ให้ — **ถ้าเจ้าหน้าที่ทุกคนใช้ Gmail ส่วนตัว (ไม่มี Workspace domain องค์กร) ต้องตั้งค่าขั้นนี้ ไม่งั้นเข้าหน้าเจ้าหน้าที่ไม่ได้เลยนอกจากบัญชีที่รัน `installSystem()`/deploy** ถ้าองค์กรมี Google Workspace domain และเจ้าหน้าที่ทุกคน Login ด้วยบัญชีในโดเมนนั้น ข้ามขั้นนี้ได้ (`Session.getActiveUser()` จะใช้งานได้ปกติ)
+
+1. เปิด Apps Script Editor (`clasp open`) → รูปเฟือง **Project Settings** (แถบซ้าย) → หัวข้อ **Google Cloud Platform (GCP) Project** → กด **Change project** → ใส่หมายเลข Google Cloud Project ที่จะสร้างใหม่ (ทำขั้นตอนถัดไปที่ https://console.cloud.google.com ก่อนแล้วย้อนมาใส่เลขนี้ก็ได้ ไม่บังคับลำดับ)
+2. ไปที่ https://console.cloud.google.com (Login บัญชีเดียวกับที่ deploy ระบบ) → สร้างโปรเจกต์ใหม่ (ฟรี ไม่ต้องผูกบัตรเครดิต) → คัดลอก **Project number** มาใส่ในขั้นตอนที่ 1
+3. เมนูซ้าย **APIs & Services** → **OAuth consent screen** → **User Type** เลือก **External** (เพราะเจ้าหน้าที่ใช้ Gmail ส่วนตัว ไม่ใช่ Workspace) → กรอกชื่อแอป/อีเมลติดต่อ (เท่าที่จำเป็น ข้อมูลอื่นเว้นว่างได้) → บันทึก (ไม่ต้อง Publish ก็ใช้งานได้ ถ้าจำนวนผู้ใช้ไม่เกิน 100 คน จะอยู่สถานะ "Testing" ต้องเพิ่มอีเมลเจ้าหน้าที่แต่ละคนในแท็บ **Test users** ด้วย ไม่งั้น sign-in จะถูกปฏิเสธ)
+4. เมนูซ้าย **APIs & Services** → **Credentials** → **Create Credentials** → **OAuth client ID** → **Application type** เลือก **Web application**
+5. ช่อง **Authorized JavaScript origins** → กด **Add URI** → ใส่ `https://script.google.com` (เท่านั้น ไม่ต้องใส่ Authorized redirect URIs) → **Create**
+6. คัดลอก **Client ID** ที่ได้ (รูปแบบ `xxxxx.apps.googleusercontent.com`) → กลับไปที่ Spreadsheet ฐานข้อมูล → ชีต `Settings` → วางใส่ค่า `google_oauth_client_id`
+7. ทดสอบ: เปิด Web app URL ต่อท้ายด้วย `?staff=1` (เช่น `<web_app_base_url>?staff=1`) ด้วยบัญชี Gmail ของเจ้าหน้าที่ (ต้องเพิ่มในชีต `Users` แล้วด้วย) — ควรเจอปุ่ม/หน้าต่าง Sign in with Google ครั้งแรก แล้วเข้าหน้าเจ้าหน้าที่ได้ ครั้งถัดไปจะ sign-in เงียบอัตโนมัติ
+
+ถ้าเว้น `google_oauth_client_id` ว่างไว้ ระบบจะปิดทาง sign-in สำรองนี้ (เจ้าหน้าที่ที่ `Session.getActiveUser()` ใช้ไม่ได้จะเข้าหน้าเจ้าหน้าที่ไม่ได้เลย)
+
+### 2.7 ทดสอบก่อนใช้งานจริง
 
 1. เปิด Web app URL แบบ **ไม่ Login** (เช่น หน้าต่าง Incognito) — ต้องเจอฟอร์ม "ตรวจสอบสถานะผลงานวิชาการ" (โซนประชาชน)
 2. เปิดแบบ Login ด้วยบัญชี Admin คนแรก — ต้องเจอ Dashboard เจ้าหน้าที่ + เมนู "ผู้ดูแล" ที่ bottom-nav
@@ -91,6 +106,7 @@ clasp push --force
 - `spreadsheets` — อ่าน/เขียนฐานข้อมูล
 - `drive` — อัปโหลดภาพหน้าปกเข้า Google Drive folder ที่ตั้งค่าไว้ (ผ่าน `DriveApp`)
 - `userinfo.email` — อ่านอีเมลผู้ Login เทียบกับชีต `Users`
+- `script.external_request` — เรียก Google tokeninfo endpoint (`UrlFetchApp`) เพื่อตรวจสอบ Google ID token ตอน sign-in สำรองผ่าน GIS (ดูขั้นตอน 2.6 และ `docs/DESIGN.md` ข้อ A19) — ใช้เฉพาะเรียก endpoint ของ Google เอง ไม่ส่งข้อมูลออกที่อื่น
 
 ---
 

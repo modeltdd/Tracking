@@ -196,5 +196,6 @@ function getSettingsSeed_() {
     ['career_level_options', 'ปฏิบัติการ,ชำนาญการ,ชำนาญการพิเศษ,เชี่ยวชาญ,ทรงคุณวุฒิ',
       'ตัวเลือกระดับตำแหน่ง (ปัจจุบัน/ที่ขอ) ในฟอร์มรับเอกสารใหม่ (คั่นด้วยจุลภาค)', ''],
     ['web_app_base_url', '', 'URL ของ Web App หลัง Deploy ครั้งแรก — ใช้สร้างลิงก์ QR Code', ''],
+    ['google_oauth_client_id', '', 'Google OAuth Client ID (Web application) จาก Google Cloud Console — ใช้ยืนยันตัวตนเจ้าหน้าที่ที่ login ด้วย Gmail ส่วนตัว (docs/DESIGN.md A19) เว้นว่างไว้ = ปิดระบบ sign-in สำรองนี้', ''],
   ];
 }

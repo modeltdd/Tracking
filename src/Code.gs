@@ -10,22 +10,27 @@ function doGet(e) {
     return renderPage_('ยังไม่ได้ติดตั้งระบบ', htmlNotInstalled_());
   }
 
-  var email = getCurrentUserEmail_();
+  var params = (e && e.parameter) || {};
+  var ss = getSpreadsheet_();
+
+  // Session.getActiveUser() คืนค่าว่างเสมอสำหรับ Gmail ส่วนตัว (ยืนยันแล้วด้วย debug page — ดู docs/DESIGN.md
+  // A19) — fallback ไปตรวจ Google ID token จาก Google Identity Services แทน (GIS_AUTH_SCRIPT_ ฝัง token
+  // ต่อท้ายทุกลิงก์/ฟอร์มภายในให้อัตโนมัติหลัง sign-in ครั้งแรกที่ renderAuthBootstrapPage_)
+  var email = getCurrentUserEmail_() || verifyAuthToken_(ss, params.auth);
+
   if (!email) {
-    // เครื่องมือ debug ชั่วคราว (?debug=1) — ใช้หาสาเหตุตอนบัญชีที่ควรเป็นเจ้าหน้าที่กลับเห็นโซนสาธารณะ:
-    // Session.getActiveUser().getEmail() คืนค่าว่างได้แม้ login Google อยู่จริง ถ้าบัญชีนั้นไม่เคย authorize
-    // สคริปต์นี้มาก่อน (ต้องกด Allow ที่หน้าขอสิทธิ์อย่างน้อยครั้งเดียว) หรือ login เบราว์เซอร์ผิดบัญชี
-    if ((e.parameter || {}).debug === '1') {
+    // เครื่องมือ debug ชั่วคราว (?debug=1) — เก็บไว้เผื่อวิเคราะห์ปัญหา login เพิ่มเติมในอนาคต
+    if (params.debug === '1') {
       return renderPage_('Debug: สถานะ Login', '' +
-        '<p><b>Session.getActiveUser().getEmail()</b> คืนค่าว่าง — ระบบเลยมองว่ายังไม่ได้ login จึงพาไปหน้าตรวจสอบสถานะสาธารณะ</p>' +
-        '<p>ตรวจสอบตามลำดับ:</p>' +
-        '<ol style="padding-left:20px;line-height:1.8;">' +
-        '<li>บัญชี Google ที่ login อยู่ในเบราว์เซอร์นี้ (มุมขวาบน) ตรงกับอีเมลที่เพิ่มไว้ในชีต Users หรือไม่</li>' +
-        '<li>บัญชีนี้เคยเปิดลิงก์นี้แล้วกด "Allow" ที่หน้าขอสิทธิ์ (OAuth consent) มาก่อนหรือยัง — ถ้าไม่เคย ให้ลอง sign out แล้ว sign in ใหม่ด้วยบัญชีนี้ หรือเปิดในโหมดไม่ระบุตัวตน (Incognito) แล้ว login ใหม่ตั้งแต่ต้น</li>' +
-        '<li>ถ้ายังไม่ได้ผล ลอง Deploy ใหม่เป็นเวอร์ชันใหม่ (New deployment) แทนการแก้ทับเวอร์ชันเดิม — บางครั้ง Apps Script ค้างสิทธิ์เก่าไว้กับเวอร์ชันเดิม</li>' +
-        '</ol>');
+        '<p><b>Session.getActiveUser().getEmail()</b> และ Google ID token (ถ้ามี) ต่างคืนค่าว่างทั้งคู่</p>' +
+        '<p>ถ้าเป็นบัญชี Gmail ส่วนตัว ให้เข้าทาง <a href="' + getWebAppUrl_() + '?staff=1">ลิงก์ Sign-In สำหรับเจ้าหน้าที่</a> แทนลิงก์ปกติ — ลิงก์ปกติตั้งใจให้เป็นโซนสาธารณะเสมอ (ประชาชนไม่ต้อง Google Sign-In)</p>');
     }
-    // ผู้เยี่ยมชมไม่ได้ Login → โซนสาธารณะ (ตรวจสอบสถานะด้วยเลขติดตาม+last4, PublicTrack.gs)
+    // เข้าทางลิงก์เจ้าหน้าที่โดยเฉพาะ (?staff=1) หรือมี token ค้าง/หมดอายุอยู่แล้ว (?auth=...) = ตั้งใจจะเป็น
+    // เจ้าหน้าที่ → ลอง Google Sign-In ก่อน ไม่ใช่ผู้เยี่ยมชมทั่วไป
+    if (params.staff === '1' || params.auth) {
+      return renderAuthBootstrapPage_(ss, getWebAppUrl_(), e.queryString || '');
+    }
+    // ผู้เยี่ยมชมไม่ได้ Login → โซนสาธารณะ (ตรวจสอบสถานะด้วยเลขติดตาม+last4, PublicTrack.gs) — พฤติกรรมเดิมทุกประการ
     return handlePublicTrackGet_(e);
   }
 
@@ -99,10 +104,14 @@ function doPost(e) {
     return handlePublicTrackPost_(ss, e);
   }
 
-  var email = getCurrentUserEmail_();
+  // เหมือน doGet — Session.getActiveUser() ใช้ไม่ได้กับ Gmail ส่วนตัว fallback ไป Google ID token
+  // (GIS_AUTH_SCRIPT_ ฝัง hidden field "auth" ต่อท้ายทุกฟอร์มให้อัตโนมัติแล้ว)
+  var email = getCurrentUserEmail_() || verifyAuthToken_(ss, e.parameter.auth);
   var user = email ? findUserByEmail_(email) : null;
   if (!user) {
-    return renderPage_('ไม่มีสิทธิ์เข้าใช้งาน', htmlAccessDenied_(email || '(ไม่ได้ Login)'));
+    return renderPage_('ไม่มีสิทธิ์เข้าใช้งาน', '' +
+      '<p>บัญชี <b>' + escapeHtml_(email || '(ไม่ได้ Login)') + '</b> ยังไม่ได้รับสิทธิ์เข้าใช้งานระบบ หรือ session/การ sign-in หมดอายุแล้ว</p>' +
+      '<p><a href="' + getWebAppUrl_() + '?staff=1">&larr; กลับไป sign-in ใหม่</a></p>');
   }
 
   var baseUrl = getWebAppUrl_();

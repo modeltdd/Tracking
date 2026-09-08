@@ -34,6 +34,59 @@ var METRIC_SECTIONS_ = [
 ];
 
 /**
+ * หน้า sign-in ชั่วคราวสำหรับเจ้าหน้าที่ที่ Google ไม่ยอมเปิดเผยอีเมลให้สคริปต์ (Gmail ส่วนตัว, docs/DESIGN.md
+ * A19) — ใช้ Google Identity Services (GIS, ไลบรารีมาตรฐานของเว็บทั่วไป ไม่ใช่ Apps Script) ยืนยันตัวตนแทน
+ * ได้ ID token แล้ว redirect กลับไปหน้าเดิมที่ตั้งใจจะเปิด พร้อมแนบ token — ครั้งถัดไปจะ sign-in เงียบๆ ได้เอง
+ * (auto_select + prompt) ไม่ต้องกดปุ่มซ้ำถ้าเคยอนุญาตแล้ว ปุ่มจริงแสดงไว้เป็นทางเลือกเสมอเผื่อ silent ไม่สำเร็จ
+ */
+function renderAuthBootstrapPage_(ss, baseUrl, queryString) {
+  var clientId = getSetting_(ss, 'google_oauth_client_id', '');
+  if (!clientId) {
+    return renderPage_('ยังไม่ได้ตั้งค่า Sign-In', '' +
+      '<p>ระบบยังไม่ได้ตั้งค่า Google Sign-In สำหรับเจ้าหน้าที่ (ช่อง Settings <code>google_oauth_client_id</code> ว่างอยู่)</p>' +
+      '<p>ถ้าคุณคือ Admin โปรดตั้งค่านี้ก่อน (ดูวิธีใน docs/DESIGN.md A19)</p>' +
+      '<p><a href="' + baseUrl + '">&larr; กลับหน้าแรก</a></p>');
+  }
+
+  // ตัด auth= เดิม (ค้าง/หมดอายุ) ออกจาก query string ก่อน กันซ้อนกับ token ใหม่ที่จะได้
+  var cleanedParams = String(queryString || '').split('&').filter(function (p) {
+    return p && p.indexOf('auth=') !== 0;
+  });
+  var returnUrl = baseUrl + (cleanedParams.length ? '?' + cleanedParams.join('&') + '&' : '?') + 'auth=';
+
+  var html = '' +
+    '<!doctype html><html><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">' +
+    '<title>กำลังเข้าสู่ระบบ</title>' +
+    '<style>body{font-family:"Sarabun",sans-serif;background:#eef4f6;color:#1c2b3a;margin:0;padding:60px 20px;text-align:center;}' +
+    '.box{max-width:340px;margin:0 auto;background:#fff;border:1px solid #dde3e8;border-radius:14px;padding:28px 24px;box-shadow:0 1px 2px rgba(20,40,55,.08);}' +
+    'p{font-size:.86rem;color:#5b7184;line-height:1.6;margin:0 0 4px;}#gbtn{margin-top:16px;display:flex;justify-content:center;}</style>' +
+    '<script src="https://accounts.google.com/gsi/client" async defer></script>' +
+    '</head><body><div class="box">' +
+    '<p id="gis-status">กำลังตรวจสอบการเข้าสู่ระบบ...</p>' +
+    '<div id="gbtn"></div>' +
+    '<script>' +
+    'var RETURN_URL = ' + JSON.stringify(returnUrl) + ';' +
+    'function onCred(resp) { window.top.location.href = RETURN_URL + encodeURIComponent(resp.credential); }' +
+    'window.addEventListener("load", function () {' +
+    'if (!window.google || !google.accounts) {' +
+    'document.getElementById("gis-status").textContent = "โหลดระบบ Sign-In ไม่สำเร็จ (เช็คอินเทอร์เน็ต) กรุณาลองรีเฟรชหน้านี้";' +
+    'return;' +
+    '}' +
+    'google.accounts.id.initialize({ client_id: ' + JSON.stringify(clientId) + ', callback: onCred, auto_select: true });' +
+    'google.accounts.id.renderButton(document.getElementById("gbtn"), { theme: "outline", size: "large", text: "signin_with", width: 280 });' +
+    'google.accounts.id.prompt();' +
+    '});' +
+    '</script>' +
+    '</div></body></html>';
+
+  return HtmlService.createHtmlOutput(html)
+    .setTitle('กำลังเข้าสู่ระบบ')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+/**
  * แจ้งผู้ใช้ว่า "กำลังทำงาน" เมื่อกดปุ่ม/ลิงก์ — ทุกหน้าเป็น server-render เต็มหน้าปกติ (ไม่มี AJAX) ปุ่มที่กด
  * แล้วเงียบจนกว่าจะโหลดหน้าใหม่เสร็จทำให้ดูเหมือนกดไม่ติด โดยเฉพาะเน็ตช้า — สคริปต์นี้แค่ปิดปุ่ม/เปลี่ยนข้อความ
  * ทันทีตอนกด ไม่ยุ่งกับ logic ใดๆ ฝั่ง server ใช้ร่วมทั้งโซนเจ้าหน้าที่และโซนสาธารณะ (แทรกท้ายทุกหน้า)
@@ -51,6 +104,35 @@ var LOADING_FEEDBACK_SCRIPT_ = '' +
   'a.addEventListener("click", function () {' +
   'if (a.dataset.loading) return;' +
   'a.dataset.loading = "1"; a.textContent = "กำลังโหลด..."; a.style.opacity = "0.6"; a.style.pointerEvents = "none";' +
+  '});' +
+  '});' +
+  '});' +
+  '</script>';
+
+/**
+ * ต่อท้าย Google ID token (ถ้ามี) ให้ทุกลิงก์/ฟอร์มภายในหน้าเจ้าหน้าที่โดยอัตโนมัติ (docs/DESIGN.md A19)
+ * อ่าน token จาก query string ของหน้าปัจจุบัน (มาจาก renderAuthBootstrapPage_ ตอน sign-in ครั้งแรก) แล้ว
+ * ฝังต่อให้ลิงก์/ฟอร์มถัดไปเสมอ — ทำให้ไม่ต้องแก้ href ที่มีอยู่แล้วหลายจุดทั่วระบบเลยสักจุดเดียว
+ * ถ้าไม่มี token ในหน้านี้ (เช่น Session.getActiveUser() ใช้ได้อยู่แล้ว กรณีบัญชี Workspace) ไม่ทำอะไรเลย
+ */
+var GIS_AUTH_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'var authToken = new URLSearchParams(location.search).get("auth");' +
+  'if (!authToken) return;' +
+  'function withAuth(url) {' +
+  'if (!url || url.indexOf("auth=") !== -1) return url;' +
+  'return url + (url.indexOf("?") === -1 ? "?" : "&") + "auth=" + encodeURIComponent(authToken);' +
+  '}' +
+  'document.querySelectorAll(\'a[target="_top"]\').forEach(function (a) {' +
+  'a.addEventListener("click", function () { a.setAttribute("href", withAuth(a.getAttribute("href"))); });' +
+  '});' +
+  'document.querySelectorAll("form").forEach(function (f) {' +
+  'f.addEventListener("submit", function () {' +
+  'if (f.querySelector(\'input[name="auth"]\')) return;' +
+  'var hidden = document.createElement("input");' +
+  'hidden.type = "hidden"; hidden.name = "auth"; hidden.value = authToken;' +
+  'f.appendChild(hidden);' +
   '});' +
   '});' +
   '});' +
@@ -85,7 +167,7 @@ function renderStaffPage_(title, bodyHtml, user, activePage, baseUrl) {
     '<main class="content">' + bodyHtml + '</main>' +
     '<a class="fab" target="_top" href="' + baseUrl + '?page=register" title="รับเอกสารใหม่">+</a>' +
     '<nav class="bottomnav">' + navHtml + '</nav>' +
-    LOADING_FEEDBACK_SCRIPT_ +
+    LOADING_FEEDBACK_SCRIPT_ + GIS_AUTH_SCRIPT_ +
     '</body></html>';
 
   return HtmlService.createHtmlOutput(html)
