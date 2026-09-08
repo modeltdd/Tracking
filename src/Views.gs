@@ -393,8 +393,50 @@ function renderPublicTrackFormBody_(baseUrl, sessionToken, errors, prevValues) {
     '<div class="field"><label>เลขบัตรประชาชน 4 ตัวท้าย</label>' +
     '<input class="input" name="citizen_id_last4" maxlength="4" inputmode="numeric" pattern="[0-9]{4}"></div>' +
     '<button class="btn-primary" type="submit">ตรวจสอบสถานะ</button>' +
-    '</form></div>';
+    '</form>' +
+    '<div class="qr-scan-divider"><span>หรือ</span></div>' +
+    '<input type="file" accept="image/*" capture="environment" id="qr-photo-input" style="display:none">' +
+    '<button type="button" id="qr-photo-btn" class="btn-action btn-action-secondary" style="display:none">' +
+    'ถ่ายรูป / เลือกรูป QR เพื่อค้นหา</button>' +
+    '<p id="qr-photo-msg" class="hint" style="display:none"></p>' +
+    '</div>' +
+    QR_PHOTO_SCAN_SCRIPT_;
 }
+
+/** ปุ่ม "ถ่ายรูป/เลือกรูป QR" บนหน้าตรวจสอบสถานะสาธารณะ — ค้นหาแบบที่ 2 นอกเหนือจากกรอกเลขติดตามเอง
+ *  ใช้ BarcodeDetector มาตรฐานเบราว์เซอร์ (ไม่มีในทุกเบราว์เซอร์ — ตรวจสอบก่อน ถ้าไม่รองรับซ่อนปุ่มไปเงียบๆ
+ *  เหลือแค่ฟอร์มกรอกเองแบบเดิม) ถอดรหัสจากรูปที่ถ่าย/เลือกโดยตรง (ไม่ใช้กล้อง live-stream — ง่ายกว่า/รองรับกว้างกว่า)
+ *  รู้จัก QR ทั้งแบบมี URL เต็ม (?t=XXXX) และแบบเก่าที่ยังไม่ได้ตั้งค่า web_app_base_url (แค่ t=XXXX ตรงๆ) */
+var QR_PHOTO_SCAN_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'var btn = document.getElementById("qr-photo-btn");' +
+  'var input = document.getElementById("qr-photo-input");' +
+  'var msg = document.getElementById("qr-photo-msg");' +
+  'if (!btn || !input || !("BarcodeDetector" in window)) return;' +
+  'btn.style.display = "block";' +
+  'btn.addEventListener("click", function () { input.click(); });' +
+  'input.addEventListener("change", function () {' +
+  'var file = input.files && input.files[0];' +
+  'if (!file) return;' +
+  'msg.style.display = "block"; msg.textContent = "กำลังอ่าน QR Code จากรูป...";' +
+  'createImageBitmap(file).then(function (bitmap) {' +
+  'var detector = new BarcodeDetector({ formats: ["qr_code"] });' +
+  'return detector.detect(bitmap);' +
+  '}).then(function (codes) {' +
+  'if (!codes.length) { msg.textContent = "ไม่พบ QR Code ในรูปภาพ กรุณาลองใหม่ หรือกรอกเลขติดตามด้วยตนเองด้านบน"; return; }' +
+  'var raw = codes[0].rawValue || "";' +
+  'var m = raw.match(/(?:^|[?&])t=([A-Za-z0-9]+)/);' +
+  'if (!m) { msg.textContent = "รูปนี้ไม่ใช่ QR ของระบบตรวจสอบผลงานวิชาการ"; return; }' +
+  'msg.textContent = "พบ QR แล้ว กำลังเปิดสถานะเอกสาร...";' +
+  'var base = location.href.split("?")[0];' +
+  'window.top.location.href = base + "?t=" + encodeURIComponent(m[1]);' +
+  '}).catch(function () {' +
+  'msg.textContent = "อ่าน QR Code จากรูปนี้ไม่สำเร็จ กรุณาลองใหม่ หรือกรอกเลขติดตามด้วยตนเองด้านบน";' +
+  '});' +
+  '});' +
+  '});' +
+  '</script>';
 
 /** ผลตรวจสอบสถานะสาธารณะ — เฉพาะฟิลด์ที่เปิดเผยได้ (ไม่มีชื่อ-สกุล/ผู้ดำเนินการ/timeline ภายใน)
  *  ถ้าสถานะ = need_revision แสดงกล่อง "รายการที่ต้องแก้ไข" (revision detail) แยกจากการ์ดสถานะหลัก */
@@ -959,4 +1001,6 @@ var PUBLIC_CSS_ = '' +
   '.pub-step-done .pub-step-label{color:var(--text);}' +
   '.pub-step-done:not(:last-child)::before{background:var(--teal);}' +
   '.pub-step-current .pub-step-icon{background:var(--navy);border-color:var(--navy);color:#fff;}' +
-  '.pub-step-current .pub-step-label{color:var(--navy);font-weight:700;}';
+  '.pub-step-current .pub-step-label{color:var(--navy);font-weight:700;}' +
+  '.qr-scan-divider{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--muted);font-size:.8rem;}' +
+  '.qr-scan-divider::before,.qr-scan-divider::after{content:"";flex:1;height:1px;background:var(--border);}';
