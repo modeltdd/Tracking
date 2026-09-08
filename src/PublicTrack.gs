@@ -80,34 +80,83 @@ function getLatestRevisionInfo_(ss, workId) {
 }
 
 /**
- * Step Progress หน้าสาธารณะ — ลำดับคงที่ 6 ขั้น (PUBLIC_STEP_SEQUENCE_, Constants.gs) ใช้ป้ายสถานะสาธารณะ
- * จริงของระบบเป็นหลัก (ไม่ใช่ชื่อสมมติ) แต่ละขั้นทำเครื่องหมาย:
- *   done    = งานนี้เคยมีสถานะเป็นค่านี้จริงมาก่อน (เช็คจาก public_status ของทุกสถานีที่เคยผ่าน)
- *   current = ตรงกับสถานะปัจจุบันเป๊ะ
- *   upcoming = ยังไม่เคยถึง (ปล่อยว่าง ไม่ติ๊กมั่วว่า "ผ่านแล้ว" ทั้งที่งานนี้อาจไม่เคยถูกขอแก้ไขเลยก็ได้)
- * งานที่ terminated (ยุติกระบวนการ) ไม่แสดง stepper เพราะไม่ใช่เส้นทางปกติ — โชว์ pill สถานะเฉยๆ พอ
+ * Timeline ละเอียดหน้าสาธารณะ (2026-09-08 ปรับจาก stepper แบบย่อ 6 ขั้น เป็นแบบเต็มตาม state จริง 23 ตัว
+ * ตามที่ผู้ใช้ขอ — เห็นเลข state จริง เช่น "7.3 แก้ไข 6 เดือน" ไม่ใช่แค่หมวดใหญ่) แต่ละขั้นทำเครื่องหมาย:
+ *   done     = อยู่ใน StatusHistory จริง (ผ่านมาแล้วจริง เรียงตามลำดับที่เกิดขึ้นจริง รองรับวนกลับ เช่น 3.2→2→3.1)
+ *   current  = state ปัจจุบันของงาน
+ *   upcoming = เดินหน้าจาก state ปัจจุบันต่อแบบไม่เดา — ถ้า state ถัดไปมีทางเดียว (ไม่แตกสาย) ถือว่าแน่นอน ใส่เป็น
+ *              upcoming ได้ ถ้าแตกสาย (มีมากกว่า 1 ปลายทางต่างกัน เช่น state 2 หรือ state 7) หยุดเดา ไม่ใส่ต่อ
+ *              (เช่นที่ state 9.4 แตกเป็นผ่าน/ไม่ผ่านแต่ทั้งคู่ไปจบที่ state 10 เหมือนกัน — กรณีนี้ยังถือว่า
+ *              "แน่นอน" ใส่ state 10 เป็น upcoming ได้ ไม่ต้องรู้ผลก่อน)
+ * งานที่ terminated (ยุติกระบวนการ) ไม่แสดง timeline เพราะไม่ใช่เส้นทางปกติ — โชว์ pill สถานะเฉยๆ พอ
  */
-function buildPublicMacroSteps_(history, stationsMap, currentStatus) {
+function buildPublicDetailedSteps_(ss, history, stationsMap, currentKey, currentStatus) {
   if (currentStatus === 'terminated') return null;
-  var visited = {};
+
+  var visitedKeys = [];
   history.forEach(function (h) {
     if (!h.to_station) return;
-    var st = stationsMap[h.to_station];
-    if (st && st.public_status) visited[st.public_status] = true;
+    if (h.action !== 'registered' && h.action !== 'transition' && h.action !== 'reassigned') return;
+    if (visitedKeys.length && visitedKeys[visitedKeys.length - 1] === h.to_station) return;
+    visitedKeys.push(h.to_station);
   });
-  visited[currentStatus] = true;
-  return PUBLIC_STEP_SEQUENCE_.map(function (key) {
-    var state = key === currentStatus ? 'current' : (visited[key] ? 'done' : 'upcoming');
-    return { key: key, label: PUBLIC_STATUS_LABELS[key], state: state };
+  if (!visitedKeys.length || visitedKeys[visitedKeys.length - 1] !== currentKey) visitedKeys.push(currentKey);
+
+  var transitions = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_TRANSITIONS));
+  var toStatesByFrom = {};
+  transitions.forEach(function (t) {
+    if (!t.active) return;
+    (toStatesByFrom[t.from_state] = toStatesByFrom[t.from_state] || []).push(t.to_state);
   });
+
+  var upcomingKeys = [];
+  var cursor = currentKey;
+  var guard = {};
+  while (true) {
+    var outs = (toStatesByFrom[cursor] || []).filter(function (v, i, arr) { return arr.indexOf(v) === i; });
+    if (outs.length !== 1 || guard[outs[0]]) break; // แตกสาย หรือวนซ้ำ (กันลูปไม่รู้จบ) — หยุดเดา
+    guard[outs[0]] = true;
+    upcomingKeys.push(outs[0]);
+    cursor = outs[0];
+  }
+
+  function toStep(key, state) {
+    var st = stationsMap[key];
+    return { key: key, order: st ? st.station_order : '', name: st ? splitStationNameDesc_(st.station_name).main : key, state: state };
+  }
+
+  var steps = visitedKeys.map(function (key) { return toStep(key, key === currentKey ? 'current' : 'done'); });
+  upcomingKeys.forEach(function (key) { steps.push(toStep(key, 'upcoming')); });
+  return steps;
 }
 
-/** ประกอบข้อมูลที่หน้าผลลัพธ์สาธารณะต้องใช้ทั้งหมด (revision info + step progress) — เรียกจากทั้ง GET (QR) และ POST (กรอกเอง) */
+/** แยกชื่อ state ("แก้ไข 6 เดือน (ปรับปรุงแก้ไขสาระสำคัญ)") เป็นหัวข้อหลัก + คำอธิบายในวงเล็บ ใช้กับการ์ด "สถานะปัจจุบัน" */
+function splitStationNameDesc_(stationName) {
+  var name = String(stationName || '');
+  var m = name.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  return m ? { main: m[1], desc: m[2] } : { main: name, desc: '' };
+}
+
+/** หมายเหตุล่าสุดจากผู้รับผิดชอบ (transition ล่าสุดที่มี note) ไม่จำกัดแค่ตอน need_revision — ใช้กับ section "หมายเหตุจากผู้รับผิดชอบ" */
+function getLatestTransitionNote_(ss, workId) {
+  var history = getHistoryForWork_(ss, workId); // เก่า -> ใหม่
+  for (var i = history.length - 1; i >= 0; i--) {
+    if (history[i].action === 'transition' && history[i].note) return history[i].note;
+  }
+  return '';
+}
+
+/** ประกอบข้อมูลที่หน้าผลลัพธ์สาธารณะต้องใช้ทั้งหมด — เรียกจากทั้ง GET (QR) และ POST (กรอกเอง) */
 function buildPublicResultData_(ss, work) {
-  var revisionInfo = work.current_status_public === 'need_revision' ? getLatestRevisionInfo_(ss, work.work_id) : null;
-  var history = getHistoryForWork_(ss, work.work_id);
   var stationsMap = getStationsMap_(ss);
-  return { revisionInfo: revisionInfo, steps: buildPublicMacroSteps_(history, stationsMap, work.current_status_public) };
+  var history = getHistoryForWork_(ss, work.work_id);
+  var revisionInfo = work.current_status_public === 'need_revision' ? getLatestRevisionInfo_(ss, work.work_id) : null;
+  return {
+    revisionInfo: revisionInfo,
+    steps: buildPublicDetailedSteps_(ss, history, stationsMap, work.current_station_key, work.current_status_public),
+    currentStation: stationsMap[work.current_station_key] || null,
+    latestNote: revisionInfo ? '' : getLatestTransitionNote_(ss, work.work_id),
+  };
 }
 
 /**
@@ -124,7 +173,7 @@ function handlePublicTrackGet_(e) {
     if (work) {
       writeSearchLog_(ss, work.tracking_no, '(QR)', true, randomToken_(16));
       var data = buildPublicResultData_(ss, work);
-      return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(work, data.revisionInfo, data.steps, baseUrl));
+      return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(work, data, baseUrl));
     }
   }
   var sessionToken = randomToken_(16);
@@ -140,5 +189,5 @@ function handlePublicTrackPost_(ss, e) {
       renderPublicTrackFormBody_(baseUrl, result.session_token, result.errors, { tracking_no: (e.parameter || {}).tracking_no }));
   }
   var data = buildPublicResultData_(ss, result.work);
-  return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(result.work, data.revisionInfo, data.steps, baseUrl));
+  return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(result.work, data, baseUrl));
 }

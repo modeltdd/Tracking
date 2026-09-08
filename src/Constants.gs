@@ -36,7 +36,7 @@ SHEET_HEADERS[SHEET.WORK_STATIONS] = [
 // — คงชื่อคอลัมน์เดิมไว้เจตนา ให้ getStationsMap_/listStationsSorted_/ฯลฯ ใช้โค้ดเดิมได้โดยไม่ต้องแก้จุดอ่านข้อมูล
 SHEET_HEADERS[SHEET.WORKFLOW_STATES] = [
   'station_key', 'station_order', 'station_name', 'org', 'standard_days',
-  'public_status', 'receive_role', 'approve_role', 'notify_method', 'active',
+  'public_status', 'receive_role', 'approve_role', 'notify_method', 'active', 'public_hint',
 ];
 SHEET_HEADERS[SHEET.WORKFLOW_TRANSITIONS] = [
   'transition_id', 'from_state', 'to_state', 'button_label', 'requires_note', 'result_value', 'active',
@@ -89,19 +89,25 @@ var WORKFLOW_STATES_SEED = [
   { key: 's1', order: '1', name: 'รับเรื่องจากหน่วยงาน', org: 'สนง เขต', days: 3, pub: 'received' },
   { key: 's2', order: '2', name: 'ตรวจสอบเอกสาร', org: 'สนง เขต', days: 5, pub: 'checking' },
   { key: 's3_1', order: '3.1', name: 'ครบถ้วน-ส่งเลขา', org: 'สนง เขต', days: 1, pub: 'checking' },
-  { key: 's3_2', order: '3.2', name: 'ไม่ครบถ้วน-ส่งคืนหน่วยงาน', org: 'ORG_FROM', days: 7, pub: 'need_revision' },
+  { key: 's3_2', order: '3.2', name: 'ไม่ครบถ้วน-ส่งคืนหน่วยงาน', org: 'ORG_FROM', days: 7, pub: 'need_revision',
+    hint: 'เอกสารส่งกลับให้หน่วยงานต้นสังกัดเนื่องจากไม่ครบถ้วน กรุณาติดต่อหน่วยงานต้นสังกัดเพื่อจัดเตรียมเอกสารเพิ่มเติมและส่งกลับมาใหม่' },
   { key: 's4', order: '4', name: 'เลขาส่งเอกสารให้กรรมการ', org: 'เลขา', days: 3, pub: 'in_review' },
   { key: 's5', order: '5', name: 'ประธานนัดประชุม', org: 'ประธานกรรมการ', days: 7, pub: 'in_review' },
   { key: 's6', order: '6', name: 'กรรมการประชุมพิจารณา (รอสรุปผล)', org: 'กรรมการ', days: 15, pub: 'in_review' },
   { key: 's7', order: '7', name: 'เลขาแจ้งผลการพิจารณามาที่ สนง เขต', org: 'เลขา', days: 3, pub: 'pending_approval' },
   { key: 's7_1', order: '7.1', name: 'ผ่าน (ผ่านการประเมิน)', org: 'สนง เขต', days: 3, pub: 'pending_approval' },
-  { key: 's7_2', order: '7.2', name: 'แก้ไข 2 เดือน (ปรับปรุงแก้ไขไม่เป็นสาระสำคัญ)', org: 'สนง เขต', days: 3, pub: 'need_revision' },
-  { key: 's7_3', order: '7.3', name: 'แก้ไข 6 เดือน (ปรับปรุงแก้ไขสาระสำคัญ)', org: 'สนง เขต', days: 3, pub: 'need_revision' },
+  { key: 's7_2', order: '7.2', name: 'แก้ไข 2 เดือน (ปรับปรุงแก้ไขไม่เป็นสาระสำคัญ)', org: 'สนง เขต', days: 3, pub: 'need_revision',
+    hint: 'กรุณาปรับแก้ผลงานตามข้อเสนอแนะ และส่งเอกสารฉบับแก้ไขกลับภายใน 2 เดือน ผ่านหน่วยงานต้นสังกัด' },
+  { key: 's7_3', order: '7.3', name: 'แก้ไข 6 เดือน (ปรับปรุงแก้ไขสาระสำคัญ)', org: 'สนง เขต', days: 3, pub: 'need_revision',
+    hint: 'กรุณาปรับแก้ผลงานตามข้อเสนอแนะ และส่งเอกสารฉบับแก้ไขกลับภายใน 6 เดือน ผ่านหน่วยงานต้นสังกัด' },
   { key: 's7_4', order: '7.4', name: 'ไม่ผ่าน (ไม่ผ่านการประเมิน)', org: 'สนง เขต', days: 3, pub: 'pending_approval' },
   { key: 's8_1', order: '8.1', name: 'สนง เขต แจ้งผลหน่วยงาน', org: 'สนง เขต', days: 5, pub: 'need_revision' },
-  { key: 's8_2', order: '8.2', name: 'หน่วยงานแจ้งผลเจ้าของผลงาน', org: 'ORG_FROM', days: 5, pub: 'need_revision' },
-  { key: 's8_3', order: '8.3', name: 'เจ้าของผลงานแก้ไขเอกสาร', org: 'ORG_FROM', days: 45, pub: 'need_revision' },
-  { key: 's8_4', order: '8.4', name: 'เจ้าของผลงานส่งเอกสารแก้ไขกลับหน่วยงาน', org: 'ORG_FROM', days: 5, pub: 'need_revision' },
+  { key: 's8_2', order: '8.2', name: 'หน่วยงานแจ้งผลเจ้าของผลงาน', org: 'ORG_FROM', days: 5, pub: 'need_revision',
+    hint: 'อยู่ระหว่างการแก้ไขผลงานตามข้อเสนอแนะของคณะกรรมการ กรุณาส่งเอกสารฉบับแก้ไขกลับผ่านหน่วยงานต้นสังกัดโดยเร็ว' },
+  { key: 's8_3', order: '8.3', name: 'เจ้าของผลงานแก้ไขเอกสาร', org: 'ORG_FROM', days: 45, pub: 'need_revision',
+    hint: 'อยู่ระหว่างการแก้ไขผลงานตามข้อเสนอแนะของคณะกรรมการ กรุณาส่งเอกสารฉบับแก้ไขกลับผ่านหน่วยงานต้นสังกัดโดยเร็ว' },
+  { key: 's8_4', order: '8.4', name: 'เจ้าของผลงานส่งเอกสารแก้ไขกลับหน่วยงาน', org: 'ORG_FROM', days: 5, pub: 'need_revision',
+    hint: 'อยู่ระหว่างการแก้ไขผลงานตามข้อเสนอแนะของคณะกรรมการ กรุณาส่งเอกสารฉบับแก้ไขกลับผ่านหน่วยงานต้นสังกัดโดยเร็ว' },
   { key: 's8_5', order: '8.5', name: 'หน่วยงานส่งเอกสารแก้ไขกลับ สนง เขต', org: 'ORG_FROM', days: 5, pub: 'need_revision' },
   { key: 's8_6', order: '8.6', name: 'สนง เขต ส่งเอกสารแก้ไขให้เลขา', org: 'สนง เขต', days: 3, pub: 'in_review' },
   { key: 's9_1', order: '9.1', name: 'เลขาส่งเอกสารให้กรรมการ ครั้งที่ 2', org: 'เลขา', days: 3, pub: 'in_review' },
@@ -154,11 +160,6 @@ var PUBLIC_STATUS_LABELS = {
   done: 'เสร็จสิ้น',
   terminated: 'ยุติกระบวนการ',
 };
-
-// ลำดับขั้นตอนคงที่สำหรับ Step Progress หน้าสาธารณะ (ใช้ป้าย PUBLIC_STATUS_LABELS จริงเป็นหลัก ไม่ใช่ชื่อสมมติ)
-// ครอบคลุมทั้งเส้นทางปกติและเส้นทาง "รอแก้ไข" ไว้ในลำดับเดียวเสมอ — ระบบจะทำเครื่องหมาย ✓/●/ยังไม่ถึง
-// ตามที่งานนั้นเคยผ่านจริงหรือไม่ (ไม่ได้แปลว่าทุกงานต้องผ่านทุกขั้น เช่นงานที่ไม่เคยถูกขอแก้ไขจะไม่ติ๊ก "รอแก้ไข")
-var PUBLIC_STEP_SEQUENCE_ = ['received', 'checking', 'in_review', 'need_revision', 'pending_approval', 'done'];
 
 // ป้ายชื่อ action ใน StatusHistory (ตรง docs/DESIGN.md 4.2) — ใช้แสดงบน Timeline หน้ารายละเอียดงาน
 var ACTION_LABELS_ = {

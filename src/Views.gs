@@ -458,46 +458,103 @@ var QR_PHOTO_SCAN_SCRIPT_ = '' +
   '});' +
   '</script>';
 
-/** ผลตรวจสอบสถานะสาธารณะ — เฉพาะฟิลด์ที่เปิดเผยได้ (ไม่มีชื่อ-สกุล/ผู้ดำเนินการ/timeline ภายใน)
- *  ถ้าสถานะ = need_revision แสดงกล่อง "รายการที่ต้องแก้ไข" (revision detail) แยกจากการ์ดสถานะหลัก */
-function renderPublicResultBody_(work, revisionInfo, steps, baseUrl) {
+/**
+ * "ติดตามผลงานของฉัน" — หน้าผลตรวจสอบสถานะสาธารณะ (2026-09-08 ออกแบบใหม่ทั้งหน้า) Read-only, mobile-first
+ * ลำดับการมองเห็นตามที่ผู้ใช้กำหนด: สถานะปัจจุบัน → สิ่งที่ต้องดำเนินการ → Timeline → รายละเอียด → หมายเหตุ
+ * เฉพาะฟิลด์ที่เปิดเผยได้ (ชื่อปกปิดบางส่วนตาม A10 เสมอ — ไม่มี audit log/ปุ่มแก้ไข/ข้อมูลคนอื่น)
+ * data = { revisionInfo, steps, currentStation, latestNote } จาก buildPublicResultData_ (PublicTrack.gs)
+ */
+function renderPublicResultBody_(work, data, baseUrl) {
   var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
-  var label = PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public || '-';
   var maskedName = maskNameForPublic_(work.title_name, work.first_name, work.last_name);
+  var split = data.currentStation ? splitStationNameDesc_(data.currentStation.station_name) : { main: PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public, desc: '' };
+  var orderLabel = data.currentStation ? data.currentStation.station_order : '';
 
-  var revisionHtml = '';
-  if (work.current_status_public === 'need_revision' && revisionInfo) {
-    revisionHtml = '' +
+  var heroHtml = '' +
+    '<div class="pub-hero pub-hero-' + cls + '">' +
+    '<div class="pub-hero-label">สถานะปัจจุบัน</div>' +
+    '<div class="pub-hero-main">' + (orderLabel ? escapeHtml_(orderLabel) + ' ' : '') + escapeHtml_(split.main) + '</div>' +
+    (split.desc ? '<div class="pub-hero-desc">' + escapeHtml_(split.desc) + '</div>' : '') +
+    '<div class="pub-hero-updated">อัปเดตล่าสุด ' + formatDateTh_(work.updated_at) + '</div>' +
+    '</div>';
+
+  var actionHtml = work.next_step_text
+    ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
+    : '';
+
+  var timelineHtml = data.steps ? renderPublicTimeline_(data.steps) : '';
+
+  var ownerHtml = '' +
+    '<div class="pub-owner-card">' +
+    '<div class="pub-owner-title">ข้อมูลผลงาน</div>' +
+    renderPubOwnerRow_('ชื่อ-สกุล', maskedName) +
+    renderPubOwnerRow_('ชื่อผลงาน', work.work_title) +
+    renderPubOwnerRow_('หน่วยงาน', work.org_from) +
+    renderPubOwnerRow_('ตำแหน่ง', work.position) +
+    renderPubOwnerRow_('ประเภทผลงาน', work.work_type) +
+    renderPubOwnerRow_('วันที่รับเรื่อง', formatDateTh_(work.received_date)) +
+    '</div>';
+
+  var noteHtml = '';
+  if (work.current_status_public === 'need_revision' && data.revisionInfo) {
+    noteHtml = '' +
       '<div class="revision-box">' +
       '<p class="revision-title">รายการที่ต้องแก้ไข</p>' +
-      '<p>' + escapeHtml_(revisionInfo.reasons || '-') + '</p>' +
-      (revisionInfo.due_date ? '<p>กรุณาส่งฉบับแก้ไขกลับภายใน <b>' + escapeHtml_(revisionInfo.due_date) + '</b></p>' : '') +
-      (revisionInfo.note ? '<p class="tl-note">หมายเหตุ: ' + escapeHtml_(revisionInfo.note) + '</p>' : '') +
+      '<p>' + escapeHtml_(data.revisionInfo.reasons || '-') + '</p>' +
+      (data.revisionInfo.due_date ? '<p>กรุณาส่งฉบับแก้ไขกลับภายใน <b>' + escapeHtml_(data.revisionInfo.due_date) + '</b></p>' : '') +
       '</div>';
-  }
-
-  var stepperHtml = '';
-  if (steps) {
-    stepperHtml = '<div class="pub-stepper">' + steps.map(function (s) {
-      var icon = s.state === 'done' ? '✓' : (s.state === 'current' ? '●' : '');
-      return '<div class="pub-step pub-step-' + s.state + '">' +
-        '<span class="pub-step-icon">' + icon + '</span><span class="pub-step-label">' + escapeHtml_(s.label) + '</span></div>';
-    }).join('') + '</div>';
+  } else if (data.latestNote) {
+    noteHtml = '' +
+      '<div class="pub-note-box"><div class="pub-note-title">หมายเหตุจากผู้รับผิดชอบ</div><p>' + escapeHtml_(data.latestNote) + '</p></div>';
   }
 
   return '' +
-    '<div class="detail-card">' +
-    '<div class="detail-head"><span class="tracking-big">' + escapeHtml_(work.tracking_no) + '</span>' +
-    '<span class="pill pill-' + cls + '">' + escapeHtml_(label) + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">เจ้าของผลงาน</span><span class="detail-value">' + escapeHtml_(maskedName) + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">ชื่อผลงาน</span><span class="detail-value">' + escapeHtml_(work.work_title || '-') + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">วันที่รับเอกสาร</span><span class="detail-value">' + formatDateTh_(work.received_date) + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">อัปเดตล่าสุด</span><span class="detail-value">' + formatDateTh_(work.updated_at) + '</span></div>' +
-    (work.next_step_text ? '<div class="detail-row"><span class="detail-label">ขั้นตอนถัดไป</span><span class="detail-value">' + escapeHtml_(work.next_step_text) + '</span></div>' : '') +
-    '</div>' +
-    stepperHtml +
-    revisionHtml +
-    '<p><a target="_top" href="' + baseUrl + '">&larr; ตรวจสอบรายการอื่น</a></p>';
+    '<div class="pub-subheader"><span class="pub-subheader-label">เลขทะเบียน</span> <b>' + escapeHtml_(work.tracking_no) + '</b></div>' +
+    heroHtml + actionHtml + timelineHtml + ownerHtml + noteHtml +
+    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '">&larr; ตรวจสอบรายการอื่น</a></p>';
+}
+
+function renderPubOwnerRow_(label, value) {
+  return '<div class="pub-owner-row"><span class="pub-owner-label">' + escapeHtml_(label) + '</span>' +
+    '<span class="pub-owner-value">' + escapeHtml_(value || '-') + '</span></div>';
+}
+
+/** Timeline แนวตั้งละเอียด — ✓ ผ่านแล้ว / ● ปัจจุบัน / ○ ยังไม่ถึง จัดกลุ่ม state 8.x/9.x ไว้ใน <details> พับเก็บได้
+ *  (ไม่ต้องใช้ JS — <details>/<summary> มาตรฐาน HTML) เปิดค้างไว้อัตโนมัติถ้ากลุ่มนั้นมีขั้นที่ผ่านแล้ว/ปัจจุบันอยู่ */
+function renderPublicTimeline_(steps) {
+  var GROUP_LABELS = { s8: '8 กรณีมีการแก้ไขผลงาน', s9: '9 ประชุมพิจารณา ครั้งที่ 2' };
+  var html = '';
+  var group = null;
+
+  function itemHtml(s) {
+    var icon = s.state === 'done' ? '✓' : (s.state === 'current' ? '●' : '○');
+    return '<div class="pub-tl-item pub-tl-' + s.state + '">' +
+      '<span class="pub-tl-icon">' + icon + '</span>' +
+      '<span class="pub-tl-text"><b>' + escapeHtml_(s.order) + '</b> ' + escapeHtml_(s.name) + '</span></div>';
+  }
+  function flushGroup() {
+    if (!group) return;
+    html += '<details class="pub-tl-group"' + (group.open ? ' open' : '') + '><summary>' + escapeHtml_(group.label) + '</summary>' + group.items + '</details>';
+    group = null;
+  }
+
+  steps.forEach(function (s) {
+    var prefix = s.key.indexOf('s8_') === 0 ? 's8' : (s.key.indexOf('s9_') === 0 ? 's9' : null);
+    if (prefix) {
+      if (!group || group.prefix !== prefix) {
+        flushGroup();
+        group = { prefix: prefix, label: GROUP_LABELS[prefix], items: '', open: false };
+      }
+      group.items += itemHtml(s);
+      if (s.state !== 'upcoming') group.open = true;
+    } else {
+      flushGroup();
+      html += itemHtml(s);
+    }
+  });
+  flushGroup();
+
+  return '<div class="pub-timeline">' + html + '</div>';
 }
 
 /** หน้าสแกน QR — ยังไม่มี token (เข้าจากเมนู ไม่ใช่จากลิงก์ QR) — กรอกรหัสเองได้กรณีกล้องอ่านไม่ออก */
@@ -1008,19 +1065,56 @@ var STAFF_CSS_ = '' +
 
 var PUBLIC_CSS_ = '' +
   '.public-body{padding-bottom:24px;}' +
-  '.revision-box{background:#fdf6e3;border:1px solid var(--revision);border-radius:12px;padding:14px 16px;margin-bottom:12px;}' +
-  '.revision-title{color:var(--revision);font-weight:700;margin:0 0 6px;}' +
-  '.pub-stepper{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px;}' +
-  '.pub-step{display:flex;align-items:center;gap:12px;padding:6px 0;position:relative;}' +
-  '.pub-step:not(:last-child){padding-bottom:20px;}' +
-  '.pub-step:not(:last-child)::before{content:"";position:absolute;left:11px;top:26px;bottom:-4px;width:2px;background:var(--border);}' +
-  '.pub-step-icon{flex-shrink:0;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;' +
-  'font-size:.8rem;font-weight:700;background:#fff;border:2px solid var(--border);color:var(--muted);z-index:1;}' +
-  '.pub-step-label{font-size:.88rem;color:var(--muted);}' +
-  '.pub-step-done .pub-step-icon{background:var(--teal);border-color:var(--teal);color:#fff;}' +
-  '.pub-step-done .pub-step-label{color:var(--text);}' +
-  '.pub-step-done:not(:last-child)::before{background:var(--teal);}' +
-  '.pub-step-current .pub-step-icon{background:var(--navy);border-color:var(--navy);color:#fff;}' +
-  '.pub-step-current .pub-step-label{color:var(--navy);font-weight:700;}' +
+  // จำกัดความกว้างเฉพาะโซนสาธารณะ (800px, ไม่ใช่ 80vw ของ .content ส่วนกลางที่เผื่อไว้สำหรับตารางฝั่งเจ้าหน้าที่)
+  // มือถือ (viewport < 800px) ได้ความกว้างเต็มจออัตโนมัติ, เดสก์ท็อปเห็นเนื้อหาไม่ยืดกว้างจนอ่านยาก
+  '.public-body .content{width:100%;max-width:800px;padding-left:16px;padding-right:16px;box-sizing:border-box;}' +
+  '.pub-subheader{font-size:.82rem;color:var(--muted);margin:0 2px 14px;}' +
+  // การ์ด "สถานะปัจจุบัน" — เด่นที่สุดในหน้า สีพื้นอ่อนตามกลุ่มสถานะ (เขียวอ่อน=สำเร็จ, ส้ม/เหลืองอ่อน=รอแก้ไข,
+  // แดงอ่อน=ปัญหา/ยุติ, ฟ้าอมเทาอ่อน=กำลังดำเนินการ) ไม่ใช้สีสดจัด ไม่มี shadow/gradient หนัก
+  '.pub-hero{border-radius:16px;padding:22px 22px 18px;margin-bottom:16px;border:1px solid var(--border);background:var(--bg);}' +
+  '.pub-hero-pending{background:#f2f4f6;border-color:#e1e6ea;}' +
+  '.pub-hero-active{background:#eaf6f6;border-color:#cdeaea;}' +
+  '.pub-hero-revision{background:#fdf6e3;border-color:#f0e0ab;}' +
+  '.pub-hero-danger{background:#fbeceb;border-color:#f0cbc8;}' +
+  '.pub-hero-done{background:#eaf7ee;border-color:#c9e8d1;}' +
+  '.pub-hero-label{font-size:.76rem;color:var(--muted);margin-bottom:6px;}' +
+  '.pub-hero-main{font-size:1.4rem;font-weight:700;color:var(--navy);line-height:1.35;}' +
+  '.pub-hero-desc{font-size:.86rem;color:var(--muted);margin-top:5px;line-height:1.5;}' +
+  '.pub-hero-updated{font-size:.75rem;color:var(--muted);margin-top:14px;}' +
+  // กล่อง "สิ่งที่ต้องดำเนินการ" — เด่นรองจากสถานะ พื้นสีอ่อนโทนเดียวกับ revision กันความสับสน
+  '.pub-action-box{background:#fff8ec;border:1px solid #f0e0ab;border-radius:14px;padding:16px 18px;margin-bottom:16px;}' +
+  '.pub-action-title{font-weight:700;color:var(--revision);font-size:.82rem;margin:0 0 6px;}' +
+  '.pub-action-box p{margin:0;font-size:.9rem;line-height:1.6;color:var(--text);}' +
+  // Timeline ละเอียด — เส้นบาง ไอคอนเล็ก สีนุ่ม ✓ ผ่านแล้ว/● ปัจจุบัน (เด่น)/○ ยังไม่ถึง (จาง)
+  '.pub-timeline{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px 6px;margin-bottom:16px;}' +
+  '.pub-tl-item{display:flex;align-items:flex-start;gap:12px;padding-bottom:16px;position:relative;}' +
+  '.pub-tl-item::before{content:"";position:absolute;left:10px;top:22px;bottom:0;width:1px;background:var(--border);}' +
+  '.pub-tl-item:last-child::before{display:none;}' +
+  '.pub-tl-icon{flex-shrink:0;width:21px;height:21px;border-radius:50%;display:flex;align-items:center;justify-content:center;' +
+  'font-size:.72rem;font-weight:700;background:#fff;border:1.5px solid var(--border);color:var(--muted);z-index:1;margin-top:1px;}' +
+  '.pub-tl-text{font-size:.86rem;color:var(--muted);line-height:1.5;padding-top:1px;}' +
+  '.pub-tl-done .pub-tl-icon{background:var(--done);border-color:var(--done);color:#fff;}' +
+  '.pub-tl-done .pub-tl-text{color:var(--text);}' +
+  '.pub-tl-done.pub-tl-item::before{background:var(--done);}' +
+  '.pub-tl-current .pub-tl-icon{background:var(--navy);border-color:var(--navy);color:#fff;}' +
+  '.pub-tl-current .pub-tl-text{color:var(--navy);font-weight:700;}' +
+  '.pub-tl-group{margin-bottom:4px;}' +
+  '.pub-tl-group summary{cursor:pointer;font-size:.78rem;font-weight:600;color:var(--muted);padding:4px 0 12px 33px;list-style:none;position:relative;}' +
+  '.pub-tl-group summary::-webkit-details-marker{display:none;}' +
+  '.pub-tl-group summary::before{content:"›";position:absolute;left:9px;top:0;font-size:1rem;transition:transform .15s;}' +
+  '.pub-tl-group[open] summary::before{transform:rotate(90deg);}' +
+  '.pub-tl-group .pub-tl-item{padding-left:14px;}' +
+  // การ์ดข้อมูลผลงาน + กล่องหมายเหตุ — พื้นหลังสีอ่อน (soft blue-gray) แยกจาก card สีขาวด้านบน
+  '.pub-owner-card,.pub-note-box{background:var(--bg);border-radius:14px;padding:16px 18px;margin-bottom:16px;}' +
+  '.pub-owner-title,.pub-note-title{font-weight:700;color:var(--navy);font-size:.82rem;margin:0 0 10px;}' +
+  '.pub-owner-row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--border);font-size:.85rem;}' +
+  '.pub-owner-row:first-of-type{border-top:none;padding-top:0;}' +
+  '.pub-owner-label{color:var(--muted);flex-shrink:0;}' +
+  '.pub-owner-value{font-weight:600;color:var(--text);text-align:right;}' +
+  '.pub-note-box p{margin:0;font-size:.88rem;line-height:1.6;color:var(--text);}' +
+  '.pub-back-link{text-align:center;margin-top:4px;}' +
+  '.pub-back-link a{color:var(--muted);font-size:.83rem;}' +
+  '.revision-box{background:#fdf6e3;border:1px solid var(--revision);border-radius:14px;padding:16px 18px;margin-bottom:16px;}' +
+  '.revision-title{color:var(--revision);font-weight:700;margin:0 0 6px;font-size:.82rem;}' +
   '.qr-scan-divider{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--muted);font-size:.8rem;}' +
   '.qr-scan-divider::before,.qr-scan-divider::after{content:"";flex:1;height:1px;background:var(--border);}';

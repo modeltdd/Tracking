@@ -89,7 +89,7 @@ function performStateTransition_(ss, user, e) {
   var updates = {
     current_station_key: newState.station_key, current_status_public: newState.public_status,
     handoff_pending: false, current_owner_org: newOwnerOrg,
-    current_handler_name: user.display_name || user.user_email, next_step_text: '',
+    current_handler_name: user.display_name || user.user_email, next_step_text: newState.public_hint || '',
   };
   if (transition.result_value) updates.evaluation_result = transition.result_value;
   updateWorkRow_(ss, work.work_id, updates);
@@ -171,7 +171,7 @@ function performWorkAction_(ss, user, e) {
         var targetStation = stationsMap[targetStationKey];
         if (!targetStation) return { ok: false, errors: ['ไม่พบสถานีที่เลือก'] };
         updates = { current_station_key: targetStation.station_key, current_owner_org: targetStation.org,
-          current_status_public: targetStation.public_status, handoff_pending: false, next_step_text: '' };
+          current_status_public: targetStation.public_status, handoff_pending: false, next_step_text: targetStation.public_hint || '' };
         hist.to_station = targetStation.station_key;
         hist.to_org = targetStation.org;
         hist.note = reassignNote;

@@ -159,6 +159,7 @@ function migrateToWorkflowStates() {
       appendRowByHeader_(statesSheet, SHEET_HEADERS[SHEET.WORKFLOW_STATES], {
         station_key: st.key, station_order: st.order, station_name: st.name, org: st.org,
         standard_days: st.days, public_status: st.pub, receive_role: '', approve_role: '', notify_method: '', active: true,
+        public_hint: st.hint || '',
       });
     });
   } else {
@@ -199,9 +200,10 @@ function fixWebAppBaseUrl() {
 }
 
 /**
- * แก้ไข station_order ของชีต WorkflowStates ที่มีอยู่แล้วให้ตรงกับ WORKFLOW_STATES_SEED ปัจจุบัน (2026-09-08 ปรับ
- * ให้เป็นเลขลำดับย่อยแบบทศนิยม เช่น "3.1"/"8.4" แทนเลขเต็มซ้ำกัน เช่น 7,7,7,7,7 ที่ทำให้คอลัมน์ "ลำดับ" อ่านไม่ออก)
- * แก้เฉพาะคอลัมน์ station_order ทีละแถวด้วย station_key เดิม ไม่แตะคอลัมน์อื่น/ไม่กระทบ Works หรือ StatusHistory
+ * แก้ไข station_order + public_hint ของชีต WorkflowStates ที่มีอยู่แล้วให้ตรงกับ WORKFLOW_STATES_SEED ปัจจุบัน —
+ * (1) station_order เป็นเลขลำดับย่อยแบบทศนิยม เช่น "3.1"/"8.4" แทนเลขเต็มซ้ำกัน (2026-09-08 รอบแรก)
+ * (2) public_hint ข้อความ "สิ่งที่ต้องดำเนินการ" ต่อ state ที่หน้าตรวจสอบสถานะสาธารณะใช้แสดง (2026-09-08 รอบสอง)
+ * แก้เฉพาะ 2 คอลัมน์นี้ทีละแถวด้วย station_key เดิม ไม่แตะคอลัมน์อื่น/ไม่กระทบ Works หรือ StatusHistory
  * ปลอดภัยรันซ้ำได้ — รันครั้งเดียวจาก Editor (จำเป็นเฉพาะกรณีเคยรัน migrateToWorkflowStates() ไปแล้วก่อนแก้ไขนี้)
  */
 function fixWorkflowStateOrders() {
@@ -211,21 +213,21 @@ function fixWorkflowStateOrders() {
     Logger.log('ไม่พบชีต WorkflowStates — ยังไม่เคยรัน migrateToWorkflowStates() ไม่ต้องรันฟังก์ชันนี้ (seed ใหม่ถูกต้องอยู่แล้ว)');
     return;
   }
-  var orderByKey = {};
-  WORKFLOW_STATES_SEED.forEach(function (st) { orderByKey[st.key] = st.order; });
+  var byKey = {};
+  WORKFLOW_STATES_SEED.forEach(function (st) { byKey[st.key] = st; });
 
   // เขียนทับทุกแถวเสมอ (ไม่เช็คว่าค่าตรงกันแล้วข้าม) เพราะถึงค่าตัวเลขจะตรงกันแล้ว (เช่น 7 vs "7") เซลล์เดิม
   // อาจยังเป็น Number อยู่ ไม่ใช่ Text ตามที่ต้องการ — บังคับเขียนใหม่ทุกครั้งให้ชัวร์ว่าเป็น string จริง
   var updated = 0;
   var existing = readSheetAsObjects_(sheet);
   existing.forEach(function (row) {
-    var correctOrder = orderByKey[row.station_key];
-    if (correctOrder !== undefined) {
-      updateWorkStationRow_(ss, row.station_key, { station_order: correctOrder });
+    var st = byKey[row.station_key];
+    if (st) {
+      updateWorkStationRow_(ss, row.station_key, { station_order: st.order, public_hint: st.hint || '' });
       updated++;
     }
   });
-  Logger.log('แก้ไข station_order เรียบร้อย ' + updated + ' แถว (จากทั้งหมด ' + existing.length + ' state) — ' +
+  Logger.log('แก้ไข station_order/public_hint เรียบร้อย ' + updated + ' แถว (จากทั้งหมด ' + existing.length + ' state) — ' +
     'ตรวจสอบผลที่หน้า Admin > จัดการ Workflow');
 }
 
