@@ -443,9 +443,12 @@ var QR_PHOTO_SCAN_SCRIPT_ = '' +
   'if (!result) { msg.textContent = "ไม่พบ QR Code ในรูปภาพ กรุณาลองใหม่ หรือกรอกเลขติดตามด้วยตนเองด้านบน"; return; }' +
   'var m = result.data.match(/(?:^|[?&])t=([A-Za-z0-9]+)/);' +
   'if (!m) { msg.textContent = "รูปนี้ไม่ใช่ QR ของระบบตรวจสอบผลงานวิชาการ"; return; }' +
-  'msg.textContent = "พบ QR แล้ว กำลังเปิดสถานะเอกสาร...";' +
-  'var base = location.href.split("?")[0];' +
-  'window.top.location.href = base + "?t=" + encodeURIComponent(m[1]);' +
+  'var target = location.href.split("?")[0] + "?t=" + encodeURIComponent(m[1]);' +
+  // iframe sandbox ของ HtmlService บางครั้งบล็อก top-navigation ที่สั่งจาก JS แบบ async (หลุด user-activation
+  // window ไปแล้วตอน image decode เสร็จ) — ลองสั่งไปเลยเผื่อได้ พร้อมโชว์ลิงก์ตัวจริงคลิกเองไว้กันค้าง
+  // (ลิงก์ target=_top ธรรมดาผ่านสิทธิ์เสมอ เพราะนับเป็น user gesture ใหม่ตอนคลิก — pattern เดียวกับทั้งระบบ)
+  'msg.innerHTML = "พบ QR แล้ว — <a target=\\"_top\\" href=\\"" + target + "\\" style=\\"font-weight:700;color:var(--teal)\\">กดที่นี่เพื่อดูสถานะเอกสาร</a>";' +
+  'try { window.top.location.href = target; } catch (navErr) { /* เงียบไว้ ใช้ลิงก์ข้างบนแทน */ }' +
   '};' +
   'img.onerror = function () { URL.revokeObjectURL(objectUrl); msg.textContent = "เปิดไฟล์รูปนี้ไม่สำเร็จ กรุณาลองใหม่ หรือกรอกเลขติดตามด้วยตนเองด้านบน"; };' +
   'img.src = objectUrl;' +
