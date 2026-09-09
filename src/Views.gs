@@ -226,15 +226,16 @@ function renderResponsibleDashboardBody_(ss, user, m, month, year, baseUrl) {
     '<p class="scope-note">สรุปภาพรวมประจำเดือน <b>' + THAI_MONTHS_[month - 1] + ' ' + year + '</b> — หน่วยงาน: <b>' + escapeHtml_(org) + '</b></p>';
 
   var kpiDefs = [
-    { label: 'รายการทั้งหมด', count: m.totalAllTime, hint: 'รวมทั้งหมด ไม่จำกัดเดือน', href: 'page=registry&' + respQuery },
-    { label: 'รับเรื่องเดือนนี้', count: m.monthCount, hint: '', href: 'page=registry&' + respQuery },
-    { label: 'อยู่ระหว่างดำเนินการ', count: m.inProgress, hint: '', href: 'page=registry&bucket=progress&' + respQuery },
-    { label: 'รอแก้ไข', count: m.needRevision, hint: '', href: 'page=registry&bucket=revision&' + respQuery },
-    { label: 'ผ่านแล้ว', count: m.passed, hint: '', href: 'page=registry&result=' + encodeURIComponent('ผ่าน') + '&' + respQuery },
-    { label: 'ไม่ผ่าน / ปิดเรื่อง', count: m.failedOrClosed, hint: '', href: 'page=registry&bucket=done&' + respQuery },
+    { label: 'รายการทั้งหมด', count: m.totalAllTime, hint: 'รวมทั้งหมด ไม่จำกัดเดือน', href: 'page=registry&' + respQuery, icon: '▦', tone: 'navy' },
+    { label: 'รับเรื่องเดือนนี้', count: m.monthCount, hint: '', href: 'page=registry&' + respQuery, icon: '+', tone: 'done' },
+    { label: 'อยู่ระหว่างดำเนินการ', count: m.inProgress, hint: '', href: 'page=registry&bucket=progress&' + respQuery, icon: '◐', tone: 'active' },
+    { label: 'รอแก้ไข', count: m.needRevision, hint: '', href: 'page=registry&bucket=revision&' + respQuery, icon: '✎', tone: 'revision' },
+    { label: 'ผ่านแล้ว', count: m.passed, hint: '', href: 'page=registry&result=' + encodeURIComponent('ผ่าน') + '&' + respQuery, icon: '✓', tone: 'done' },
+    { label: 'ไม่ผ่าน / ปิดเรื่อง', count: m.failedOrClosed, hint: '', href: 'page=registry&bucket=done&' + respQuery, icon: '✕', tone: 'danger' },
   ];
   var kpiHtml = '<div class="kpi-grid">' + kpiDefs.map(function (k) {
     return '<a class="kpi-card" target="_top" href="' + baseUrl + '?' + k.href + '">' +
+      '<span class="kpi-icon kpi-icon-' + k.tone + '">' + k.icon + '</span>' +
       '<span class="kpi-count">' + k.count + '</span><span class="kpi-label">' + escapeHtml_(k.label) + '</span>' +
       (k.hint ? '<span class="kpi-hint">' + escapeHtml_(k.hint) + '</span>' : '') +
       '</a>';
@@ -308,7 +309,8 @@ var DASH_CHART_SCRIPT_ = '' +
   '<script>' +
   'document.addEventListener("DOMContentLoaded", function () {' +
   'if (!window.Chart) return;' +
-  'var tokens = { active: "#0e7c86", revision: "#b8860b", done: "#1f8a4c", danger: "#b23a3a", pending: "#8a94a3" };' +
+  'var tokens = { navy: "#1f3b54", active: "#0e7c86", revision: "#b8860b", done: "#1f8a4c", danger: "#b23a3a", pending: "#8a94a3" };' +
+  'var tokenCycle = [tokens.navy, tokens.active, tokens.revision, tokens.done, tokens.danger];' +
   'var donutColors = { "อยู่ระหว่างดำเนินการ": tokens.active, "รอแก้ไข": tokens.revision, "ผ่านแล้ว": tokens.done, ' +
   '"ไม่ผ่าน/ปิดเรื่อง": tokens.danger, "อื่น ๆ": tokens.pending };' +
   'var donutCanvas = document.getElementById("dashDonut");' +
@@ -316,17 +318,18 @@ var DASH_CHART_SCRIPT_ = '' +
   'new Chart(donutCanvas, { type: "doughnut", data: { labels: DASH_DONUT_.map(function (b) { return b.label; }), ' +
   'datasets: [{ data: DASH_DONUT_.map(function (b) { return b.count; }), ' +
   'backgroundColor: DASH_DONUT_.map(function (b) { return donutColors[b.label] || tokens.pending; }) }] }, ' +
-  'options: { plugins: { legend: { position: "bottom", labels: { font: { family: "Sarabun" } } } } }, ' +
+  'options: { plugins: { legend: { position: "right", labels: { font: { family: "Sarabun", size: 11 }, boxWidth: 12 } } } }, ' +
   'plugins: [{ id: "centerText", afterDraw: function (chart) { ' +
-  'var ctx = chart.ctx; var w = chart.width; var h = chart.height; ' +
+  'var ctx = chart.ctx; var area = chart.chartArea; var cx = (area.left + area.right) / 2; var cy = (area.top + area.bottom) / 2; ' +
   'ctx.save(); ctx.font = "700 15px Sarabun"; ctx.fillStyle = "#1f3b54"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ' +
-  'ctx.fillText("ทั้งหมด " + DASH_TOTAL_ + " ราย", w / 2, h / 2 - 20); ctx.restore(); ' +
+  'ctx.fillText("ทั้งหมด " + DASH_TOTAL_ + " ราย", cx, cy); ctx.restore(); ' +
   '} }] });' +
   '}' +
   'var barCanvas = document.getElementById("dashBar");' +
   'if (barCanvas && DASH_BARS_.length) {' +
   'new Chart(barCanvas, { type: "bar", data: { labels: DASH_BARS_.map(function (b) { return b.label; }), ' +
-  'datasets: [{ data: DASH_BARS_.map(function (b) { return b.count; }), backgroundColor: tokens.active }] }, ' +
+  'datasets: [{ data: DASH_BARS_.map(function (b) { return b.count; }), ' +
+  'backgroundColor: DASH_BARS_.map(function (b, i) { return tokenCycle[i % tokenCycle.length]; }) }] }, ' +
   'options: { indexAxis: "y", plugins: { legend: { display: false } }, scales: { x: { ticks: { precision: 0 } } } } });' +
   '}' +
   '});' +
@@ -1287,7 +1290,10 @@ var STAFF_CSS_ = '' +
   '.dash-filter-form{display:flex;gap:10px;margin-bottom:6px;}' +
   '.dash-filter-form .field{flex:1;margin-bottom:0;}' +
   '.kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0;}' +
-  '.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 12px;text-align:center;text-decoration:none;display:flex;flex-direction:column;gap:2px;box-shadow:0 1px 2px rgba(20,40,55,.06);}' +
+  '.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 12px;text-align:center;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:3px;box-shadow:0 1px 2px rgba(20,40,55,.06);}' +
+  '.kpi-icon{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1rem;margin-bottom:4px;}' +
+  '.kpi-icon-navy{background:var(--navy);}.kpi-icon-teal{background:var(--teal);}.kpi-icon-active{background:var(--active);}' +
+  '.kpi-icon-revision{background:var(--revision);}.kpi-icon-done{background:var(--done);}.kpi-icon-danger{background:var(--danger);}' +
   '.kpi-count{font-size:1.5rem;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;}' +
   '.kpi-label{font-size:.78rem;color:var(--text);font-weight:600;}' +
   '.kpi-hint{font-size:.68rem;color:var(--muted);}' +
