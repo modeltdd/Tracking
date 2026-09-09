@@ -196,6 +196,30 @@ function insertSampleWork_(ss, def) {
   return workId;
 }
 
+/**
+ * ลบข้อมูลผลงาน+ประวัติ+audit log ทั้งหมดในระบบ (Works, StatusHistory, AuditLog) ไม่ว่าจะเป็นข้อมูลทดสอบที่ลง
+ * ทะเบียนจริงผ่านหน้าเว็บ (created_by เป็นอีเมลจริง ไม่ใช่ SAMPLE_DATA_MARKER_ ซึ่ง clearSampleData() ลบไม่ได้)
+ * หรือข้อมูลตัวอย่างจาก seedSampleData() ก็ตาม — ไม่กระทบ Users/Settings/WorkflowStates/WorkflowTransitions
+ * (ตั้งค่า/ผู้ใช้/workflow ยังอยู่ครบ) ใช้ก่อนเปิดใช้งานจริงเมื่อต้องการล้างข้อมูลทดสอบทั้งหมดที่ลงมือกรอกเอง
+ * รันด้วยตนเองจาก Apps Script Editor — ลบถาวร กู้คืนไม่ได้ (ยกเว้นย้อนจาก Google Sheets version history)
+ */
+function clearAllWorks() {
+  var ss = getSpreadsheet_();
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var count = Math.max(0, worksSheet.getLastRow() - 1);
+  deleteAllDataRows_(worksSheet);
+  deleteAllDataRows_(ss.getSheetByName(SHEET.STATUS_HISTORY));
+  deleteAllDataRows_(ss.getSheetByName(SHEET.AUDIT_LOG));
+  setSetting_(ss, 'sample_data_seeded', 'false', 'ล้างข้อมูลตัวอย่างแล้ว (clearSampleData) — รัน seedSampleData() ใหม่ได้');
+  Logger.log('ลบข้อมูลผลงานทั้งหมด ' + count + ' รายการ พร้อมประวัติ/audit log ที่เกี่ยวข้องเรียบร้อย (Users/Settings/Workflow ไม่กระทบ)');
+}
+
+/** ลบทุกแถวข้อมูล (ไม่รวม header แถวแรก) ในชีต — ไล่ลบจากล่างขึ้นบนกันเลขแถวเลื่อน */
+function deleteAllDataRows_(sheet) {
+  var lastRow = sheet.getLastRow();
+  for (var r = lastRow; r >= 2; r--) sheet.deleteRow(r);
+}
+
 /** ลบทุกแถวในชีตที่ค่าคอลัมน์ fieldName ตรงกับ value (ไล่ลบจากล่างขึ้นบนกันเลขแถวเลื่อน) */
 function deleteRowsWhere_(sheet, fieldName, value) {
   var lastRow = sheet.getLastRow();
