@@ -83,3 +83,78 @@ function findStationEntryDate_(history, workId, stationKey) {
   });
   return entryDate;
 }
+
+/**
+ * เมตริกสำหรับ Dashboard ใหม่ของบทบาท "ผู้รับผิดชอบ" (หน้าแรก) — ต่างจาก computeDashboardMetrics_ เดิม
+ * (ที่คืน list งานตาม bucket การกระทำ) ฟังก์ชันนี้คืนตัวเลข KPI + ข้อมูลกราฟ + รายการล่าสุด กรองตามเดือน/ปีที่เลือก
+ *
+ * ขอบเขตหน่วยงาน = current_owner_org (convention เดียวกับ computeDashboardMetrics_/searchWorks_)
+ * ขอบเขตเดือน = received_date อยู่ในเดือน/ปีที่เลือก (ยืนยันกับผู้ใช้แล้วว่าการ์ด "รายการทั้งหมด" ไม่กรองเดือน
+ * ส่วนที่เหลือทั้งหมด — การ์ด 2-6, โดนัท, บาร์ชาร์ต, รายการล่าสุด — กรองตามเดือน/ปีที่เลือกทั้งหมด)
+ */
+function computeResponsibleDashboardMetrics_(ss, org, month, year) {
+  var allWorks = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var stationsMap = getStationsMap_(ss);
+
+  var orgWorks = allWorks.filter(function (w) { return w.current_owner_org === org; });
+
+  var monthWorks = orgWorks.filter(function (w) {
+    if (!w.received_date) return false;
+    var d = new Date(w.received_date);
+    return d.getMonth() + 1 === month && d.getFullYear() === year;
+  });
+
+  var result = {
+    totalAllTime: orgWorks.length,
+    monthCount: monthWorks.length,
+    inProgress: 0,
+    needRevision: 0,
+    passed: 0,
+    failedOrClosed: 0,
+    donutBuckets: [],
+    topStations: [],
+    recentWorks: [],
+  };
+
+  var donutCounts = { inProgress: 0, needRevision: 0, passed: 0, failedOrClosed: 0, other: 0 };
+  var stationCounts = {};
+
+  monthWorks.forEach(function (w) {
+    if (w.evaluation_result === 'ผ่าน') {
+      result.passed++;
+      donutCounts.passed++;
+    } else if (w.evaluation_result === 'ไม่ผ่าน' || w.current_status_public === 'terminated') {
+      result.failedOrClosed++;
+      donutCounts.failedOrClosed++;
+    } else if (w.current_status_public === 'need_revision') {
+      result.needRevision++;
+      donutCounts.needRevision++;
+    } else if (TERMINAL_STATUSES_.indexOf(w.current_status_public) === -1) {
+      result.inProgress++;
+      donutCounts.inProgress++;
+    } else {
+      donutCounts.other++;
+    }
+
+    var stationKey = w.current_station_key;
+    stationCounts[stationKey] = (stationCounts[stationKey] || 0) + 1;
+  });
+
+  result.donutBuckets = [
+    { label: 'อยู่ระหว่างดำเนินการ', count: donutCounts.inProgress },
+    { label: 'รอแก้ไข', count: donutCounts.needRevision },
+    { label: 'ผ่านแล้ว', count: donutCounts.passed },
+    { label: 'ไม่ผ่าน/ปิดเรื่อง', count: donutCounts.failedOrClosed },
+    { label: 'อื่น ๆ', count: donutCounts.other },
+  ].filter(function (b) { return b.count > 0; });
+
+  result.topStations = Object.keys(stationCounts).map(function (key) {
+    var station = stationsMap[key];
+    var label = station ? (station.station_order + ' ' + station.station_name) : key;
+    return { label: label, count: stationCounts[key] };
+  }).sort(function (a, b) { return b.count - a.count; }).slice(0, 5);
+
+  result.recentWorks = monthWorks.slice().sort(byUpdatedAtDesc_).slice(0, 10);
+
+  return result;
+}

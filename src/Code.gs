@@ -45,10 +45,9 @@ function doGet(e) {
 /** เจ้าหน้าที่ผ่านการตรวจสอบสิทธิ์แล้ว — เลือกหน้าตาม ?page= (ค่าเริ่มต้น dashboard) */
 function routeStaffPage_(e, user) {
   var params = (e && e.parameter) || {};
-  // ไม่ระบุ ?page= และไม่ได้มาจากลิงก์ QR (?t=) เลย = เพิ่ง login เข้ามาตรงๆ — ผู้รับผิดชอบเข้าทะเบียนผลงาน
-  // เป็นหน้าแรกทันที (งานประจำวันคือดูทะเบียน+อัปเดตสถานะ) ส่วน Admin ยังเข้า Dashboard/ภาพรวมก่อนเหมือนเดิม
-  var defaultPage = user.role === 'Admin' ? 'dashboard' : 'registry';
-  var page = params.page || (params.t ? 'scan' : defaultPage);
+  // ไม่ระบุ ?page= และไม่ได้มาจากลิงก์ QR (?t=) เลย = เพิ่ง login เข้ามาตรงๆ — ทุก role เข้า Dashboard ก่อนเสมอ
+  // (2026-09-09 เปลี่ยนจากที่เคยพาผู้รับผิดชอบเข้าทะเบียนตรงๆ — ตอนนี้ 'dashboard' แสดงเนื้อหาต่างกันตาม role แล้ว)
+  var page = params.page || (params.t ? 'scan' : 'dashboard');
   var ss = getSpreadsheet_();
   var baseUrl = getWebAppUrl_();
 
@@ -90,6 +89,14 @@ function routeStaffPage_(e, user) {
       return renderStaffPage_('รับเอกสารใหม่', renderRegisterFormBody_(ss, {}, [], baseUrl), user, 'register', baseUrl);
     case 'dashboard':
     default:
+      if (user.role === 'ผู้รับผิดชอบ') {
+        var today = now_();
+        var selMonth = parseInt(params.month, 10) || (today.getMonth() + 1);
+        var selYear = parseInt(params.year, 10) || today.getFullYear();
+        var respMetrics = computeResponsibleDashboardMetrics_(ss, user.organization, selMonth, selYear);
+        return renderStaffPage_('แดชบอร์ดผู้รับผิดชอบ',
+          renderResponsibleDashboardBody_(ss, user, respMetrics, selMonth, selYear, baseUrl), user, 'dashboard', baseUrl);
+      }
       var metrics = computeDashboardMetrics_(ss, user.organization);
       return renderStaffPage_('แดชบอร์ดเจ้าหน้าที่', renderDashboardBody_(user, metrics, baseUrl), user, 'dashboard', baseUrl);
   }

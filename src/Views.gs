@@ -198,6 +198,140 @@ function renderDashboardBody_(user, metrics, baseUrl) {
     sections;
 }
 
+/**
+ * Dashboard หน้าแรกของบทบาท "ผู้รับผิดชอบ" — KPI + กราฟ (Donut/Bar) + งานของฉันแบบย่อ + รายการล่าสุด
+ * ต่างจาก renderDashboardBody_ เดิม (ที่ Admin ยังใช้อยู่ ไม่แตะ) ข้อมูลมาจาก computeResponsibleDashboardMetrics_
+ * (Dashboard.gs) กรองตามเดือน/ปีที่เลือก ยกเว้นการ์ด "รายการทั้งหมด" ที่ตั้งใจไม่กรองเดือน (ยืนยันกับผู้ใช้แล้ว)
+ */
+function renderResponsibleDashboardBody_(ss, user, m, month, year, baseUrl) {
+  var org = user.organization;
+  var respQuery = 'resp=' + encodeURIComponent(org);
+
+  var monthOptions = THAI_MONTHS_.map(function (name, i) {
+    var val = i + 1;
+    return '<option value="' + val + '"' + (val === month ? ' selected' : '') + '>' + name + '</option>';
+  }).join('');
+  var yearNow = now_().getFullYear();
+  var yearOptions = [yearNow, yearNow - 1, yearNow - 2, yearNow - 3].map(function (y) {
+    return '<option value="' + y + '"' + (y === year ? ' selected' : '') + '>' + y + '</option>';
+  }).join('');
+
+  var filterFormHtml = '' +
+    '<form method="get" target="_top" action="' + baseUrl + '" class="dash-filter-form">' +
+    '<input type="hidden" name="page" value="dashboard">' +
+    '<div class="field"><label>เดือน</label><select class="input" name="month" onchange="this.form.submit()">' + monthOptions + '</select></div>' +
+    '<div class="field"><label>ปี</label><select class="input" name="year" onchange="this.form.submit()">' + yearOptions + '</select></div>' +
+    '<noscript><button class="btn-primary" type="submit">แสดงผล</button></noscript>' +
+    '</form>' +
+    '<p class="scope-note">สรุปภาพรวมประจำเดือน <b>' + THAI_MONTHS_[month - 1] + ' ' + year + '</b> — หน่วยงาน: <b>' + escapeHtml_(org) + '</b></p>';
+
+  var kpiDefs = [
+    { label: 'รายการทั้งหมด', count: m.totalAllTime, hint: 'รวมทั้งหมด ไม่จำกัดเดือน', href: 'page=registry&' + respQuery },
+    { label: 'รับเรื่องเดือนนี้', count: m.monthCount, hint: '', href: 'page=registry&' + respQuery },
+    { label: 'อยู่ระหว่างดำเนินการ', count: m.inProgress, hint: '', href: 'page=registry&bucket=progress&' + respQuery },
+    { label: 'รอแก้ไข', count: m.needRevision, hint: '', href: 'page=registry&bucket=revision&' + respQuery },
+    { label: 'ผ่านแล้ว', count: m.passed, hint: '', href: 'page=registry&result=' + encodeURIComponent('ผ่าน') + '&' + respQuery },
+    { label: 'ไม่ผ่าน / ปิดเรื่อง', count: m.failedOrClosed, hint: '', href: 'page=registry&bucket=done&' + respQuery },
+  ];
+  var kpiHtml = '<div class="kpi-grid">' + kpiDefs.map(function (k) {
+    return '<a class="kpi-card" target="_top" href="' + baseUrl + '?' + k.href + '">' +
+      '<span class="kpi-count">' + k.count + '</span><span class="kpi-label">' + escapeHtml_(k.label) + '</span>' +
+      (k.hint ? '<span class="kpi-hint">' + escapeHtml_(k.hint) + '</span>' : '') +
+      '</a>';
+  }).join('') + '</div>';
+
+  var chartDataScript = '<script>' +
+    'var DASH_DONUT_ = ' + JSON.stringify(m.donutBuckets) + ';' +
+    'var DASH_BARS_ = ' + JSON.stringify(m.topStations) + ';' +
+    'var DASH_TOTAL_ = ' + m.monthCount + ';' +
+    '</script>';
+
+  var chartsHtml = (m.monthCount > 0)
+    ? '<div class="chart-row">' +
+      '<div class="chart-box"><div class="chart-title">สัดส่วนสถานะงาน</div><canvas id="dashDonut" height="220"></canvas></div>' +
+      '<div class="chart-box"><div class="chart-title">จำนวนรายชื่อตามขั้นตอน (Top 5)</div><canvas id="dashBar" height="220"></canvas></div>' +
+      '</div>'
+    : '<div class="metric-card"><div class="empty">ไม่มีข้อมูลในเดือนที่เลือก</div></div>';
+
+  var dashMetrics = computeDashboardMetrics_(ss, org);
+  var myWorkDefs = [
+    { key: 'pendingReceive', label: 'งานรอรับ' },
+    { key: 'inProgress', label: 'กำลังดำเนินการ' },
+    { key: 'nearDue', label: 'ใกล้ครบกำหนด' },
+    { key: 'overdue', label: 'เกินกำหนด' },
+    { key: 'returnedForRevision', label: 'ส่งกลับแก้ไข' },
+  ];
+  var myWorkHtml = '<details class="mywork-box"><summary>งานที่ต้องดำเนินการของฉัน — ' +
+    myWorkDefs.map(function (d) { return d.label + ' ' + (dashMetrics[d.key] || []).length; }).join(' · ') +
+    '</summary>' + myWorkDefs.map(function (d) {
+      var items = dashMetrics[d.key] || [];
+      return '<div class="mywork-section"><div class="mywork-head">' + escapeHtml_(d.label) + ' (' + items.length + ')</div>' +
+        (items.length ? renderWorkList_(items, false, baseUrl) : '<div class="empty">ไม่มีรายการ</div>') + '</div>';
+    }).join('') + '</details>';
+
+  var recentRows = m.recentWorks.map(function (w) {
+    var station = getStationsMap_(ss)[w.current_station_key];
+    var ownerName = (w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '');
+    return '<tr>' +
+      '<td>' + escapeHtml_(w.tracking_no) + '</td>' +
+      '<td>' + escapeHtml_(ownerName) + '</td>' +
+      '<td>' + escapeHtml_(w.work_title || '-') + '</td>' +
+      '<td>' + escapeHtml_(w.org_from || '-') + '</td>' +
+      '<td>' + formatDateTh_(w.received_date) + '</td>' +
+      '<td>' + escapeHtml_(station ? station.station_name : w.current_station_key) + '</td>' +
+      '<td>' + formatDateTh_(w.updated_at) + '</td>' +
+      '<td><a class="btn-action btn-action-primary btn-action-sm" target="_top" href="' + baseUrl +
+      '?page=scan&t=' + encodeURIComponent(w.qr_token) + '">จัดการ</a></td>' +
+      '</tr>';
+  }).join('');
+
+  var recentHtml = '' +
+    '<div class="metric-head" style="margin-bottom:6px"><span class="metric-label">รายการล่าสุด ประจำเดือน ' +
+    THAI_MONTHS_[month - 1] + '/' + year + '</span>' +
+    '<a target="_top" href="' + baseUrl + '?page=registry&' + respQuery + '">ดูทะเบียนทั้งหมด &rarr;</a></div>' +
+    (recentRows
+      ? '<div class="table-scroll"><table class="admin-table"><thead><tr>' +
+        '<th>เลขทะเบียน</th><th>เจ้าของผลงาน</th><th>ชื่อผลงาน</th><th>หน่วยงาน</th>' +
+        '<th>วันที่รับเรื่อง</th><th>State ล่าสุด</th><th>วันที่อัปเดต</th><th>จัดการ</th>' +
+        '</tr></thead><tbody>' + recentRows + '</tbody></table></div>'
+      : '<div class="empty">ไม่มีรายการในเดือนที่เลือก</div>');
+
+  return filterFormHtml + kpiHtml + chartDataScript + chartsHtml + myWorkHtml +
+    '<section class="metric-card">' + recentHtml + '</section>' +
+    ((m.monthCount > 0) ? DASH_CHART_SCRIPT_ : '');
+}
+
+/** วาด Donut/Bar chart ของ Dashboard ผู้รับผิดชอบด้วย Chart.js (CDN เดียวกับที่ jsQR ใช้อยู่แล้วในระบบ)
+ *  อ่านข้อมูลจาก DASH_DONUT_/DASH_BARS_/DASH_TOTAL_ ที่ฝังไว้ก่อนหน้า (chartDataScript) */
+var DASH_CHART_SCRIPT_ = '' +
+  '<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'if (!window.Chart) return;' +
+  'var tokens = { active: "#0e7c86", revision: "#b8860b", done: "#1f8a4c", danger: "#b23a3a", pending: "#8a94a3" };' +
+  'var donutColors = { "อยู่ระหว่างดำเนินการ": tokens.active, "รอแก้ไข": tokens.revision, "ผ่านแล้ว": tokens.done, ' +
+  '"ไม่ผ่าน/ปิดเรื่อง": tokens.danger, "อื่น ๆ": tokens.pending };' +
+  'var donutCanvas = document.getElementById("dashDonut");' +
+  'if (donutCanvas && DASH_DONUT_.length) {' +
+  'new Chart(donutCanvas, { type: "doughnut", data: { labels: DASH_DONUT_.map(function (b) { return b.label; }), ' +
+  'datasets: [{ data: DASH_DONUT_.map(function (b) { return b.count; }), ' +
+  'backgroundColor: DASH_DONUT_.map(function (b) { return donutColors[b.label] || tokens.pending; }) }] }, ' +
+  'options: { plugins: { legend: { position: "bottom", labels: { font: { family: "Sarabun" } } } } }, ' +
+  'plugins: [{ id: "centerText", afterDraw: function (chart) { ' +
+  'var ctx = chart.ctx; var w = chart.width; var h = chart.height; ' +
+  'ctx.save(); ctx.font = "700 15px Sarabun"; ctx.fillStyle = "#1f3b54"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ' +
+  'ctx.fillText("ทั้งหมด " + DASH_TOTAL_ + " ราย", w / 2, h / 2 - 20); ctx.restore(); ' +
+  '} }] });' +
+  '}' +
+  'var barCanvas = document.getElementById("dashBar");' +
+  'if (barCanvas && DASH_BARS_.length) {' +
+  'new Chart(barCanvas, { type: "bar", data: { labels: DASH_BARS_.map(function (b) { return b.label; }), ' +
+  'datasets: [{ data: DASH_BARS_.map(function (b) { return b.count; }), backgroundColor: tokens.active }] }, ' +
+  'options: { indexAxis: "y", plugins: { legend: { display: false } }, scales: { x: { ticks: { precision: 0 } } } } });' +
+  '}' +
+  '});' +
+  '</script>';
+
 /** รายการงานแบบย่อ (ใช้ในการ์ด Dashboard และหน้าค้นหา) — tracking_no, ชื่อผลงาน, ป้ายสถานะ, คลิกไปหน้ารายละเอียด
  *  showAll=true (หน้าค้นหา) แสดงครบทุกแถว, ไม่ระบุ/false (การ์ด Dashboard) แสดงแค่ 5 แถวแรก */
 function renderWorkList_(works, showAll, baseUrl) {
@@ -1148,7 +1282,23 @@ var STAFF_CSS_ = '' +
   '.table-scroll{overflow-x:auto;}' +
   '.admin-table{width:100%;border-collapse:collapse;font-size:.82rem;white-space:nowrap;}' +
   '.admin-table th,.admin-table td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--border);}' +
-  '.cell-danger{color:var(--danger);font-weight:700;}';
+  '.cell-danger{color:var(--danger);font-weight:700;}' +
+  // Dashboard ผู้รับผิดชอบ (หน้าแรกใหม่) — KPI grid + กราฟ + งานของฉันแบบย่อ ใช้ token สีเดิมทั้งหมด
+  '.dash-filter-form{display:flex;gap:10px;margin-bottom:6px;}' +
+  '.dash-filter-form .field{flex:1;margin-bottom:0;}' +
+  '.kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0;}' +
+  '.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 12px;text-align:center;text-decoration:none;display:flex;flex-direction:column;gap:2px;box-shadow:0 1px 2px rgba(20,40,55,.06);}' +
+  '.kpi-count{font-size:1.5rem;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;}' +
+  '.kpi-label{font-size:.78rem;color:var(--text);font-weight:600;}' +
+  '.kpi-hint{font-size:.68rem;color:var(--muted);}' +
+  '.chart-row{display:flex;gap:12px;margin-bottom:14px;}' +
+  '.chart-box{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;min-width:0;}' +
+  '.chart-title{font-weight:700;color:var(--navy);font-size:.85rem;margin-bottom:8px;}' +
+  '.mywork-box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:14px;}' +
+  '.mywork-box summary{font-weight:700;color:var(--navy);font-size:.85rem;cursor:pointer;}' +
+  '.mywork-section{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);}' +
+  '.mywork-head{font-size:.8rem;color:var(--muted);font-weight:600;margin-bottom:6px;}' +
+  '@media (max-width:640px){.kpi-grid{grid-template-columns:repeat(2,1fr);}.chart-row{flex-direction:column;}.dash-filter-form{flex-wrap:wrap;}}';
 
 var PUBLIC_CSS_ = '' +
   '.public-body{padding-bottom:24px;}' +
