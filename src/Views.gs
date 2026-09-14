@@ -803,13 +803,13 @@ function renderScanWorkBody_(work, station, eligible, eligibleTransitions, baseU
   var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
   var statusLabel = PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public || '-';
 
+  var ownerName = (work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '');
   var summaryHtml = '' +
     '<div class="detail-card">' +
-    '<div class="detail-head"><span class="tracking-big">' + escapeHtml_(work.tracking_no) + '</span>' +
+    '<div class="detail-head"><span class="tracking-big">' + escapeHtml_(ownerName) + '</span>' +
     '<span class="pill pill-' + cls + '">' + escapeHtml_(statusLabel) + '</span></div>' +
+    '<div class="detail-row"><span class="detail-label">เลขทะเบียน</span><span class="detail-value">' + escapeHtml_(work.tracking_no) + '</span></div>' +
     '<div class="detail-row"><span class="detail-label">ชื่อผลงาน</span><span class="detail-value">' + escapeHtml_(work.work_title || '-') + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">เจ้าของผลงาน</span><span class="detail-value">' +
-    escapeHtml_((work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')) + '</span></div>' +
     '<div class="detail-row"><span class="detail-label">สถานีปัจจุบัน</span><span class="detail-value">' +
     escapeHtml_(station ? station.station_name : work.current_station_key) + '</span></div>' +
     '<div class="detail-row"><span class="detail-label">ผู้รับผิดชอบ</span><span class="detail-value">' +
