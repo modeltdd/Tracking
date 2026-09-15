@@ -232,7 +232,16 @@ function getSettingsSeed_() {
  */
 function getMasterPositionsSeed_() {
   return [
-    { position_code: 'md', position_name: 'นายแพทย์', professional_group: 'สายวิชาชีพแพทย์', active: true, sort_order: 1 },
+    { position_code: 'NURSE', position_name: 'พยาบาลวิชาชีพ', professional_group: 'สายพยาบาล', active: true, sort_order: 1 },
+    { position_code: 'DOCTOR', position_name: 'นายแพทย์', professional_group: 'สายวิชาชีพแพทย์', active: true, sort_order: 2 },
+    { position_code: 'PUBLIC_HEALTH', position_name: 'นักวิชาการสาธารณสุข', professional_group: 'สายวิชาการ', active: true, sort_order: 3 },
+    { position_code: 'DENTIST', position_name: 'ทันตแพทย์', professional_group: 'สายวิชาชีพทันตกรรม', active: true, sort_order: 4 },
+    { position_code: 'PHARMACIST', position_name: 'เภสัชกร', professional_group: 'สายวิชาชีพเภสัชกรรม', active: true, sort_order: 5 },
+    { position_code: 'MED_TECH', position_name: 'นักเทคนิคการแพทย์', professional_group: 'สายวิชาชีพเทคนิคการแพทย์', active: true, sort_order: 6 },
+    { position_code: 'GENERAL_ADMIN', position_name: 'นักจัดการงานทั่วไป', professional_group: 'สายสนับสนุน', active: true, sort_order: 7 },
+    { position_code: 'PHYSIOTHERAPIST', position_name: 'นักกายภาพบำบัด', professional_group: 'สายวิชาชีพกายภาพบำบัด', active: true, sort_order: 8 },
+    { position_code: 'HR_OFFICER', position_name: 'นักทรัพยากรบุคคล', professional_group: 'สายสนับสนุน', active: true, sort_order: 9 },
+    { position_code: 'MED_SCIENTIST', position_name: 'นักวิทยาศาสตร์การแพทย์', professional_group: 'สายวิชาชีพวิทยาศาสตร์การแพทย์', active: true, sort_order: 10 },
   ];
 }
 

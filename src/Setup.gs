@@ -347,6 +347,34 @@ function migrateAddMasterDataSheets_() {
   }
 }
 
+/**
+ * Sync MasterPositions ให้มีตำแหน่งหลัก 10 รายการตามที่ผู้ใช้กำหนด 2026-09-15 (รอบ 3) — อ้างอิงชื่อ
+ * (position_name) เป็น key จับคู่ (ไม่ใช่ code เพราะตอน seed ครั้งแรกมีแค่ "นายแพทย์" code เดิมคือ "md"
+ * ไม่ตรงกับ "DOCTOR" ที่ผู้ใช้ระบุรอบนี้) เจอชื่อเดิมอยู่แล้ว = อัปเดต code/สายงาน/ลำดับ/active ให้ตรง seed
+ * ใหม่ทั้งหมด (รวม code เปลี่ยนได้ปลอดภัย เพราะ Works เก็บ position เป็นชื่อข้อความ ไม่ได้อ้างอิง code)
+ * ไม่เจอ = เพิ่มแถวใหม่ — ตำแหน่งอื่นที่ Admin เพิ่มเองนอกเหนือ 10 รายการนี้ไม่ถูกแตะต้อง
+ * รันด้วยตนเองจาก Apps Script Editor ครั้งเดียว ปลอดภัยรันซ้ำได้
+ */
+function migrateSyncCorePositions() {
+  var ss = getSpreadsheet_();
+  var sheet = ensureSheet_(ss, SHEET.MASTER_POSITIONS, SHEET_HEADERS[SHEET.MASTER_POSITIONS]);
+  var existingByName = {};
+  readSheetAsObjects_(sheet).forEach(function (row) { existingByName[row.position_name] = row; });
+
+  var added = 0, updated = 0;
+  getMasterPositionsSeed_().forEach(function (seedRow) {
+    if (existingByName[seedRow.position_name]) {
+      updateSheetRowByKey_(sheet, 'position_name', seedRow.position_name, seedRow);
+      updated++;
+    } else {
+      appendRowByHeader_(sheet, SHEET_HEADERS[SHEET.MASTER_POSITIONS], seedRow);
+      added++;
+    }
+  });
+  Logger.log('sync ตำแหน่งหลัก 10 รายการเรียบร้อย (เพิ่มใหม่ ' + added + ', อัปเดต ' + updated + ') — ' +
+    'ตำแหน่งอื่นที่ Admin เพิ่มเองนอกเหนือ 10 รายการนี้ไม่ถูกแตะต้อง ตรวจสอบผลที่ Admin > ข้อมูลหลัก');
+}
+
 /** อ่านค่า Settings ตัวเดียวแบบสะดวก (ใช้ตอน install เท่านั้น — ส่วนอื่นควรใช้ getSetting() ใน Settings.gs ที่จะเพิ่มใน Part ถัดไป) */
 function getSettingValue_(ss, key) {
   var sheet = ss.getSheetByName(SHEET.SETTINGS);
