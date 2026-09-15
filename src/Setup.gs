@@ -294,22 +294,23 @@ function removeDefaultBlankSheet_(ss) {
 function migratePart10Updates() {
   migrateAddWorksColumns_();
   migrateAddMasterDataSheets_();
-  Logger.log('migratePart10Updates() เสร็จสมบูรณ์ — ตรวจสอบผลที่ชีต Works (คอลัมน์ท้ายสุด) และ ' +
-    'MasterPositions/MasterMedicalDomains/MasterMedicalSpecialties');
+  seedSettings_(getSpreadsheet_()); // idempotent — เติมเฉพาะ key ที่ยังไม่มี เช่น district11_provinces ที่เพิ่มรอบ 2
+  Logger.log('migratePart10Updates() เสร็จสมบูรณ์ — ตรวจสอบผลที่ชีต Works (คอลัมน์ท้ายสุด), ' +
+    'MasterPositions/MasterMedicalDomains/MasterMedicalSpecialties, และ Settings (district11_provinces)');
 }
 
-/** เติม header คอลัมน์ใหม่ 3 ตัว (position_no, medical_domain, medical_specialty) ต่อท้ายชีต Works จริง
+/** เติม header คอลัมน์ใหม่ (position_no, medical_domain, medical_specialty, province) ต่อท้ายชีต Works จริง
  *  ถ้ายังไม่มี — ต้องทำก่อนใช้ registerNewWork_/renderRegisterFormBody_ เวอร์ชันใหม่ ไม่งั้นข้อมูลจะเขียนเหลื่อมคอลัมน์ */
 function migrateAddWorksColumns_() {
   var ss = getSpreadsheet_();
   var sheet = ss.getSheetByName(SHEET.WORKS);
   var lastCol = sheet.getLastColumn();
   var liveHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var newCols = ['position_no', 'medical_domain', 'medical_specialty'].filter(function (h) {
+  var newCols = ['position_no', 'medical_domain', 'medical_specialty', 'province'].filter(function (h) {
     return liveHeaders.indexOf(h) === -1;
   });
   if (!newCols.length) {
-    Logger.log('ชีต Works มีคอลัมน์ position_no/medical_domain/medical_specialty ครบแล้ว — ข้าม');
+    Logger.log('ชีต Works มีคอลัมน์ position_no/medical_domain/medical_specialty/province ครบแล้ว — ข้าม');
     return;
   }
   sheet.getRange(1, lastCol + 1, 1, newCols.length).setValues([newCols]);

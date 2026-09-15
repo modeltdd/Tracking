@@ -28,6 +28,8 @@ SHEET_HEADERS[SHEET.WORKS] = [
   // เพิ่ม 2026-09-15 (ลดฟิลด์ลงทะเบียน + ตำแหน่ง/ข้อมูลแพทย์แบบ Master Data) — append ท้ายสุดเจตนา ห้าม reorder
   // ของเดิม สำหรับชีต Works ที่มีข้อมูลอยู่แล้วต้องรัน migrateAddWorksColumns_() (Setup.gs) เติม header จริงก่อนใช้
   'position_no', 'medical_domain', 'medical_specialty',
+  // เพิ่ม 2026-09-15 (รอบ 2) — จังหวัดในพื้นที่เขตสุขภาพที่ 11 (dropdown คู่กับ org_from ตอนลงทะเบียน)
+  'province',
 ];
 SHEET_HEADERS[SHEET.STATUS_HISTORY] = [
   'history_id', 'work_id', 'tracking_no', 'action', 'from_station', 'to_station', 'from_org', 'to_org',
@@ -217,6 +219,8 @@ function getSettingsSeed_() {
       'ตัวเลือกระดับตำแหน่ง (ปัจจุบัน/ที่ขอ) ในฟอร์มรับเอกสารใหม่ (คั่นด้วยจุลภาค)', ''],
     ['web_app_base_url', '', 'URL ของ Web App หลัง Deploy ครั้งแรก — ใช้สร้างลิงก์ QR Code', ''],
     ['google_oauth_client_id', '', 'Google OAuth Client ID (Web application) จาก Google Cloud Console — ใช้ยืนยันตัวตนเจ้าหน้าที่ที่ login ด้วย Gmail ส่วนตัว (docs/DESIGN.md A19) เว้นว่างไว้ = ปิดระบบ sign-in สำรองนี้', ''],
+    ['district11_provinces', 'นครศรีธรรมราช,กระบี่,พังงา,ภูเก็ต,สุราษฎร์ธานี,ระนอง,ชุมพร',
+      'รายชื่อจังหวัดในพื้นที่เขตสุขภาพที่ 11 — ตัวเลือก dropdown "จังหวัด" ในฟอร์มรับเอกสารใหม่ (คั่นด้วยจุลภาค แก้ไข/เพิ่มได้ตรงนี้)', ''],
   ];
 }
 

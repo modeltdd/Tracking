@@ -18,6 +18,7 @@ var REGISTER_REQUIRED_FIELDS_ = [
   { key: 'work_type', label: 'ประเภทผลงาน' },
   { key: 'work_title', label: 'ชื่อผลงาน' },
   { key: 'org_from', label: 'หน่วยงานต้นสังกัด' },
+  { key: 'province', label: 'จังหวัด' },
 ];
 
 /**
@@ -113,6 +114,7 @@ function registerNewWork_(ss, user, e) {
     position_no: values.position_no,
     medical_domain: values.medical_domain,
     medical_specialty: values.medical_specialty,
+    province: values.province,
   });
 
   var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);

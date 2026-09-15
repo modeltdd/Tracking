@@ -992,6 +992,8 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     : '';
 
   var typeOptions = getSettingList_(ss, 'work_type_options', ['อื่น ๆ']);
+  var provinceOptions = getSettingList_(ss, 'district11_provinces',
+    ['นครศรีธรรมราช', 'กระบี่', 'พังงา', 'ภูเก็ต', 'สุราษฎร์ธานี', 'ระนอง', 'ชุมพร']);
   var positionRows = getActiveMasterRows_(ss, SHEET.MASTER_POSITIONS);
   var domainRows = getActiveMasterRows_(ss, SHEET.MASTER_MEDICAL_DOMAINS);
   var specialtyRows = getActiveMasterRows_(ss, SHEET.MASTER_MEDICAL_SPECIALTIES);
@@ -1043,7 +1045,14 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '<div class="field"><label>ประเภทผลงาน</label>' + selectHtml('reg_work_type', typeOptions, values.work_type) + '</div>' +
     '<div class="field"><label>ถ้าเลือก "อื่น ๆ" ข้างต้น ระบุประเภทผลงาน</label><input class="input" name="reg_work_type_other" placeholder="ระบุประเภทผลงาน (ใช้เฉพาะกรณีเลือกอื่น ๆ)"></div>' +
     '<div class="field"><label>ชื่อผลงาน</label><textarea class="input" name="reg_work_title" rows="2">' + v('work_title') + '</textarea></div>' +
+    '<div class="field-row">' +
     '<div class="field"><label>หน่วยงานต้นสังกัด</label><input class="input" name="reg_org_from" value="' + v('org_from') + '"></div>' +
+    '<div class="field"><label>จังหวัด</label><select class="input" name="reg_province"><option value="">-- เลือกจังหวัด --</option>' +
+    provinceOptions.map(function (opt) {
+      var sel = opt === values.province ? ' selected' : '';
+      return '<option' + sel + '>' + escapeHtml_(opt) + '</option>';
+    }).join('') + '</select></div>' +
+    '</div>' +
     '<div class="field-row">' +
     '<div class="field"><label>เบอร์โทร (ถ้ามี)</label><input class="input" name="reg_phone" value="' + v('phone') + '"></div>' +
     '<div class="field"><label>อีเมล (ถ้ามี)</label><input class="input" name="reg_email" value="' + v('email') + '"></div>' +
