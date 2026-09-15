@@ -106,9 +106,12 @@ function doPost(e) {
   var formAction = e && e.parameter && e.parameter.form_action;
   var ss = getSpreadsheet_();
 
-  if (formAction === 'track_status') {
+  if (formAction === 'search_public') {
     // โซนสาธารณะ ไม่ต้อง Login — ตรวจสอบสิทธิ์ก่อนหน้านี้จะบล็อกผู้เยี่ยมชมทั่วไปออกไปโดยไม่ตั้งใจ
-    return handlePublicTrackPost_(ss, e);
+    // 2026-09-15: เปลี่ยนจาก track_status (tracking_no+last4 ยืนยันตัวตน) เป็นค้นหาด้วยเลขตำแหน่งเดิม/ชื่อ-นามสกุล
+    // (ไม่ยืนยันตัวตน — ดูแชท requirement ส่วน F-H) handlePublicTrackPost_/trackPublicStatus_ เดิมไม่ลบทิ้ง
+    // (ไม่มีจุดไหนเรียกแล้ว เผื่อย้อนดู/ใช้ภายหลัง)
+    return handlePublicSearchPost_(ss, e);
   }
 
   // เหมือน doGet — Session.getActiveUser() ใช้ไม่ได้กับ Gmail ส่วนตัว fallback ไป Google ID token
@@ -173,7 +176,7 @@ function doPost(e) {
     return renderStaffPage_('บันทึกสำเร็จ', renderActionSuccessBody_(transResult, baseUrl), user, 'scan', baseUrl);
   }
 
-  if (formAction === 'admin_station_save' || formAction === 'admin_user_save') {
+  if (formAction === 'admin_station_save' || formAction === 'admin_user_save' || formAction === 'admin_master_save') {
     if (user.role !== 'Admin') {
       return renderStaffPage_('ไม่มีสิทธิ์', renderStubBody_('เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น', baseUrl), user, 'admin', baseUrl);
     }
@@ -185,6 +188,19 @@ function doPost(e) {
           renderStationFormBody_(ss, editStation, baseUrl, stationResult.errors, stationResult.values), user, 'admin', baseUrl);
       }
       return renderStaffPage_('จัดการ Workflow', renderAdminStationsBody_(listStationsSorted_(ss), baseUrl), user, 'admin', baseUrl);
+    }
+    if (formAction === 'admin_master_save') {
+      var masterResult = performAdminMasterSave_(ss, user, e);
+      if (!masterResult.ok) {
+        if (!MASTER_DATA_CONFIG_[masterResult.masterType]) {
+          return renderStaffPage_('จัดการข้อมูลหลัก', renderStubBody_(masterResult.errors.join(', '), baseUrl), user, 'admin', baseUrl);
+        }
+        var editMaster = masterResult.isNew ? null : findMasterRowByCode_(ss, masterResult.masterType, masterResult.values[MASTER_DATA_CONFIG_[masterResult.masterType].codeField]);
+        return renderStaffPage_('จัดการข้อมูลหลัก',
+          renderMasterFormBody_(masterResult.masterType, editMaster, baseUrl, masterResult.errors, masterResult.values), user, 'admin', baseUrl);
+      }
+      return renderStaffPage_('จัดการข้อมูลหลัก',
+        renderMasterListBody_(listMasterRowsSorted_(ss, masterResult.masterType), masterResult.masterType, baseUrl), user, 'admin', baseUrl);
     }
     var userResult = performAdminUserSave_(ss, user, e);
     if (!userResult.ok) {

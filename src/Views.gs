@@ -600,23 +600,25 @@ function renderPublicPage_(title, bodyHtml) {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
 }
 
-/** ฟอร์มตรวจสอบสถานะสาธารณะ — เลขติดตาม + เลขบัตรประชาชน 4 ตัวท้าย, POST เสมอ (กันเลขบัตรหลุดใน URL/ประวัติเบราว์เซอร์) */
-function renderPublicTrackFormBody_(baseUrl, sessionToken, errors, prevValues) {
+/**
+ * ฟอร์มค้นหาผลงานสาธารณะ (2026-09-15 เปลี่ยนจาก tracking_no+last4 เป็นเลขตำแหน่งเดิม/ชื่อ-นามสกุล — ไม่ยืนยัน
+ * ตัวตน ดูแชท requirement ส่วน F-H, ยืนยันกับผู้ใช้แล้ว) POST เสมอ (แนวเดียวกับฟอร์มเดิม กันข้อมูลหลุดใน URL)
+ */
+function renderPublicTrackFormBody_(baseUrl, errors, prevValues) {
   prevValues = prevValues || {};
   var errorHtml = (errors && errors.length)
     ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
     : '';
   return '' + errorHtml +
     '<div class="detail-card">' +
-    '<p>กรอกเลขติดตามเอกสารและเลขบัตรประชาชน 4 ตัวท้าย เพื่อตรวจสอบสถานะผลงานวิชาการ</p>' +
+    '<p>ค้นหาผลงานของท่านด้วยเลขตำแหน่งเดิม หรือ ชื่อ/นามสกุล</p>' +
     '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;">' +
-    '<input type="hidden" name="form_action" value="track_status">' +
-    '<input type="hidden" name="session_token" value="' + escapeHtml_(sessionToken) + '">' +
-    '<div class="field"><label>เลขติดตามเอกสาร</label>' +
-    '<input class="input" name="tracking_no" value="' + escapeHtml_(prevValues.tracking_no || '') + '" placeholder="เช่น อวช11-2569-00218"></div>' +
-    '<div class="field"><label>เลขบัตรประชาชน 4 ตัวท้าย</label>' +
-    '<input class="input" name="citizen_id_last4" maxlength="4" inputmode="numeric" pattern="[0-9]{4}"></div>' +
-    '<button class="btn-primary" type="submit">ตรวจสอบสถานะ</button>' +
+    '<input type="hidden" name="form_action" value="search_public">' +
+    '<div class="field"><label>เลขตำแหน่งเดิม</label>' +
+    '<input class="input" name="position_no" value="' + escapeHtml_(prevValues.position_no || '') + '" placeholder="กรอกถ้าทราบ"></div>' +
+    '<div class="field"><label>ชื่อ หรือ นามสกุล</label>' +
+    '<input class="input" name="owner_name" value="' + escapeHtml_(prevValues.owner_name || '') + '" placeholder="กรอกอย่างน้อย 1 ช่อง"></div>' +
+    '<button class="btn-primary" type="submit">ค้นหา</button>' +
     '</form>' +
     '<div class="qr-scan-divider"><span>หรือ</span></div>' +
     '<input type="file" accept="image/*" capture="environment" id="qr-photo-input" data-base-url="' + escapeHtml_(baseUrl) + '" style="display:none">' +
@@ -625,6 +627,29 @@ function renderPublicTrackFormBody_(baseUrl, sessionToken, errors, prevValues) {
     '<p id="qr-photo-msg" class="hint" style="display:none"></p>' +
     '</div>' +
     QR_PHOTO_SCAN_SCRIPT_;
+}
+
+/** ผลการค้นหาหลายรายการ (position_no/name ค้นเจอมากกว่า 1) — จำกัดข้อมูลที่แสดง (ข้อ H) ชื่อยัง mask เหมือนเดิม
+ *  (A10) เพราะค้นหาแบบนี้ไม่ยืนยันตัวตน คลิกแต่ละแถวไปหน้าเดิมด้วย qr_token เหมือนสแกน QR ทุกประการ (reuse A14) */
+function renderPublicSearchResultsBody_(results, baseUrl) {
+  var rows = results.map(function (w) {
+    var cls = STATUS_PILL_CLASS_[w.current_status_public] || 'pending';
+    var label = PUBLIC_STATUS_LABELS[w.current_status_public] || w.current_status_public || '-';
+    var maskedName = maskNameForPublic_(w.title_name, w.first_name, w.last_name);
+    return '' +
+      '<a class="work-row" target="_top" href="' + baseUrl + '?t=' + encodeURIComponent(w.qr_token) + '">' +
+      '<div class="work-main"><span class="tracking">' + escapeHtml_(maskedName) + '</span>' +
+      '<span class="worktitle">' + escapeHtml_(w.work_title || '-') + ' &middot; ' + escapeHtml_(w.org_from || '-') +
+      ' &middot; ' + escapeHtml_(w.tracking_no) + '</span></div>' +
+      '<span class="pill pill-' + cls + '">' + escapeHtml_(label) + '</span>' +
+      '</a>';
+  }).join('');
+
+  return '' +
+    '<p class="pub-subheader-label">พบ ' + results.length + ' รายการ' +
+    (results.length >= PUBLIC_SEARCH_RESULT_LIMIT_ ? ' (แสดงสูงสุด ' + PUBLIC_SEARCH_RESULT_LIMIT_ + ' รายการแรก — ลองระบุให้เจาะจงขึ้น)' : '') + '</p>' +
+    '<section class="metric-card">' + rows + '</section>' +
+    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '">&larr; ค้นหาใหม่</a></p>';
 }
 
 /** ปุ่ม "ถ่ายรูป/เลือกรูป QR" บนหน้าตรวจสอบสถานะสาธารณะ — ค้นหาแบบที่ 2 นอกเหนือจากกรอกเลขติดตามเอง
@@ -683,16 +708,23 @@ var QR_PHOTO_SCAN_SCRIPT_ = '' +
   '</script>';
 
 /**
- * "ติดตามผลงานของฉัน" — หน้าผลตรวจสอบสถานะสาธารณะ (2026-09-08 ออกแบบใหม่ทั้งหน้า) Read-only, mobile-first
- * ลำดับการมองเห็นตามที่ผู้ใช้กำหนด: สถานะปัจจุบัน → สิ่งที่ต้องดำเนินการ → Timeline → รายละเอียด → หมายเหตุ
+ * "ติดตามผลงานของฉัน" — หน้าผลตรวจสอบสถานะสาธารณะ (2026-09-15 จัดลำดับใหม่ตามแชท requirement ส่วน M):
+ * ชื่อเจ้าของผลงาน+ชื่อผลงาน (บนสุด) → สถานะปัจจุบัน (ใหญ่สุด, hero) → สิ่งที่ต้องดำเนินการ → ผู้รับผิดชอบ+เวลาที่รับ
+ * → เขตรับเรื่องเมื่อ → ส่งต่อผู้ว่าเมื่อ (ถ้ามี) → Timeline → รายละเอียดที่เหลือ → หมายเหตุ — Read-only, mobile-first
  * เฉพาะฟิลด์ที่เปิดเผยได้ (ชื่อปกปิดบางส่วนตาม A10 เสมอ — ไม่มี audit log/ปุ่มแก้ไข/ข้อมูลคนอื่น)
- * data = { revisionInfo, steps, currentStation, latestNote } จาก buildPublicResultData_ (PublicTrack.gs)
+ * data = { revisionInfo, steps, currentStation, latestNote, governorForwardDate } จาก buildPublicResultData_ (PublicTrack.gs)
  */
 function renderPublicResultBody_(work, data, baseUrl) {
   var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
   var maskedName = maskNameForPublic_(work.title_name, work.first_name, work.last_name);
   var split = data.currentStation ? splitStationNameDesc_(data.currentStation.station_name) : { main: PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public, desc: '' };
   var orderLabel = data.currentStation ? data.currentStation.station_order : '';
+
+  var nameBlockHtml = '' +
+    '<div class="pub-name-block">' +
+    '<div class="pub-name-owner">' + escapeHtml_(maskedName) + '</div>' +
+    '<div class="pub-name-title">' + escapeHtml_(work.work_title || '-') + '</div>' +
+    '</div>';
 
   var heroHtml = '' +
     '<div class="pub-hero pub-hero-' + cls + '">' +
@@ -706,17 +738,24 @@ function renderPublicResultBody_(work, data, baseUrl) {
     ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
     : '';
 
+  // ข้อ I.9.4-9.6: ผู้รับผิดชอบ+เวลาที่รับ (current_owner_org/updated_at), เขตรับเรื่องเมื่อ (received_date — state 1
+  // เป็นของ "สนง เขต" เสมอ), ส่งต่อผู้ว่าเมื่อ (StatusHistory จริงที่เข้า s10 — ไม่แสดงถ้ายังไม่ถึง ไม่เดา)
+  var handoffHtml = '' +
+    '<div class="pub-owner-card">' +
+    renderPubOwnerRow_('ผู้รับผิดชอบ', work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-')) +
+    renderPubOwnerRow_('รับงานเมื่อ', formatDateTh_(work.updated_at)) +
+    renderPubOwnerRow_('เขตรับเรื่องเมื่อ', formatDateTh_(work.received_date)) +
+    (data.governorForwardDate ? renderPubOwnerRow_('ส่งต่อผู้ว่าเมื่อ', formatDateTh_(data.governorForwardDate)) : '') +
+    '</div>';
+
   var timelineHtml = data.steps ? renderPublicTimeline_(data.steps) : '';
 
   var ownerHtml = '' +
     '<div class="pub-owner-card">' +
     '<div class="pub-owner-title">ข้อมูลผลงาน</div>' +
-    renderPubOwnerRow_('ชื่อ-สกุล', maskedName) +
-    renderPubOwnerRow_('ชื่อผลงาน', work.work_title) +
     renderPubOwnerRow_('หน่วยงาน', work.org_from) +
     renderPubOwnerRow_('ตำแหน่ง', work.position) +
     renderPubOwnerRow_('ประเภทผลงาน', work.work_type) +
-    renderPubOwnerRow_('วันที่รับเรื่อง', formatDateTh_(work.received_date)) +
     '</div>';
 
   var noteHtml = '';
@@ -734,7 +773,7 @@ function renderPublicResultBody_(work, data, baseUrl) {
 
   return '' +
     '<div class="pub-subheader"><span class="pub-subheader-label">เลขทะเบียน</span> <b>' + escapeHtml_(work.tracking_no) + '</b></div>' +
-    heroHtml + actionHtml + timelineHtml + ownerHtml + noteHtml +
+    nameBlockHtml + heroHtml + actionHtml + handoffHtml + timelineHtml + ownerHtml + noteHtml +
     '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '">&larr; ตรวจสอบรายการอื่น</a></p>';
 }
 
@@ -936,6 +975,13 @@ function renderStubBody_(message, baseUrl) {
 }
 
 /** ฟอร์มรับเอกสารใหม่ (docs/DESIGN.md Part 3) — values/errors ใช้ตอนส่งฟอร์มไม่ผ่าน validation เพื่อคืนค่าที่กรอกไว้ */
+/**
+ * ฟอร์มรับเอกสารใหม่ (2026-09-15 ปรับลดฟิลด์ + ตำแหน่ง/ข้อมูลแพทย์เป็น Master Data — ดูแชท requirement ส่วน A-E)
+ * ตัดออก: เลขบัตรประชาชน/ระดับปัจจุบัน/ระดับที่ขอ/ภาพหน้าปก (คอลัมน์เดิมยังอยู่ เขียนค่าว่างที่ Register.gs)
+ * เพิ่ม: เลขตำแหน่งเดิม (บังคับ), ตำแหน่งเป็น dropdown จาก MasterPositions, ด้าน/สาขา dynamic เฉพาะ "นายแพทย์"
+ * (MasterMedicalDomains/MasterMedicalSpecialties) — REG_DYNAMIC_SCRIPT_ จัดการซ่อน/โชว์+clear ค่าฝั่ง client
+ * ฝั่ง backend validate ซ้ำเสมอที่ registerNewWork_ (Register.gs) ไม่เชื่อ client อย่างเดียว
+ */
 function renderRegisterFormBody_(ss, values, errors, baseUrl) {
   values = values || {};
   var v = function (key) { return escapeHtml_(values[key] || ''); };
@@ -945,8 +991,10 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
       errors.map(function (e) { return '<li>' + escapeHtml_(e) + '</li>'; }).join('') + '</ul></div>'
     : '';
 
-  var levelOptions = getSettingList_(ss, 'career_level_options', ['ปฏิบัติการ', 'ชำนาญการ', 'ชำนาญการพิเศษ', 'เชี่ยวชาญ', 'ทรงคุณวุฒิ']);
   var typeOptions = getSettingList_(ss, 'work_type_options', ['อื่น ๆ']);
+  var positionRows = getActiveMasterRows_(ss, SHEET.MASTER_POSITIONS);
+  var domainRows = getActiveMasterRows_(ss, SHEET.MASTER_MEDICAL_DOMAINS);
+  var specialtyRows = getActiveMasterRows_(ss, SHEET.MASTER_MEDICAL_SPECIALTIES);
 
   function selectHtml(name, options, current) {
     return '<select class="input" name="' + name + '">' +
@@ -956,35 +1004,88 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
       }).join('') + '</select>';
   }
 
+  var positionOptionsHtml = '<option value="">-- เลือกตำแหน่ง --</option>' + positionRows.map(function (row) {
+    var sel = row.position_name === values.position ? ' selected' : '';
+    return '<option' + sel + '>' + escapeHtml_(row.position_name) + '</option>';
+  }).join('');
+
+  var domainOptionsHtml = '<option value="">-- เลือกด้าน --</option>' + domainRows.map(function (row) {
+    var sel = row.domain_name === values.medical_domain ? ' selected' : '';
+    return '<option value="' + escapeHtml_(row.domain_name) + '" data-domain-code="' + escapeHtml_(row.domain_code) + '"' + sel + '>' +
+      escapeHtml_(row.domain_name) + '</option>';
+  }).join('');
+
+  var specialtyOptionsHtml = '<option value="">-- เลือกสาขา --</option>' + specialtyRows.map(function (row) {
+    var sel = row.specialty_name === values.medical_specialty ? ' selected' : '';
+    return '<option value="' + escapeHtml_(row.specialty_name) + '" data-domain-code="' + escapeHtml_(row.domain_code) + '"' + sel + '>' +
+      escapeHtml_(row.specialty_name) + '</option>';
+  }).join('');
+
+  var showDomain = values.position === 'นายแพทย์';
+  var showSpecialty = showDomain && values.medical_domain === 'ด้านเวชกรรม';
+
   return '' +
     errorHtml +
-    '<form method="post" target="_top" action="' + baseUrl + '" enctype="multipart/form-data" class="reg-form">' +
+    '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" id="reg-form">' +
     '<input type="hidden" name="form_action" value="register_work">' +
     '<div class="field"><label>คำนำหน้าชื่อ</label><input class="input" name="reg_title_name" value="' + v('title_name') + '" placeholder="นาย / นาง / นางสาว"></div>' +
     '<div class="field-row">' +
     '<div class="field"><label>ชื่อ</label><input class="input" name="reg_first_name" value="' + v('first_name') + '"></div>' +
     '<div class="field"><label>นามสกุล</label><input class="input" name="reg_last_name" value="' + v('last_name') + '"></div>' +
     '</div>' +
-    '<div class="field"><label>ตำแหน่ง</label><input class="input" name="reg_position" value="' + v('position') + '"></div>' +
-    '<div class="field-row">' +
-    '<div class="field"><label>ระดับปัจจุบัน</label>' + selectHtml('reg_current_level', levelOptions, values.current_level) + '</div>' +
-    '<div class="field"><label>ระดับที่ขอ</label>' + selectHtml('reg_requested_level', levelOptions, values.requested_level) + '</div>' +
-    '</div>' +
+    '<div class="field"><label>ตำแหน่ง</label><select class="input" name="reg_position" id="reg-position">' + positionOptionsHtml + '</select>' +
+    (positionRows.length ? '' : '<p class="hint" style="margin-top:4px">ยังไม่มีตำแหน่งใน Master Data — เพิ่มได้ที่ Admin &gt; ข้อมูลหลัก</p>') + '</div>' +
+    '<div class="field" id="reg-domain-field" style="' + (showDomain ? '' : 'display:none') + '">' +
+    '<label>ด้าน (เฉพาะนายแพทย์)</label><select class="input" name="reg_medical_domain" id="reg-domain">' + domainOptionsHtml + '</select></div>' +
+    '<div class="field" id="reg-specialty-field" style="' + (showSpecialty ? '' : 'display:none') + '">' +
+    '<label>สาขา (เฉพาะด้านเวชกรรม)</label><select class="input" name="reg_medical_specialty" id="reg-specialty">' + specialtyOptionsHtml + '</select></div>' +
+    '<div class="field"><label>เลขตำแหน่งเดิม</label><input class="input" name="reg_position_no" value="' + v('position_no') + '"></div>' +
     '<div class="field"><label>ประเภทผลงาน</label>' + selectHtml('reg_work_type', typeOptions, values.work_type) + '</div>' +
     '<div class="field"><label>ถ้าเลือก "อื่น ๆ" ข้างต้น ระบุประเภทผลงาน</label><input class="input" name="reg_work_type_other" placeholder="ระบุประเภทผลงาน (ใช้เฉพาะกรณีเลือกอื่น ๆ)"></div>' +
     '<div class="field"><label>ชื่อผลงาน</label><textarea class="input" name="reg_work_title" rows="2">' + v('work_title') + '</textarea></div>' +
     '<div class="field"><label>หน่วยงานต้นสังกัด</label><input class="input" name="reg_org_from" value="' + v('org_from') + '"></div>' +
-    '<div class="field"><label>เลขบัตรประชาชน (13 หลัก)</label><input class="input" name="reg_citizen_id" value="' + v('citizen_id') + '" maxlength="13" inputmode="numeric" pattern="[0-9]{13}"></div>' +
     '<div class="field-row">' +
     '<div class="field"><label>เบอร์โทร (ถ้ามี)</label><input class="input" name="reg_phone" value="' + v('phone') + '"></div>' +
     '<div class="field"><label>อีเมล (ถ้ามี)</label><input class="input" name="reg_email" value="' + v('email') + '"></div>' +
     '</div>' +
-    '<div class="field"><label>ภาพหน้าปกผลงาน (ถ้ามี)</label>' +
-    '<input class="input" type="file" name="reg_cover_image" accept="image/*" id="reg-cover-input">' +
-    '</div>' +
     '<button class="btn-primary" type="submit">บันทึกและออกเลขติดตาม</button>' +
-    '</form>';
+    '</form>' +
+    REG_DYNAMIC_SCRIPT_;
 }
+
+/** ซ่อน/โชว์ฟิลด์ ด้าน/สาขา ตามตำแหน่งที่เลือก (ข้อ E) — ไม่มี framework, vanilla change listener ธรรมดา
+ *  กรอง option สาขาให้เหลือเฉพาะ domain_code ที่ตรงกับด้านที่เลือกด้วย (data-domain-code บน <option>) */
+var REG_DYNAMIC_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'var posSel = document.getElementById("reg-position");' +
+  'var domainField = document.getElementById("reg-domain-field");' +
+  'var domainSel = document.getElementById("reg-domain");' +
+  'var specField = document.getElementById("reg-specialty-field");' +
+  'var specSel = document.getElementById("reg-specialty");' +
+  'if (!posSel || !domainSel || !specSel) return;' +
+  'var allSpecOptions = Array.prototype.slice.call(specSel.options);' +
+  'function filterSpecialties() {' +
+  'var domainCode = (domainSel.selectedOptions[0] || {}).dataset ? domainSel.selectedOptions[0].dataset.domainCode : "";' +
+  'specSel.innerHTML = "";' +
+  'allSpecOptions.forEach(function (opt) {' +
+  'if (!opt.value || opt.dataset.domainCode === domainCode) specSel.appendChild(opt.cloneNode(true));' +
+  '});' +
+  '}' +
+  'function syncVisibility() {' +
+  'var isDoctor = posSel.value === "นายแพทย์";' +
+  'domainField.style.display = isDoctor ? "" : "none";' +
+  'if (!isDoctor) { domainSel.value = ""; specSel.value = ""; specField.style.display = "none"; return; }' +
+  'filterSpecialties();' +
+  'var isClinical = domainSel.value === "ด้านเวชกรรม";' +
+  'specField.style.display = isClinical ? "" : "none";' +
+  'if (!isClinical) specSel.value = "";' +
+  '}' +
+  'posSel.addEventListener("change", syncVisibility);' +
+  'domainSel.addEventListener("change", syncVisibility);' +
+  'syncVisibility();' +
+  '});' +
+  '</script>';
 
 /** หน้าสำเร็จหลังลงทะเบียน — แสดงเลขติดตาม + QR ให้พิมพ์แปะเอกสาร */
 function renderRegisterSuccessBody_(result, baseUrl) {
@@ -1004,6 +1105,7 @@ function renderRegisterSuccessBody_(result, baseUrl) {
 var ADMIN_TABS_ = [
   { tab: 'overview', label: 'ภาพรวม' },
   { tab: 'stations', label: 'Workflow' },
+  { tab: 'master', label: 'ข้อมูลหลัก' },
   { tab: 'users', label: 'ผู้ใช้งาน' },
   { tab: 'audit', label: 'Audit Log' },
   { tab: 'report', label: 'รายงาน CSV' },
@@ -1113,6 +1215,77 @@ function renderStationFormBody_(ss, station, baseUrl, errors, prevValues) {
     '<button class="btn-primary" type="submit">บันทึก</button>' +
     '</form>' +
     '<p><a target="_top" href="' + baseUrl + '?page=admin&tab=stations">&larr; กลับรายการสถานี</a></p>';
+}
+
+/**
+ * จัดการ Master Data (ตำแหน่ง/ด้าน/สาขาแพทย์) — 2026-09-15 CRUD เดียวใช้ร่วม 3 master ผ่าน MASTER_DATA_CONFIG_
+ * (Constants.gs) สลับดูแต่ละชุดด้วยแท็บย่อย ?type= — แก้ไข/เพิ่มรายการได้ไม่ต้องแก้ source code (ข้อ Q)
+ */
+function renderMasterTypeTabsHtml_(activeType, baseUrl) {
+  return '<div class="admin-tabs">' + Object.keys(MASTER_DATA_CONFIG_).map(function (t) {
+    var cls = t === activeType ? ' active' : '';
+    return '<a class="admin-tab' + cls + '" target="_top" href="' + baseUrl + '?page=admin&tab=master&type=' + t + '">' +
+      escapeHtml_(MASTER_DATA_CONFIG_[t].label) + '</a>';
+  }).join('') + '</div>';
+}
+
+function renderMasterListBody_(rows, masterType, baseUrl) {
+  var cfg = MASTER_DATA_CONFIG_[masterType];
+  var rowsHtml = rows.map(function (r) {
+    var extraCells = cfg.extraFields.map(function (f) { return '<td>' + escapeHtml_(r[f.key]) + '</td>'; }).join('');
+    return '<tr><td>' + r.sort_order + '</td><td>' + escapeHtml_(r[cfg.nameField]) + '</td>' + extraCells +
+      '<td>' + (r.active ? 'เปิด' : 'ปิด') + '</td>' +
+      '<td><a target="_top" href="' + baseUrl + '?page=admin&tab=master_form&type=' + masterType +
+      '&code=' + encodeURIComponent(r[cfg.codeField]) + '">แก้ไข</a></td></tr>';
+  }).join('');
+
+  var extraHeaders = cfg.extraFields.map(function (f) { return '<th>' + escapeHtml_(f.label) + '</th>'; }).join('');
+
+  return '' + renderAdminTabs_('master', baseUrl) + renderMasterTypeTabsHtml_(masterType, baseUrl) +
+    '<p><a target="_top" class="btn-action btn-action-primary" href="' + baseUrl + '?page=admin&tab=master_form&type=' + masterType + '">+ เพิ่ม' + escapeHtml_(cfg.label) + '</a></p>' +
+    '<section class="metric-card"><div class="table-scroll"><table class="admin-table">' +
+    '<thead><tr><th>ลำดับ</th><th>ชื่อ</th>' + extraHeaders + '<th>สถานะ</th><th></th></tr></thead>' +
+    '<tbody>' + (rowsHtml || '<tr><td colspan="9" class="empty">ยังไม่มีรายการ</td></tr>') + '</tbody></table></div></section>';
+}
+
+function renderMasterFormBody_(masterType, record, baseUrl, errors, prevValues) {
+  var cfg = MASTER_DATA_CONFIG_[masterType];
+  var isNew = !record;
+  var v = function (key) {
+    if (prevValues && key in prevValues) return prevValues[key];
+    return record ? record[key] : '';
+  };
+  var errorHtml = (errors && errors.length)
+    ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+
+  var activeChecked = (prevValues && 'active' in prevValues)
+    ? (prevValues.active === true || prevValues.active === '1')
+    : (record ? !!record.active : true);
+
+  var extraFieldsHtml = cfg.extraFields.map(function (f) {
+    return '<div class="field"><label>' + escapeHtml_(f.label) + '</label><input class="input" name="' + f.key + '" value="' + escapeHtml_(v(f.key)) + '"></div>';
+  }).join('');
+
+  return errorHtml +
+    '<div class="pub-subheader">' + escapeHtml_(cfg.label) + '</div>' +
+    '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form">' +
+    '<input type="hidden" name="form_action" value="admin_master_save">' +
+    '<input type="hidden" name="master_type" value="' + escapeHtml_(masterType) + '">' +
+    '<input type="hidden" name="is_new" value="' + (isNew ? '1' : '0') + '">' +
+    '<div class="field"><label>รหัส (' + escapeHtml_(cfg.codeField) + ')</label>' +
+    (isNew
+      ? '<input class="input" name="' + cfg.codeField + '" value="' + escapeHtml_(v(cfg.codeField)) + '" placeholder="เช่น md (อังกฤษ ไม่เว้นวรรค)">'
+      : '<input class="input" value="' + escapeHtml_(record[cfg.codeField]) + '" disabled>' +
+        '<input type="hidden" name="' + cfg.codeField + '" value="' + escapeHtml_(record[cfg.codeField]) + '">') +
+    '</div>' +
+    '<div class="field"><label>ชื่อ (' + escapeHtml_(cfg.nameField) + ')</label><input class="input" name="' + cfg.nameField + '" value="' + escapeHtml_(v(cfg.nameField)) + '"></div>' +
+    extraFieldsHtml +
+    '<div class="field"><label>ลำดับ (sort_order)</label><input class="input" type="number" name="sort_order" value="' + escapeHtml_(String(v('sort_order') || '0')) + '"></div>' +
+    '<label class="checkbox-row"><input type="checkbox" name="active" value="1"' + (activeChecked ? ' checked' : '') + '> เปิดใช้งานรายการนี้</label>' +
+    '<button class="btn-primary" type="submit">บันทึก</button>' +
+    '</form>' +
+    '<p><a target="_top" href="' + baseUrl + '?page=admin&tab=master&type=' + masterType + '">&larr; กลับรายการ</a></p>';
 }
 
 /** ตารางผู้ใช้งานทั้งหมด + ลิงก์แก้ไข */
@@ -1312,6 +1485,10 @@ var PUBLIC_CSS_ = '' +
   // มือถือ (viewport < 800px) ได้ความกว้างเต็มจออัตโนมัติ, เดสก์ท็อปเห็นเนื้อหาไม่ยืดกว้างจนอ่านยาก
   '.public-body .content{width:100%;max-width:800px;padding-left:16px;padding-right:16px;box-sizing:border-box;}' +
   '.pub-subheader{font-size:.82rem;color:var(--muted);margin:0 2px 14px;}' +
+  // บล็อกชื่อเจ้าของผลงาน+ชื่อผลงาน (2026-09-15) — อยู่บนสุดตามข้อ M แต่ตัวอักษรเล็กกว่า hero สถานะเสมอ (ข้อ O.17)
+  '.pub-name-block{margin:0 2px 14px;}' +
+  '.pub-name-owner{font-weight:700;font-size:1.05rem;color:var(--navy);}' +
+  '.pub-name-title{font-size:.88rem;color:var(--muted);margin-top:2px;line-height:1.4;word-wrap:break-word;}' +
   // การ์ด "สถานะปัจจุบัน" — เด่นที่สุดในหน้า สีพื้นอ่อนตามกลุ่มสถานะ (เขียวอ่อน=สำเร็จ, ส้ม/เหลืองอ่อน=รอแก้ไข,
   // แดงอ่อน=ปัญหา/ยุติ, ฟ้าอมเทาอ่อน=กำลังดำเนินการ) ไม่ใช้สีสดจัด ไม่มี shadow/gradient หนัก
   '.pub-hero{border-radius:16px;padding:22px 22px 18px;margin-bottom:16px;border:1px solid var(--border);background:var(--bg);}' +

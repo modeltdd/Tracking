@@ -28,6 +28,15 @@ function renderAdminRoute_(ss, user, params, baseUrl) {
   if (tab === 'stations') {
     return renderStaffPage_('จัดการ Workflow', renderAdminStationsBody_(listStationsSorted_(ss), baseUrl), user, 'admin', baseUrl);
   }
+  if (tab === 'master_form') {
+    var masterType = params.type || 'position';
+    var masterRecord = params.code ? findMasterRowByCode_(ss, masterType, params.code) : null;
+    return renderStaffPage_('จัดการข้อมูลหลัก', renderMasterFormBody_(masterType, masterRecord, baseUrl, [], null), user, 'admin', baseUrl);
+  }
+  if (tab === 'master') {
+    var activeMasterType = params.type || 'position';
+    return renderStaffPage_('จัดการข้อมูลหลัก', renderMasterListBody_(listMasterRowsSorted_(ss, activeMasterType), activeMasterType, baseUrl), user, 'admin', baseUrl);
+  }
   if (tab === 'users') {
     return renderStaffPage_('จัดการผู้ใช้งาน', renderAdminUsersBody_(listUsersSorted_(ss), baseUrl), user, 'admin', baseUrl);
   }
@@ -157,6 +166,63 @@ function updateWorkStationRow_(ss, stationKey, fields) {
     return;
   }
   throw new Error('ไม่พบสถานี station_key: ' + stationKey);
+}
+
+/* ---------- จัดการ Master Data (ตำแหน่ง/ด้าน/สาขาแพทย์) — 2026-09-15, ดูแชท requirement ส่วน Q ---------- */
+/* CRUD เดียวใช้ร่วม 3 master ผ่าน MASTER_DATA_CONFIG_ (Constants.gs) แทนก๊อปโค้ดซ้ำ 3 ชุด */
+
+function listMasterRowsSorted_(ss, masterType) {
+  var cfg = MASTER_DATA_CONFIG_[masterType];
+  if (!cfg) return [];
+  return readSheetAsObjects_(ss.getSheetByName(cfg.sheet))
+    .sort(function (a, b) { return Number(a.sort_order) - Number(b.sort_order); });
+}
+
+function findMasterRowByCode_(ss, masterType, code) {
+  var cfg = MASTER_DATA_CONFIG_[masterType];
+  if (!cfg) return null;
+  var rows = readSheetAsObjects_(ss.getSheetByName(cfg.sheet));
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i][cfg.codeField] === code) return rows[i];
+  }
+  return null;
+}
+
+/** สร้าง/แก้ไขแถว Master Data — codeField เป็น key คงที่ (แก้ไม่ได้หลังสร้าง เหมือน station_key/user_email) */
+function performAdminMasterSave_(ss, user, e) {
+  var p = (e && e.parameter) || {};
+  var masterType = String(p.master_type || '').trim();
+  var cfg = MASTER_DATA_CONFIG_[masterType];
+  if (!cfg) return { ok: false, errors: ['ไม่พบประเภท Master Data ที่ระบุ'], values: {}, masterType: masterType };
+
+  var isNew = p.is_new === '1';
+  var values = {};
+  values[cfg.codeField] = String(p[cfg.codeField] || '').trim();
+  values[cfg.nameField] = String(p[cfg.nameField] || '').trim();
+  cfg.extraFields.forEach(function (f) { values[f.key] = String(p[f.key] || '').trim(); });
+  values.active = p.active === '1';
+  values.sort_order = Number(p.sort_order || '0');
+
+  var errors = [];
+  if (!/^[a-zA-Z0-9_]+$/.test(values[cfg.codeField])) errors.push(cfg.codeField + ' ต้องเป็นตัวอักษรอังกฤษ/ตัวเลข/underscore เท่านั้น');
+  if (!values[cfg.nameField]) errors.push(cfg.label + 'ห้ามว่าง');
+  if (isNaN(values.sort_order)) errors.push('ลำดับ (sort_order) ต้องเป็นตัวเลข');
+
+  var existing = findMasterRowByCode_(ss, masterType, values[cfg.codeField]);
+  if (isNew && existing) errors.push('มีรหัสนี้อยู่แล้ว: ' + values[cfg.codeField]);
+  if (!isNew && !existing) errors.push('ไม่พบรายการที่ระบุ');
+
+  if (errors.length) return { ok: false, errors: errors, values: values, masterType: masterType, isNew: isNew };
+
+  var sheet = ss.getSheetByName(cfg.sheet);
+  if (isNew) {
+    appendRowByHeader_(sheet, SHEET_HEADERS[cfg.sheet], values);
+  } else {
+    var fieldsToLog = [cfg.nameField, 'active', 'sort_order'].concat(cfg.extraFields.map(function (f) { return f.key; }));
+    logFieldChanges_(user.user_email, 'edited_master_' + masterType, values[cfg.codeField], existing, values, fieldsToLog);
+    updateSheetRowByKey_(sheet, cfg.codeField, values[cfg.codeField], values);
+  }
+  return { ok: true, isNew: isNew, masterType: masterType, code: values[cfg.codeField] };
 }
 
 /* ---------- จัดการผู้ใช้งาน (Users) ---------- */

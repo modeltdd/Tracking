@@ -286,6 +286,66 @@ function removeDefaultBlankSheet_(ss) {
   });
 }
 
+/**
+ * Migration รวม 2026-09-15 — ลดฟิลด์ลงทะเบียน + ตำแหน่ง/ข้อมูลแพทย์แบบ Master Data + เพิ่มขั้นตอน "ส่งต่อผู้ว่า"
+ * ที่ตกหล่นตอนสร้าง WORKFLOW_STATES_SEED ชุดแรก — รันด้วยตนเองจาก Apps Script Editor ครั้งเดียวบนชีตจริง
+ * ปลอดภัยรันซ้ำได้ (idempotent ทุกขั้นย่อย) รวม 3 ส่วนย่อยไว้ในฟังก์ชันเดียวให้รันจบในคลิกเดียว
+ */
+function migratePart10Updates() {
+  migrateAddWorksColumns_();
+  migrateAddMasterDataSheets_();
+  Logger.log('migratePart10Updates() เสร็จสมบูรณ์ — ตรวจสอบผลที่ชีต Works (คอลัมน์ท้ายสุด) และ ' +
+    'MasterPositions/MasterMedicalDomains/MasterMedicalSpecialties');
+}
+
+/** เติม header คอลัมน์ใหม่ 3 ตัว (position_no, medical_domain, medical_specialty) ต่อท้ายชีต Works จริง
+ *  ถ้ายังไม่มี — ต้องทำก่อนใช้ registerNewWork_/renderRegisterFormBody_ เวอร์ชันใหม่ ไม่งั้นข้อมูลจะเขียนเหลื่อมคอลัมน์ */
+function migrateAddWorksColumns_() {
+  var ss = getSpreadsheet_();
+  var sheet = ss.getSheetByName(SHEET.WORKS);
+  var lastCol = sheet.getLastColumn();
+  var liveHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var newCols = ['position_no', 'medical_domain', 'medical_specialty'].filter(function (h) {
+    return liveHeaders.indexOf(h) === -1;
+  });
+  if (!newCols.length) {
+    Logger.log('ชีต Works มีคอลัมน์ position_no/medical_domain/medical_specialty ครบแล้ว — ข้าม');
+    return;
+  }
+  sheet.getRange(1, lastCol + 1, 1, newCols.length).setValues([newCols]);
+  sheet.getRange(1, lastCol + 1, 1, newCols.length).setFontWeight('bold');
+  Logger.log('เพิ่มคอลัมน์ใหม่ในชีต Works: ' + newCols.join(', '));
+}
+
+/** สร้าง+seed ชีต Master Data ใหม่ 3 ชีต (ตำแหน่ง/ด้านแพทย์/สาขาแพทย์) — ข้ามการ seed ถ้าชีตมีข้อมูลอยู่แล้ว */
+function migrateAddMasterDataSheets_() {
+  var ss = getSpreadsheet_();
+
+  var posSheet = ensureSheet_(ss, SHEET.MASTER_POSITIONS, SHEET_HEADERS[SHEET.MASTER_POSITIONS]);
+  if (posSheet.getLastRow() <= 1) {
+    getMasterPositionsSeed_().forEach(function (row) { appendRowByHeader_(posSheet, SHEET_HEADERS[SHEET.MASTER_POSITIONS], row); });
+    Logger.log('seed MasterPositions แล้ว (' + getMasterPositionsSeed_().length + ' แถว — มีแค่ "นายแพทย์" เพิ่มตำแหน่งอื่นเองที่ Admin > ข้อมูลหลัก)');
+  } else {
+    Logger.log('ชีต MasterPositions มีข้อมูลอยู่แล้ว — ข้าม');
+  }
+
+  var domainSheet = ensureSheet_(ss, SHEET.MASTER_MEDICAL_DOMAINS, SHEET_HEADERS[SHEET.MASTER_MEDICAL_DOMAINS]);
+  if (domainSheet.getLastRow() <= 1) {
+    getMasterMedicalDomainsSeed_().forEach(function (row) { appendRowByHeader_(domainSheet, SHEET_HEADERS[SHEET.MASTER_MEDICAL_DOMAINS], row); });
+    Logger.log('seed MasterMedicalDomains แล้ว (' + getMasterMedicalDomainsSeed_().length + ' แถว)');
+  } else {
+    Logger.log('ชีต MasterMedicalDomains มีข้อมูลอยู่แล้ว — ข้าม');
+  }
+
+  var specSheet = ensureSheet_(ss, SHEET.MASTER_MEDICAL_SPECIALTIES, SHEET_HEADERS[SHEET.MASTER_MEDICAL_SPECIALTIES]);
+  if (specSheet.getLastRow() <= 1) {
+    getMasterMedicalSpecialtiesSeed_().forEach(function (row) { appendRowByHeader_(specSheet, SHEET_HEADERS[SHEET.MASTER_MEDICAL_SPECIALTIES], row); });
+    Logger.log('seed MasterMedicalSpecialties แล้ว (' + getMasterMedicalSpecialtiesSeed_().length + ' แถว)');
+  } else {
+    Logger.log('ชีต MasterMedicalSpecialties มีข้อมูลอยู่แล้ว — ข้าม');
+  }
+}
+
 /** อ่านค่า Settings ตัวเดียวแบบสะดวก (ใช้ตอน install เท่านั้น — ส่วนอื่นควรใช้ getSetting() ใน Settings.gs ที่จะเพิ่มใน Part ถัดไป) */
 function getSettingValue_(ss, key) {
   var sheet = ss.getSheetByName(SHEET.SETTINGS);

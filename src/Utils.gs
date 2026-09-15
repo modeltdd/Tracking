@@ -155,6 +155,32 @@ function updateWorkRow_(ss, workId, fields) {
   throw new Error('ไม่พบงาน work_id: ' + workId);
 }
 
+/**
+ * อัปเดตบางคอลัมน์ของ 1 แถวในชีตใดก็ได้ ด้วยชื่อคอลัมน์ที่ใช้เป็น key (เช่น transition_id, position_code)
+ * เขียนตาม header แถวจริงของชีต (ไม่ใช่ SHEET_HEADERS คงที่) — ใช้กับ migration และ Admin master-data CRUD
+ * (pattern เดียวกับ updateWorkStationRow_ ใน Admin.gs แต่ generic ใช้กับชีตไหนก็ได้ ไม่ต้อง copy ซ้ำทุกชีต)
+ */
+function updateSheetRowByKey_(sheet, keyField, keyValue, fields) {
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var keyCol = headers.indexOf(keyField) + 1;
+  if (keyCol === 0) throw new Error('ไม่พบคอลัมน์ ' + keyField + ' ในชีต ' + sheet.getName());
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) throw new Error('ชีต ' + sheet.getName() + ' ว่างเปล่า');
+
+  var keys = sheet.getRange(2, keyCol, lastRow - 1, 1).getValues();
+  for (var i = 0; i < keys.length; i++) {
+    if (keys[i][0] !== keyValue) continue;
+    var rowNum = i + 2;
+    Object.keys(fields).forEach(function (k) {
+      var col = headers.indexOf(k) + 1;
+      if (col > 0) sheet.getRange(rowNum, col).setValue(fields[k]);
+    });
+    return true;
+  }
+  return false;
+}
+
 /** log การค้นหาสถานะจากหน้าสาธารณะทุกครั้ง (สำเร็จ/ล้มเหลว) — เก็บแค่ last4 ไม่เก็บเลขบัตรเต็ม (docs/DESIGN.md 4.7) */
 function writeSearchLog_(ss, trackingNoAttempt, last4Attempt, success, sessionToken) {
   var sheet = ss.getSheetByName(SHEET.SEARCH_LOG);

@@ -25,6 +25,14 @@ function getSettingList_(ss, key, fallbackArr) {
   return String(raw).split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s; });
 }
 
+/** แถวที่ active=true ของชีต Master Data (MasterPositions/MasterMedicalDomains/MasterMedicalSpecialties)
+ *  เรียงตาม sort_order น้อย→มาก — ใช้ทำ dropdown ในฟอร์มลงทะเบียนและตรวจ validate ฝั่ง backend */
+function getActiveMasterRows_(ss, sheetName) {
+  return readSheetAsObjects_(ss.getSheetByName(sheetName))
+    .filter(function (row) { return !!row.active; })
+    .sort(function (a, b) { return Number(a.sort_order) - Number(b.sort_order); });
+}
+
 /** เขียนค่า Settings ทับ/เพิ่มใหม่ — ใช้ตอนระบบปรับค่าเอง (เช่น เลขลำดับล่าสุด) ไม่ใช่ Admin UI (ยังไม่มีใน Part นี้) */
 function setSetting_(ss, key, value, description) {
   var sheet = ss.getSheetByName(SHEET.SETTINGS);

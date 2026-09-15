@@ -13,6 +13,9 @@ var SHEET = {
   SETTINGS: 'Settings',
   AUDIT_LOG: 'AuditLog',
   SEARCH_LOG: 'SearchLog',
+  MASTER_POSITIONS: 'MasterPositions',
+  MASTER_MEDICAL_DOMAINS: 'MasterMedicalDomains',
+  MASTER_MEDICAL_SPECIALTIES: 'MasterMedicalSpecialties',
 };
 
 var SHEET_HEADERS = {};
@@ -22,6 +25,9 @@ SHEET_HEADERS[SHEET.WORKS] = [
   'work_type', 'work_title', 'org_from', 'phone', 'email', 'cover_image_url', 'received_date',
   'current_station_key', 'current_status_public', 'handoff_pending', 'current_owner_org',
   'current_handler_name', 'updated_at', 'next_step_text', 'created_by', 'created_at', 'evaluation_result',
+  // เพิ่ม 2026-09-15 (ลดฟิลด์ลงทะเบียน + ตำแหน่ง/ข้อมูลแพทย์แบบ Master Data) — append ท้ายสุดเจตนา ห้าม reorder
+  // ของเดิม สำหรับชีต Works ที่มีข้อมูลอยู่แล้วต้องรัน migrateAddWorksColumns_() (Setup.gs) เติม header จริงก่อนใช้
+  'position_no', 'medical_domain', 'medical_specialty',
 ];
 SHEET_HEADERS[SHEET.STATUS_HISTORY] = [
   'history_id', 'work_id', 'tracking_no', 'action', 'from_station', 'to_station', 'from_org', 'to_org',
@@ -49,6 +55,11 @@ SHEET_HEADERS[SHEET.AUDIT_LOG] = [
 SHEET_HEADERS[SHEET.SEARCH_LOG] = [
   'log_id', 'timestamp', 'tracking_no_attempt', 'citizen_id_last4_attempt', 'success', 'session_token',
 ];
+// Master Data ใหม่ 2026-09-15 (ตำแหน่ง/ด้าน/สาขาแพทย์) — แก้ไข/เพิ่มรายการได้จากหน้า Admin > ข้อมูลหลัก
+// โดยไม่ต้องแก้ source code (ดูแผนในแชท requirement ข้อ Q)
+SHEET_HEADERS[SHEET.MASTER_POSITIONS] = ['position_code', 'position_name', 'professional_group', 'active', 'sort_order'];
+SHEET_HEADERS[SHEET.MASTER_MEDICAL_DOMAINS] = ['domain_code', 'domain_name', 'active', 'sort_order'];
+SHEET_HEADERS[SHEET.MASTER_MEDICAL_SPECIALTIES] = ['specialty_code', 'specialty_name', 'domain_code', 'active', 'sort_order'];
 
 // สถานี Workflow เริ่มต้น — ตรงกระบวนการจริงที่ผู้ใช้ให้มา (2026-09-02) แทนชุดเดิม
 // แก้ไขได้ภายหลังจากหน้า "จัดการ Workflow" ไม่กระทบ record ที่มีอยู่ เพราะ Works อ้างสถานีด้วย station_key ไม่ใช่ลำดับแถว
@@ -114,6 +125,8 @@ var WORKFLOW_STATES_SEED = [
   { key: 's9_2', order: '9.2', name: 'ประธานนัดประชุม ครั้งที่ 2', org: 'ประธานกรรมการ', days: 7, pub: 'in_review' },
   { key: 's9_3', order: '9.3', name: 'กรรมการประชุมพิจารณา ครั้งที่ 2', org: 'กรรมการ', days: 15, pub: 'in_review' },
   { key: 's9_4', order: '9.4', name: 'เลขาแจ้งผลการพิจารณา ครั้งที่ 2 มาที่ สนง เขต', org: 'เลขา', days: 3, pub: 'pending_approval' },
+  // 2026-09-15: ผู้ใช้ยืนยันว่า s10 เดิมคือขั้น "ส่งต่อให้ผู้ว่าราชการจังหวัด/แจ้งผลหน่วยงาน" อยู่แล้วในตัว
+  // (เข้าใจผิดตอนแรกว่าเป็นขั้นตกหล่นต้องเพิ่ม state ใหม่ — ไม่ต้องเพิ่มแล้ว ใช้ s10 เดิมนี่แหละ)
   { key: 's10', order: '10', name: 'แจ้งผลหน่วยงาน (ผ่าน/ไม่ผ่าน)', org: 'สนง เขต', days: 3, pub: 'done' },
 ];
 
@@ -206,3 +219,51 @@ function getSettingsSeed_() {
     ['google_oauth_client_id', '', 'Google OAuth Client ID (Web application) จาก Google Cloud Console — ใช้ยืนยันตัวตนเจ้าหน้าที่ที่ login ด้วย Gmail ส่วนตัว (docs/DESIGN.md A19) เว้นว่างไว้ = ปิดระบบ sign-in สำรองนี้', ''],
   ];
 }
+
+/**
+ * Master Data เริ่มต้น 2026-09-15 — เท่าที่ยืนยันได้จริงจากผู้ใช้เท่านั้น (ห้ามเดารายการเพิ่มเอง)
+ * MasterPositions มีแค่ "นายแพทย์" (ตำแหน่งเดียวที่ผู้ใช้ระบุชัดเจน) — ตำแหน่งอื่นในสายงานสาธารณสุขที่เหลือ
+ * ให้ Admin เพิ่มเองทีหลังจากหน้า Admin > ข้อมูลหลัก (ไม่ต้องแก้โค้ด) MasterMedicalDomains/Specialties
+ * ผู้ใช้ให้รายชื่อมาครบทั้งหมดแล้ว ใส่ seed ได้เต็มจำนวน
+ */
+function getMasterPositionsSeed_() {
+  return [
+    { position_code: 'md', position_name: 'นายแพทย์', professional_group: 'สายวิชาชีพแพทย์', active: true, sort_order: 1 },
+  ];
+}
+
+function getMasterMedicalDomainsSeed_() {
+  return [
+    { domain_code: 'clinical', domain_name: 'ด้านเวชกรรม', active: true, sort_order: 1 },
+    { domain_code: 'preventive', domain_name: 'ด้านเวชกรรมป้องกัน', active: true, sort_order: 2 },
+  ];
+}
+
+function getMasterMedicalSpecialtiesSeed_() {
+  var names = [
+    'เวชกรรมทั่วไป', 'อายุรกรรม', 'ศัลยกรรม', 'กุมารเวชกรรม', 'สูติ-นรีเวชกรรม', 'จิตเวช', 'ตจวิทยา',
+    'ประสาทวิทยา', 'ประสาทศัลยกรรม', 'รังสีวิทยา', 'วิสัญญีวิทยา', 'โสต ศอ นาสิก', 'ออร์โธปิดิกส์', 'อื่น ๆ',
+  ];
+  return names.map(function (name, i) {
+    return { specialty_code: 'sp' + (i + 1), specialty_name: name, domain_code: 'clinical', active: true, sort_order: i + 1 };
+  });
+}
+
+/**
+ * Config กลางสำหรับ Admin CRUD ของ Master Data ทั้ง 3 ชุด (Admin.gs renderMasterListBody_/renderMasterFormBody_/
+ * performAdminMasterSave_ ใช้ config นี้ตัวเดียว ไม่เขียน CRUD ซ้ำ 3 รอบ) key ตรงกับ ?type= ใน query string
+ */
+var MASTER_DATA_CONFIG_ = {
+  position: {
+    sheet: SHEET.MASTER_POSITIONS, label: 'ตำแหน่ง', codeField: 'position_code', nameField: 'position_name',
+    extraFields: [{ key: 'professional_group', label: 'สายงาน' }],
+  },
+  medical_domain: {
+    sheet: SHEET.MASTER_MEDICAL_DOMAINS, label: 'ด้าน (เฉพาะนายแพทย์)', codeField: 'domain_code', nameField: 'domain_name',
+    extraFields: [],
+  },
+  medical_specialty: {
+    sheet: SHEET.MASTER_MEDICAL_SPECIALTIES, label: 'สาขา (เฉพาะด้านเวชกรรม)', codeField: 'specialty_code', nameField: 'specialty_name',
+    extraFields: [{ key: 'domain_code', label: 'รหัสด้าน (domain_code)' }],
+  },
+};

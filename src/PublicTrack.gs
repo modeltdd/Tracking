@@ -156,7 +156,80 @@ function buildPublicResultData_(ss, work) {
     steps: buildPublicDetailedSteps_(ss, history, stationsMap, work.current_station_key, work.current_status_public),
     currentStation: stationsMap[work.current_station_key] || null,
     latestNote: revisionInfo ? '' : getLatestTransitionNote_(ss, work.work_id),
+    // เพิ่ม 2026-09-15 (ดูแชท requirement ข้อ I.9.6) — s10 คือขั้น "ส่งต่อให้ผู้ว่าราชการจังหวัด/แจ้งผลหน่วยงาน"
+    // อยู่แล้วในตัว (ยืนยันกับผู้ใช้แล้ว ไม่ใช่ state แยก) ใช้ StatusHistory จริง ไม่เดา งานที่ยังไม่ถึง s10 จะได้ null
+    governorForwardDate: findStationEntryDateByHistory_(history, 's10'),
   };
+}
+
+/** วันที่-เวลาที่เข้าสถานี stationKey ครั้งล่าสุด จาก StatusHistory จริง (ไม่เดา) — คืน null ถ้ายังไม่เคยถึง
+ *  ใช้แสดง "ส่งต่อผู้ว่าเมื่อ" (stationKey='s10') บนหน้าติดตามผลงานสาธารณะ */
+function findStationEntryDateByHistory_(history, stationKey) {
+  var entryDate = null;
+  history.forEach(function (h) {
+    if (h.to_station !== stationKey) return;
+    if (h.action !== 'registered' && h.action !== 'transition') return;
+    entryDate = h.action_date;
+  });
+  return entryDate;
+}
+
+/**
+ * ค้นหาสาธารณะแบบใหม่ 2026-09-15 (แทนที่ trackPublicStatus_/tracking_no+last4 เดิม — ดูแชท requirement ส่วน F-H)
+ * ไม่ยืนยันตัวตน (last4 ไม่มีให้ใช้อีกแล้วตั้งแต่ตัดฟิลด์เลขบัตรออกจากฟอร์มลงทะเบียน) เจ้าของผลงานค้นด้วย
+ * เลขตำแหน่งเดิม (exact match) หรือชื่อ/นามสกุล (partial match) แทน — จำกัด 20 ผลลัพธ์ทั้งคู่ กันข้อมูลรั่วไหลมาก
+ * เกินจำเป็น query ว่างคืน [] ทันที ไม่ query ทั้งชีต (ข้อ G/21)
+ */
+var PUBLIC_SEARCH_RESULT_LIMIT_ = 20;
+
+function searchPublicRecordsByPositionNo_(ss, positionNo) {
+  var needle = String(positionNo || '').trim();
+  if (!needle) return [];
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var matched = works.filter(function (w) { return String(w.position_no || '').trim() === needle; });
+  return matched.slice(0, PUBLIC_SEARCH_RESULT_LIMIT_);
+}
+
+/** collapse ช่องว่างซ้ำเหลือ 1 ตัว + trim หัวท้าย — ใช้ทั้งฝั่ง query และฝั่งชื่อในชีตก่อนเทียบ กันเว้นวรรคเกินทำให้หาไม่เจอ */
+function normalizeSearchName_(name) {
+  return String(name || '').trim().replace(/\s+/g, ' ');
+}
+
+function searchPublicRecordsByName_(ss, name) {
+  var needle = normalizeSearchName_(name).toLowerCase();
+  if (!needle) return [];
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var matched = works.filter(function (w) {
+    var first = normalizeSearchName_(w.first_name).toLowerCase();
+    var last = normalizeSearchName_(w.last_name).toLowerCase();
+    return first.indexOf(needle) !== -1 || last.indexOf(needle) !== -1;
+  });
+  return matched.slice(0, PUBLIC_SEARCH_RESULT_LIMIT_);
+}
+
+/** doPost form_action=search_public — ไม่ต้องมี user (เรียกก่อนตรวจสิทธิ์เจ้าหน้าที่ใน doPost) ค้นด้วยเลขตำแหน่งเดิมก่อน
+ *  ถ้าไม่ได้กรอกค่อยลองค้นด้วยชื่อ/นามสกุลแทน (กรอกทั้งคู่ = ใช้เลขตำแหน่งเดิมเป็นหลัก ชัดเจนกว่า ไม่กำกวม) */
+function handlePublicSearchPost_(ss, e) {
+  var baseUrl = getWebAppUrl_();
+  var p = (e && e.parameter) || {};
+  var positionNo = String(p.position_no || '').trim();
+  var name = String(p.owner_name || '').trim();
+
+  var results = positionNo ? searchPublicRecordsByPositionNo_(ss, positionNo) : searchPublicRecordsByName_(ss, name);
+
+  if (!positionNo && !name) {
+    return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ',
+      renderPublicTrackFormBody_(baseUrl, ['กรุณากรอกเลขตำแหน่งเดิม หรือ ชื่อ/นามสกุล อย่างน้อย 1 ช่อง'], { position_no: positionNo, owner_name: name }));
+  }
+  if (!results.length) {
+    return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ',
+      renderPublicTrackFormBody_(baseUrl, ['ไม่พบข้อมูลที่ตรงกับเงื่อนไขที่ค้นหา'], { position_no: positionNo, owner_name: name }));
+  }
+  if (results.length === 1) {
+    var data = buildPublicResultData_(ss, results[0]);
+    return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(results[0], data, baseUrl));
+  }
+  return renderPublicPage_('ผลการค้นหา', renderPublicSearchResultsBody_(results, baseUrl));
 }
 
 /**
@@ -176,11 +249,11 @@ function handlePublicTrackGet_(e) {
       return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(work, data, baseUrl));
     }
   }
-  var sessionToken = randomToken_(16);
-  return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ', renderPublicTrackFormBody_(baseUrl, sessionToken, [], {}));
+  return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ', renderPublicTrackFormBody_(baseUrl, [], {}));
 }
 
-/** doPost form_action=track_status — ไม่ต้องมี user (เรียกก่อนตรวจสิทธิ์เจ้าหน้าที่ใน doPost) */
+/** เดิมใช้กับฟอร์ม tracking_no+last4 — เลิกใช้แล้ว 2026-09-15 (แทนที่ด้วย handlePublicSearchPost_/form_action=search_public
+ *  ด้านบน) ไม่มีจุดไหนเรียกฟังก์ชันนี้อีก คงไว้เผื่อย้อนดู/ใช้อ้างอิงภายหลัง (ไม่ลบทิ้งตามหลักของโปรเจกต์) */
 function handlePublicTrackPost_(ss, e) {
   var baseUrl = getWebAppUrl_();
   var result = trackPublicStatus_(ss, e);
