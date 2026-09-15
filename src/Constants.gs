@@ -14,8 +14,13 @@ var SHEET = {
   AUDIT_LOG: 'AuditLog',
   SEARCH_LOG: 'SearchLog',
   MASTER_POSITIONS: 'MasterPositions',
+  // 2026-09-15 (รอบ 3) — เลิกใช้ MasterMedicalDomains/MasterMedicalSpecialties (โครง 2 ชั้น ด้าน→สาขา เฉพาะ
+  // นายแพทย์) หลังพบจาก Excel จริง 244 รายว่า "ด้าน" มีแค่ชั้นเดียวและมีทุกตำแหน่ง ไม่ใช่แค่นายแพทย์ — แทนที่ด้วย
+  // MASTER_SPECIALTIES (generic, ผูกกับ position_code) ชีตเก่า 2 อันไม่ลบทิ้ง (มีข้อมูลจาก seed ครั้งก่อนอยู่แล้ว
+  // บนชีต production) แค่ไม่มีโค้ดจุดไหนอ้างอิงอีกต่อไป
   MASTER_MEDICAL_DOMAINS: 'MasterMedicalDomains',
   MASTER_MEDICAL_SPECIALTIES: 'MasterMedicalSpecialties',
+  MASTER_SPECIALTIES: 'MasterSpecialties',
 };
 
 var SHEET_HEADERS = {};
@@ -30,6 +35,9 @@ SHEET_HEADERS[SHEET.WORKS] = [
   'position_no', 'medical_domain', 'medical_specialty',
   // เพิ่ม 2026-09-15 (รอบ 2) — จังหวัดในพื้นที่เขตสุขภาพที่ 11 (dropdown คู่กับ org_from ตอนลงทะเบียน)
   'province',
+  // เพิ่ม 2026-09-15 (รอบ 3) — "ด้าน/สาขา" generic ทุกตำแหน่ง (แทน medical_domain/medical_specialty ที่เลิกใช้
+  // แล้ว — คอลัมน์เดิมทั้งสองยังอยู่ เขียนค่าว่างไปตลอด ไม่ลบทิ้งตามหลักของโปรเจกต์)
+  'specialty',
 ];
 SHEET_HEADERS[SHEET.STATUS_HISTORY] = [
   'history_id', 'work_id', 'tracking_no', 'action', 'from_station', 'to_station', 'from_org', 'to_org',
@@ -62,6 +70,8 @@ SHEET_HEADERS[SHEET.SEARCH_LOG] = [
 SHEET_HEADERS[SHEET.MASTER_POSITIONS] = ['position_code', 'position_name', 'professional_group', 'active', 'sort_order'];
 SHEET_HEADERS[SHEET.MASTER_MEDICAL_DOMAINS] = ['domain_code', 'domain_name', 'active', 'sort_order'];
 SHEET_HEADERS[SHEET.MASTER_MEDICAL_SPECIALTIES] = ['specialty_code', 'specialty_name', 'domain_code', 'active', 'sort_order'];
+// generic "ด้าน/สาขา" ผูกกับตำแหน่งโดยตรง (position_code) ใช้กับทุกตำแหน่ง ไม่ใช่แค่นายแพทย์ (แทน MasterMedicalDomains/Specialties)
+SHEET_HEADERS[SHEET.MASTER_SPECIALTIES] = ['specialty_code', 'specialty_name', 'position_code', 'active', 'sort_order'];
 
 // สถานี Workflow เริ่มต้น — ตรงกระบวนการจริงที่ผู้ใช้ให้มา (2026-09-02) แทนชุดเดิม
 // แก้ไขได้ภายหลังจากหน้า "จัดการ Workflow" ไม่กระทบ record ที่มีอยู่ เพราะ Works อ้างสถานีด้วย station_key ไม่ใช่ลำดับแถว
@@ -263,20 +273,53 @@ function getMasterMedicalSpecialtiesSeed_() {
 }
 
 /**
- * Config กลางสำหรับ Admin CRUD ของ Master Data ทั้ง 3 ชุด (Admin.gs renderMasterListBody_/renderMasterFormBody_/
- * performAdminMasterSave_ ใช้ config นี้ตัวเดียว ไม่เขียน CRUD ซ้ำ 3 รอบ) key ตรงกับ ?type= ใน query string
+ * "ด้าน/สาขา" generic ผูกกับตำแหน่ง (position_code) 2026-09-15 (รอบ 3) — มาจากการสแกนข้อมูลจริง 244 รายใน
+ * Excel เดิม (2อวช140969.xlsx) พบว่าทุกตำแหน่งมีคอลัมน์ "ด้าน" ของตัวเอง ไม่ใช่แค่นายแพทย์ และเป็น flat list
+ * ชั้นเดียว (ไม่มีด้าน→สาขา 2 ชั้นแบบที่เคยสร้างไว้) — นายแพทย์ใช้ 17 ค่าจริงจาก Excel (ตัดของเดิม 14 ค่าที่เดาไว้
+ * ก่อนหน้าออก ไม่ตรงข้อมูลจริง) ตำแหน่งอื่นใช้ค่าที่พบจริงในข้อมูล — เพิ่ม/แก้ภายหลังได้ที่ Admin > ข้อมูลหลัก
+ */
+function getMasterSpecialtiesSeed_() {
+  var byPosition = {
+    NURSE: ['การพยาบาล'],
+    DOCTOR: [
+      'เวชกรรมทั่วไป', 'เวชกรรมป้องกัน', 'เวชศาสตร์ครอบครัว', 'เวชศาสตร์ฉุกเฉิน', 'เวชกรรมฟื้นฟู', 'อายุรกรรม',
+      'ศัลยกรรม', 'ศัลยกรรมออร์โธปิดิกส์', 'สูติ-นรีเวชกรรม', 'กุมารเวชกรรม', 'จิตเวช', 'จักษุวิทยา',
+      'โสต ศอ นาสิก', 'รังสีวิทยา', 'วิสัญญีวิทยา', 'พยาธิวิทยา', 'นิติเวช',
+    ],
+    PUBLIC_HEALTH: ['นักวิชาการสาธารณสุข', 'บริการทางวิชาการ'],
+    DENTIST: ['ทันตกรรม', 'ทันตสาธารณสุข'],
+    PHARMACIST: ['เภสัชกรรมคลินิก', 'เภสัชสาธารณสุข'],
+    MED_TECH: ['นักเทคนิคการแพทย์', 'บริการทางวิชาการ'],
+    GENERAL_ADMIN: ['นักจัดการงานทั่วไป'],
+    PHYSIOTHERAPIST: ['นักกายภาพบำบัด'],
+    HR_OFFICER: ['นักทรัพยากรบุคคล'],
+    MED_SCIENTIST: ['บริการทางวิชาการ'],
+  };
+  var rows = [];
+  Object.keys(byPosition).forEach(function (posCode) {
+    byPosition[posCode].forEach(function (name, i) {
+      rows.push({
+        specialty_code: posCode.toLowerCase() + '_' + (i + 1),
+        specialty_name: name, position_code: posCode, active: true, sort_order: i + 1,
+      });
+    });
+  });
+  return rows;
+}
+
+/**
+ * Config กลางสำหรับ Admin CRUD ของ Master Data (Admin.gs renderMasterListBody_/renderMasterFormBody_/
+ * performAdminMasterSave_ ใช้ config นี้ตัวเดียว ไม่เขียน CRUD ซ้ำ) key ตรงกับ ?type= ใน query string
+ * (2026-09-15 รอบ 3: เอา medical_domain/medical_specialty ออกจาก config นี้ — เลิกใช้แล้ว แทนที่ด้วย specialty
+ * ตัวเดียว generic ทุกตำแหน่ง ชีตเก่าไม่ลบ แค่ไม่มี tab ให้จัดการใน Admin UI อีกต่อไป)
  */
 var MASTER_DATA_CONFIG_ = {
   position: {
     sheet: SHEET.MASTER_POSITIONS, label: 'ตำแหน่ง', codeField: 'position_code', nameField: 'position_name',
     extraFields: [{ key: 'professional_group', label: 'สายงาน' }],
   },
-  medical_domain: {
-    sheet: SHEET.MASTER_MEDICAL_DOMAINS, label: 'ด้าน (เฉพาะนายแพทย์)', codeField: 'domain_code', nameField: 'domain_name',
-    extraFields: [],
-  },
-  medical_specialty: {
-    sheet: SHEET.MASTER_MEDICAL_SPECIALTIES, label: 'สาขา (เฉพาะด้านเวชกรรม)', codeField: 'specialty_code', nameField: 'specialty_name',
-    extraFields: [{ key: 'domain_code', label: 'รหัสด้าน (domain_code)' }],
+  specialty: {
+    sheet: SHEET.MASTER_SPECIALTIES, label: 'ด้าน/สาขา (ตามตำแหน่ง)', codeField: 'specialty_code', nameField: 'specialty_name',
+    extraFields: [{ key: 'position_code', label: 'รหัสตำแหน่ง (position_code)' }],
   },
 };

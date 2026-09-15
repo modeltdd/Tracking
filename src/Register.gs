@@ -32,8 +32,8 @@ function registerNewWork_(ss, user, e) {
   REGISTER_REQUIRED_FIELDS_.concat([{ key: 'phone' }, { key: 'email' }]).forEach(function (f) {
     values[f.key] = (p['reg_' + f.key] || '').toString().trim();
   });
-  values.medical_domain = String(p.reg_medical_domain || '').trim();
-  values.medical_specialty = String(p.reg_medical_specialty || '').trim();
+  values.medical_domain = ''; // เลิกใช้แล้ว (2026-09-15 รอบ 3) — คอลัมน์เดิมยังอยู่ เขียนค่าว่างเสมอ
+  values.specialty = String(p.reg_specialty || '').trim();
   if (values.work_type === 'อื่น ๆ' && p.reg_work_type_other) {
     values.work_type = String(p.reg_work_type_other).trim();
   }
@@ -43,30 +43,24 @@ function registerNewWork_(ss, user, e) {
     if (!values[f.key]) errors.push(f.label + 'ห้ามว่าง');
   });
 
-  // 2026-09-15: ตำแหน่ง/ด้าน/สาขาแพทย์ ต้อง valid ตาม Master Data จริง (ห้ามผูก logic กับข้อความเดา — ดูแชท
-  // requirement ส่วน B-E, R) — ตรวจเฉพาะเมื่อฟิลด์ตำแหน่งกรอกมาแล้ว (ถ้าว่างจะถูกจับโดยเช็ค required ด้านบนแล้ว)
+  // 2026-09-15 รอบ 3: ตำแหน่งต้อง valid ตาม MasterPositions จริง — "ด้าน/สาขา" เป็น dropdown ชั้นเดียว generic
+  // ผูกกับตำแหน่งที่เลือก (MasterSpecialties.position_code) ไม่ใช่แค่นายแพทย์อีกต่อไป (พบจากข้อมูลจริง 244 ราย
+  // ใน Excel เดิมว่าทุกตำแหน่งมีด้านของตัวเอง — ดูแชท requirement รอบ 3) ตำแหน่งที่ยังไม่มีด้านใน Master Data
+  // (เช่น Admin เพิ่งเพิ่มตำแหน่งใหม่ยังไม่ทันตั้งด้าน) ถือว่าไม่บังคับกรอกด้าน
   var positions = getActiveMasterRows_(ss, SHEET.MASTER_POSITIONS);
-  if (values.position && !positions.some(function (row) { return row.position_name === values.position; })) {
+  var positionRow = positions.filter(function (row) { return row.position_name === values.position; })[0];
+  if (values.position && !positionRow) {
     errors.push('ตำแหน่งที่เลือกไม่ถูกต้อง (ไม่พบใน Master Data)');
   }
-  if (values.position === 'นายแพทย์') {
-    var domains = getActiveMasterRows_(ss, SHEET.MASTER_MEDICAL_DOMAINS);
-    var domainRow = domains.filter(function (row) { return row.domain_name === values.medical_domain; })[0];
-    if (!domainRow) {
-      errors.push('กรุณาเลือก "ด้าน" ให้ถูกต้อง (ตำแหน่งนายแพทย์ต้องระบุด้าน)');
-    } else if (domainRow.domain_name === 'ด้านเวชกรรม') {
-      var specialties = getActiveMasterRows_(ss, SHEET.MASTER_MEDICAL_SPECIALTIES);
-      var specOk = specialties.some(function (row) {
-        return row.specialty_name === values.medical_specialty && row.domain_code === domainRow.domain_code;
-      });
-      if (!specOk) errors.push('กรุณาเลือก "สาขา" ให้ถูกต้อง (ด้านเวชกรรมต้องระบุสาขา)');
+  if (positionRow) {
+    var specialtyOptions = getActiveMasterRows_(ss, SHEET.MASTER_SPECIALTIES)
+      .filter(function (row) { return row.position_code === positionRow.position_code; });
+    if (specialtyOptions.length) {
+      var specOk = specialtyOptions.some(function (row) { return row.specialty_name === values.specialty; });
+      if (!specOk) errors.push('กรุณาเลือก "ด้าน/สาขา" ให้ถูกต้องสำหรับตำแหน่งนี้');
     } else {
-      values.medical_specialty = ''; // ด้านอื่นที่ไม่ใช่เวชกรรม ไม่เก็บสาขา (ตาม E — เอกสาร requirement)
+      values.specialty = ''; // ตำแหน่งนี้ยังไม่มีด้าน/สาขาใน Master Data — ไม่บังคับ เคลียร์ค่าทิ้งกันข้อมูลเพี้ยน
     }
-  } else {
-    // ไม่ใช่นายแพทย์ — ไม่เก็บด้าน/สาขา แม้ถูกส่งมาจากฟอร์มก็ตาม (กัน client-side JS พลาด/ปิด JS)
-    values.medical_domain = '';
-    values.medical_specialty = '';
   }
 
   if (errors.length) {
@@ -113,8 +107,9 @@ function registerNewWork_(ss, user, e) {
     created_at: nowTs,
     position_no: values.position_no,
     medical_domain: values.medical_domain,
-    medical_specialty: values.medical_specialty,
+    medical_specialty: '', // เลิกใช้แล้ว (2026-09-15 รอบ 3) — คอลัมน์เดิมยังอยู่ เขียนค่าว่างเสมอ
     province: values.province,
+    specialty: values.specialty,
   });
 
   var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);

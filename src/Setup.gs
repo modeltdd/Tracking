@@ -296,21 +296,21 @@ function migratePart10Updates() {
   migrateAddMasterDataSheets_();
   seedSettings_(getSpreadsheet_()); // idempotent — เติมเฉพาะ key ที่ยังไม่มี เช่น district11_provinces ที่เพิ่มรอบ 2
   Logger.log('migratePart10Updates() เสร็จสมบูรณ์ — ตรวจสอบผลที่ชีต Works (คอลัมน์ท้ายสุด), ' +
-    'MasterPositions/MasterMedicalDomains/MasterMedicalSpecialties, และ Settings (district11_provinces)');
+    'MasterPositions/MasterSpecialties, และ Settings (district11_provinces)');
 }
 
-/** เติม header คอลัมน์ใหม่ (position_no, medical_domain, medical_specialty, province) ต่อท้ายชีต Works จริง
- *  ถ้ายังไม่มี — ต้องทำก่อนใช้ registerNewWork_/renderRegisterFormBody_ เวอร์ชันใหม่ ไม่งั้นข้อมูลจะเขียนเหลื่อมคอลัมน์ */
+/** เติม header คอลัมน์ใหม่ (position_no, medical_domain, medical_specialty, province, specialty) ต่อท้ายชีต Works
+ *  จริงถ้ายังไม่มี — ต้องทำก่อนใช้ registerNewWork_/renderRegisterFormBody_ เวอร์ชันใหม่ ไม่งั้นข้อมูลเขียนเหลื่อมคอลัมน์ */
 function migrateAddWorksColumns_() {
   var ss = getSpreadsheet_();
   var sheet = ss.getSheetByName(SHEET.WORKS);
   var lastCol = sheet.getLastColumn();
   var liveHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var newCols = ['position_no', 'medical_domain', 'medical_specialty', 'province'].filter(function (h) {
+  var newCols = ['position_no', 'medical_domain', 'medical_specialty', 'province', 'specialty'].filter(function (h) {
     return liveHeaders.indexOf(h) === -1;
   });
   if (!newCols.length) {
-    Logger.log('ชีต Works มีคอลัมน์ position_no/medical_domain/medical_specialty/province ครบแล้ว — ข้าม');
+    Logger.log('ชีต Works มีคอลัมน์ position_no/medical_domain/medical_specialty/province/specialty ครบแล้ว — ข้าม');
     return;
   }
   sheet.getRange(1, lastCol + 1, 1, newCols.length).setValues([newCols]);
@@ -318,32 +318,25 @@ function migrateAddWorksColumns_() {
   Logger.log('เพิ่มคอลัมน์ใหม่ในชีต Works: ' + newCols.join(', '));
 }
 
-/** สร้าง+seed ชีต Master Data ใหม่ 3 ชีต (ตำแหน่ง/ด้านแพทย์/สาขาแพทย์) — ข้ามการ seed ถ้าชีตมีข้อมูลอยู่แล้ว */
+/** สร้าง+seed ชีต Master Data ใหม่ — ข้ามการ seed ถ้าชีตมีข้อมูลอยู่แล้ว (MasterMedicalDomains/Specialties
+ *  เก็บไว้เป็นหลักฐานเดิม ไม่ลบ แต่เลิก seed/อ้างอิงต่อแล้ว 2026-09-15 รอบ 3 — ดูเหตุผลที่ Constants.gs) */
 function migrateAddMasterDataSheets_() {
   var ss = getSpreadsheet_();
 
   var posSheet = ensureSheet_(ss, SHEET.MASTER_POSITIONS, SHEET_HEADERS[SHEET.MASTER_POSITIONS]);
   if (posSheet.getLastRow() <= 1) {
     getMasterPositionsSeed_().forEach(function (row) { appendRowByHeader_(posSheet, SHEET_HEADERS[SHEET.MASTER_POSITIONS], row); });
-    Logger.log('seed MasterPositions แล้ว (' + getMasterPositionsSeed_().length + ' แถว — มีแค่ "นายแพทย์" เพิ่มตำแหน่งอื่นเองที่ Admin > ข้อมูลหลัก)');
+    Logger.log('seed MasterPositions แล้ว (' + getMasterPositionsSeed_().length + ' แถว)');
   } else {
     Logger.log('ชีต MasterPositions มีข้อมูลอยู่แล้ว — ข้าม');
   }
 
-  var domainSheet = ensureSheet_(ss, SHEET.MASTER_MEDICAL_DOMAINS, SHEET_HEADERS[SHEET.MASTER_MEDICAL_DOMAINS]);
-  if (domainSheet.getLastRow() <= 1) {
-    getMasterMedicalDomainsSeed_().forEach(function (row) { appendRowByHeader_(domainSheet, SHEET_HEADERS[SHEET.MASTER_MEDICAL_DOMAINS], row); });
-    Logger.log('seed MasterMedicalDomains แล้ว (' + getMasterMedicalDomainsSeed_().length + ' แถว)');
+  var specialtySheet = ensureSheet_(ss, SHEET.MASTER_SPECIALTIES, SHEET_HEADERS[SHEET.MASTER_SPECIALTIES]);
+  if (specialtySheet.getLastRow() <= 1) {
+    getMasterSpecialtiesSeed_().forEach(function (row) { appendRowByHeader_(specialtySheet, SHEET_HEADERS[SHEET.MASTER_SPECIALTIES], row); });
+    Logger.log('seed MasterSpecialties แล้ว (' + getMasterSpecialtiesSeed_().length + ' แถว จากข้อมูลจริง 244 รายใน Excel เดิม)');
   } else {
-    Logger.log('ชีต MasterMedicalDomains มีข้อมูลอยู่แล้ว — ข้าม');
-  }
-
-  var specSheet = ensureSheet_(ss, SHEET.MASTER_MEDICAL_SPECIALTIES, SHEET_HEADERS[SHEET.MASTER_MEDICAL_SPECIALTIES]);
-  if (specSheet.getLastRow() <= 1) {
-    getMasterMedicalSpecialtiesSeed_().forEach(function (row) { appendRowByHeader_(specSheet, SHEET_HEADERS[SHEET.MASTER_MEDICAL_SPECIALTIES], row); });
-    Logger.log('seed MasterMedicalSpecialties แล้ว (' + getMasterMedicalSpecialtiesSeed_().length + ' แถว)');
-  } else {
-    Logger.log('ชีต MasterMedicalSpecialties มีข้อมูลอยู่แล้ว — ข้าม');
+    Logger.log('ชีต MasterSpecialties มีข้อมูลอยู่แล้ว — ข้าม');
   }
 }
 

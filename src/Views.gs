@@ -976,10 +976,11 @@ function renderStubBody_(message, baseUrl) {
 
 /** ฟอร์มรับเอกสารใหม่ (docs/DESIGN.md Part 3) — values/errors ใช้ตอนส่งฟอร์มไม่ผ่าน validation เพื่อคืนค่าที่กรอกไว้ */
 /**
- * ฟอร์มรับเอกสารใหม่ (2026-09-15 ปรับลดฟิลด์ + ตำแหน่ง/ข้อมูลแพทย์เป็น Master Data — ดูแชท requirement ส่วน A-E)
+ * ฟอร์มรับเอกสารใหม่ (2026-09-15 ปรับลดฟิลด์ + ตำแหน่ง/ด้าน-สาขาเป็น Master Data — ดูแชท requirement)
  * ตัดออก: เลขบัตรประชาชน/ระดับปัจจุบัน/ระดับที่ขอ/ภาพหน้าปก (คอลัมน์เดิมยังอยู่ เขียนค่าว่างที่ Register.gs)
- * เพิ่ม: เลขตำแหน่งเดิม (บังคับ), ตำแหน่งเป็น dropdown จาก MasterPositions, ด้าน/สาขา dynamic เฉพาะ "นายแพทย์"
- * (MasterMedicalDomains/MasterMedicalSpecialties) — REG_DYNAMIC_SCRIPT_ จัดการซ่อน/โชว์+clear ค่าฝั่ง client
+ * เพิ่ม: เลขตำแหน่งเดิม (บังคับ), ตำแหน่งเป็น dropdown จาก MasterPositions, "ด้าน/สาขา" dropdown ชั้นเดียว
+ * ผูกกับตำแหน่งที่เลือก (MasterSpecialties, generic ทุกตำแหน่ง — รอบ 3 หลังพบจากข้อมูลจริง 244 รายใน Excel
+ * เดิมว่าไม่ใช่แค่นายแพทย์ที่มีด้าน) REG_DYNAMIC_SCRIPT_ กรอง option ตามตำแหน่ง+ซ่อน/โชว์ฝั่ง client
  * ฝั่ง backend validate ซ้ำเสมอที่ registerNewWork_ (Register.gs) ไม่เชื่อ client อย่างเดียว
  */
 function renderRegisterFormBody_(ss, values, errors, baseUrl) {
@@ -995,8 +996,7 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
   var provinceOptions = getSettingList_(ss, 'district11_provinces',
     ['นครศรีธรรมราช', 'กระบี่', 'พังงา', 'ภูเก็ต', 'สุราษฎร์ธานี', 'ระนอง', 'ชุมพร']);
   var positionRows = getActiveMasterRows_(ss, SHEET.MASTER_POSITIONS);
-  var domainRows = getActiveMasterRows_(ss, SHEET.MASTER_MEDICAL_DOMAINS);
-  var specialtyRows = getActiveMasterRows_(ss, SHEET.MASTER_MEDICAL_SPECIALTIES);
+  var specialtyRows = getActiveMasterRows_(ss, SHEET.MASTER_SPECIALTIES);
 
   function selectHtml(name, options, current) {
     return '<select class="input" name="' + name + '">' +
@@ -1008,23 +1008,17 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
 
   var positionOptionsHtml = '<option value="">-- เลือกตำแหน่ง --</option>' + positionRows.map(function (row) {
     var sel = row.position_name === values.position ? ' selected' : '';
-    return '<option' + sel + '>' + escapeHtml_(row.position_name) + '</option>';
+    return '<option data-position-code="' + escapeHtml_(row.position_code) + '"' + sel + '>' + escapeHtml_(row.position_name) + '</option>';
   }).join('');
 
-  var domainOptionsHtml = '<option value="">-- เลือกด้าน --</option>' + domainRows.map(function (row) {
-    var sel = row.domain_name === values.medical_domain ? ' selected' : '';
-    return '<option value="' + escapeHtml_(row.domain_name) + '" data-domain-code="' + escapeHtml_(row.domain_code) + '"' + sel + '>' +
-      escapeHtml_(row.domain_name) + '</option>';
-  }).join('');
-
-  var specialtyOptionsHtml = '<option value="">-- เลือกสาขา --</option>' + specialtyRows.map(function (row) {
-    var sel = row.specialty_name === values.medical_specialty ? ' selected' : '';
-    return '<option value="' + escapeHtml_(row.specialty_name) + '" data-domain-code="' + escapeHtml_(row.domain_code) + '"' + sel + '>' +
+  var specialtyOptionsHtml = '<option value="">-- เลือกด้าน/สาขา --</option>' + specialtyRows.map(function (row) {
+    var sel = row.specialty_name === values.specialty ? ' selected' : '';
+    return '<option value="' + escapeHtml_(row.specialty_name) + '" data-position-code="' + escapeHtml_(row.position_code) + '"' + sel + '>' +
       escapeHtml_(row.specialty_name) + '</option>';
   }).join('');
 
-  var showDomain = values.position === 'นายแพทย์';
-  var showSpecialty = showDomain && values.medical_domain === 'ด้านเวชกรรม';
+  var selectedPositionRow = positionRows.filter(function (row) { return row.position_name === values.position; })[0];
+  var showSpecialty = !!selectedPositionRow && specialtyRows.some(function (row) { return row.position_code === selectedPositionRow.position_code; });
 
   return '' +
     errorHtml +
@@ -1037,10 +1031,8 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '</div>' +
     '<div class="field"><label>ตำแหน่ง</label><select class="input" name="reg_position" id="reg-position">' + positionOptionsHtml + '</select>' +
     (positionRows.length ? '' : '<p class="hint" style="margin-top:4px">ยังไม่มีตำแหน่งใน Master Data — เพิ่มได้ที่ Admin &gt; ข้อมูลหลัก</p>') + '</div>' +
-    '<div class="field" id="reg-domain-field" style="' + (showDomain ? '' : 'display:none') + '">' +
-    '<label>ด้าน (เฉพาะนายแพทย์)</label><select class="input" name="reg_medical_domain" id="reg-domain">' + domainOptionsHtml + '</select></div>' +
     '<div class="field" id="reg-specialty-field" style="' + (showSpecialty ? '' : 'display:none') + '">' +
-    '<label>สาขา (เฉพาะด้านเวชกรรม)</label><select class="input" name="reg_medical_specialty" id="reg-specialty">' + specialtyOptionsHtml + '</select></div>' +
+    '<label>ด้าน/สาขา</label><select class="input" name="reg_specialty" id="reg-specialty">' + specialtyOptionsHtml + '</select></div>' +
     '<div class="field"><label>เลขตำแหน่งเดิม</label><input class="input" name="reg_position_no" value="' + v('position_no') + '"></div>' +
     '<div class="field"><label>ประเภทผลงาน</label>' + selectHtml('reg_work_type', typeOptions, values.work_type) + '</div>' +
     '<div class="field"><label>ถ้าเลือก "อื่น ๆ" ข้างต้น ระบุประเภทผลงาน</label><input class="input" name="reg_work_type_other" placeholder="ระบุประเภทผลงาน (ใช้เฉพาะกรณีเลือกอื่น ๆ)"></div>' +
@@ -1062,36 +1054,30 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     REG_DYNAMIC_SCRIPT_;
 }
 
-/** ซ่อน/โชว์ฟิลด์ ด้าน/สาขา ตามตำแหน่งที่เลือก (ข้อ E) — ไม่มี framework, vanilla change listener ธรรมดา
- *  กรอง option สาขาให้เหลือเฉพาะ domain_code ที่ตรงกับด้านที่เลือกด้วย (data-domain-code บน <option>) */
+/** ซ่อน/โชว์+กรอง option ฟิลด์ "ด้าน/สาขา" ตามตำแหน่งที่เลือก (generic ทุกตำแหน่ง, รอบ 3) — ไม่มี framework
+ *  vanilla change listener ธรรมดา กรอง option ให้เหลือเฉพาะ position_code ที่ตรงกับตำแหน่งที่เลือก
+ *  (data-position-code บน <option> ทั้งของ position select และ specialty select) */
 var REG_DYNAMIC_SCRIPT_ = '' +
   '<script>' +
   'document.addEventListener("DOMContentLoaded", function () {' +
   'var posSel = document.getElementById("reg-position");' +
-  'var domainField = document.getElementById("reg-domain-field");' +
-  'var domainSel = document.getElementById("reg-domain");' +
   'var specField = document.getElementById("reg-specialty-field");' +
   'var specSel = document.getElementById("reg-specialty");' +
-  'if (!posSel || !domainSel || !specSel) return;' +
+  'if (!posSel || !specSel) return;' +
   'var allSpecOptions = Array.prototype.slice.call(specSel.options);' +
-  'function filterSpecialties() {' +
-  'var domainCode = (domainSel.selectedOptions[0] || {}).dataset ? domainSel.selectedOptions[0].dataset.domainCode : "";' +
-  'specSel.innerHTML = "";' +
-  'allSpecOptions.forEach(function (opt) {' +
-  'if (!opt.value || opt.dataset.domainCode === domainCode) specSel.appendChild(opt.cloneNode(true));' +
-  '});' +
-  '}' +
   'function syncVisibility() {' +
-  'var isDoctor = posSel.value === "นายแพทย์";' +
-  'domainField.style.display = isDoctor ? "" : "none";' +
-  'if (!isDoctor) { domainSel.value = ""; specSel.value = ""; specField.style.display = "none"; return; }' +
-  'filterSpecialties();' +
-  'var isClinical = domainSel.value === "ด้านเวชกรรม";' +
-  'specField.style.display = isClinical ? "" : "none";' +
-  'if (!isClinical) specSel.value = "";' +
+  'var posCode = (posSel.selectedOptions[0] || {}).dataset ? posSel.selectedOptions[0].dataset.positionCode : "";' +
+  'var matching = allSpecOptions.filter(function (opt) { return opt.value && opt.dataset.positionCode === posCode; });' +
+  'specSel.innerHTML = "";' +
+  'matching.forEach(function (opt) { specSel.appendChild(opt.cloneNode(true)); });' +
+  'if (matching.length) {' +
+  'specSel.insertBefore(new Option("-- เลือกด้าน/สาขา --", ""), specSel.firstChild);' +
+  'specField.style.display = "";' +
+  '} else {' +
+  'specField.style.display = "none"; specSel.value = "";' +
+  '}' +
   '}' +
   'posSel.addEventListener("change", syncVisibility);' +
-  'domainSel.addEventListener("change", syncVisibility);' +
   'syncVisibility();' +
   '});' +
   '</script>';
