@@ -141,13 +141,15 @@ function committeeCode_(ss, group) {
 }
 
 /**
- * บังคับคอลัมน์ team_no ให้เป็น Text จริง (numberFormat '@') ก่อนเขียนค่าเสมอ — กัน Google Sheets auto-detect
- * เป็นตัวเลขแล้วตัดเลข 0 ท้ายทิ้ง (เช่น "1.10" กลายเป็น "1.1" ชนกับคณะที่ 1.1 จริง) ต้องตั้ง format ก่อนใส่ค่า
- * เสมอ (ตั้งทีหลังไม่ช่วย เพราะเลขที่เพี้ยนไปแล้วจะยังเพี้ยนอยู่) เหมือนปัญหาเดียวกับ station_order ที่เคยแก้แล้ว
+ * เขียนค่า team_no ลงเซลล์เดียวแบบ Text บังคับ — ต้องเรียกทันทีหลัง appendRow ของแถวนั้น (ไม่ใช่ตั้ง format
+ * ล่วงหน้าทั้งคอลัมน์แล้วค่อย appendRow) เพราะพิสูจน์แล้วจากข้อมูลจริงบน production (2026-09-16) ว่า
+ * sheet.appendRow() ไม่เคารพ numberFormat '@' ที่ตั้งไว้ล่วงหน้า — Sheets auto-detect ค่าที่ appendRow เขียน
+ * เป็นตัวเลขเสมอแล้วตัดเลข 0 ท้ายทิ้ง (เช่น "1.10" กลายเป็น 1.1 ชนกับคณะที่ 1.1 จริง) ทางเดียวที่ยืนยันได้ผลจริง
+ * คือ setNumberFormat('@') แล้ว setValue() ต่อบน Range เดียวกันทันที (chain เดียวกัน ไม่ผ่าน appendRow)
  */
-function forceTeamNoColumnAsText_(sheet, headers) {
+function writeTeamNoCell_(sheet, headers, row, teamNo) {
   var col = headers.indexOf('team_no') + 1;
-  if (col > 0) sheet.getRange(1, col, sheet.getMaxRows(), 1).setNumberFormat('@');
+  if (col > 0) sheet.getRange(row, col).setNumberFormat('@').setValue(String(teamNo));
 }
 
 /** key สำหรับกันเลขาซ้ำ (ห้ามใช้ชื่ออย่างเดียว — ตามที่ผู้ใช้กำหนด ข้อ 18) */
@@ -249,7 +251,6 @@ function previewCommitteeMigration() {
   previewSheet = ss.insertSheet(COMMITTEE_PREVIEW_SHEET_NAME_);
   var previewHeaders = ['committee_code', 'profession', 'field', 'specialty', 'team_no', 'chair_name', 'chair_org',
     'secretaries (role:name)', 'status'];
-  forceTeamNoColumnAsText_(previewSheet, previewHeaders); // ตั้ง format ก่อนใส่ค่าเสมอ (ดู docstring ฟังก์ชัน)
   previewSheet.appendRow(previewHeaders);
   previewSheet.getRange(1, 1, 1, 9).setFontWeight('bold');
 
@@ -264,6 +265,7 @@ function previewCommitteeMigration() {
     var status = g.chair ? 'พร้อม import' : 'ไม่มีประธาน — ตรวจสอบก่อน';
     previewSheet.appendRow([code, g.profession, g.field, g.specialty, g.teamNo,
       g.chair ? g.chair.name : '(ไม่พบ)', g.chair ? g.chair.org : '', secLines, status]);
+    writeTeamNoCell_(previewSheet, previewHeaders, previewSheet.getLastRow(), g.teamNo);
   });
   previewSheet.setFrozenRows(1);
   Logger.log('=== previewCommitteeMigration เสร็จ — ดูผลที่ชีต "' + COMMITTEE_PREVIEW_SHEET_NAME_ + '" (' + groups.length + ' คณะ) ===');
@@ -274,7 +276,6 @@ function migrateChairMaster() {
   var ss = getSpreadsheet_();
   ensureSheet_(ss, SHEET.CHAIR_MASTER, SHEET_HEADERS[SHEET.CHAIR_MASTER]);
   var sheet = ss.getSheetByName(SHEET.CHAIR_MASTER);
-  forceTeamNoColumnAsText_(sheet, SHEET_HEADERS[SHEET.CHAIR_MASTER]); // กันเลข 0 ท้ายหาย เช่น "1.10"->"1.1"
   var existingCodes = {};
   readSheetAsObjects_(sheet).forEach(function (row) { existingCodes[row.committee_code] = true; });
 
@@ -290,6 +291,7 @@ function migrateChairMaster() {
       chair_name: g.chair ? g.chair.name : '', chair_position: g.chair ? g.chair.position : '',
       organization: g.chair ? g.chair.org : '', province: '', active: true, start_date: nowTs, end_date: '', note: '',
     });
+    writeTeamNoCell_(sheet, SHEET_HEADERS[SHEET.CHAIR_MASTER], sheet.getLastRow(), g.teamNo);
     added++;
   });
   Logger.log('=== migrateChairMaster เสร็จ — เพิ่มใหม่ ' + added + ' คณะ, ข้าม (มีอยู่แล้ว) ' + skipped + ' คณะ ===');
@@ -330,7 +332,6 @@ function migrateCommitteeSecretaryMap() {
   var ss = getSpreadsheet_();
   ensureSheet_(ss, SHEET.COMMITTEE_SECRETARY_MAP, SHEET_HEADERS[SHEET.COMMITTEE_SECRETARY_MAP]);
   var sheet = ss.getSheetByName(SHEET.COMMITTEE_SECRETARY_MAP);
-  forceTeamNoColumnAsText_(sheet, SHEET_HEADERS[SHEET.COMMITTEE_SECRETARY_MAP]); // กันเลข 0 ท้ายหาย เช่น "1.10"->"1.1"
   var secIndex = buildExistingSecretaryIndex_(ss);
   var existingPairs = {};
   readSheetAsObjects_(sheet).forEach(function (row) { existingPairs[row.committee_code + '||' + row.secretary_id + '||' + row.role] = true; });
@@ -352,6 +353,7 @@ function migrateCommitteeSecretaryMap() {
         field: g.field, specialty: g.specialty, team_no: g.teamNo, secretary_id: secretaryId,
         role: s.role, sequence: seq, active: true, note: '',
       });
+      writeTeamNoCell_(sheet, SHEET_HEADERS[SHEET.COMMITTEE_SECRETARY_MAP], sheet.getLastRow(), g.teamNo);
       existingPairs[pairKey] = true;
       mapNum++; seq++; added++;
     });
