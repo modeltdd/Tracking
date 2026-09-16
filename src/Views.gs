@@ -749,6 +749,9 @@ function renderPublicResultBody_(work, data, baseUrl) {
     '</div>';
 
   var timelineHtml = data.steps ? renderPublicTimeline_(data.steps) : '';
+  if (data.isLegacyImportOnly) {
+    timelineHtml += '<p class="hint" style="margin:-8px 0 16px">ข้อมูลก่อนเริ่มใช้ระบบออนไลน์ไม่มีรายละเอียด Timeline ครบทุกขั้นตอน แสดงได้เฉพาะสถานะปัจจุบัน</p>';
+  }
 
   var ownerHtml = '' +
     '<div class="pub-owner-card">' +

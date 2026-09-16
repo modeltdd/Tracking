@@ -159,6 +159,9 @@ function buildPublicResultData_(ss, work) {
     // เพิ่ม 2026-09-15 (ดูแชท requirement ข้อ I.9.6) — s10 คือขั้น "ส่งต่อให้ผู้ว่าราชการจังหวัด/แจ้งผลหน่วยงาน"
     // อยู่แล้วในตัว (ยืนยันกับผู้ใช้แล้ว ไม่ใช่ state แยก) ใช้ StatusHistory จริง ไม่เดา งานที่ยังไม่ถึง s10 จะได้ null
     governorForwardDate: findStationEntryDateByHistory_(history, 's10'),
+    // 2026-09-16 (LegacyMigration.gs) — งานที่มีแค่ประวัติ INITIAL_IMPORT รายการเดียว (นำเข้าจากระบบเดิม) ไม่มี
+    // Timeline ย้อนหลังจริงให้แสดง (ตามที่ผู้ใช้กำหนด ห้ามเดา ✓ ขั้นตอนเก่า) — ใช้บอกผู้ใช้ตรงๆ แทนแสดงเงียบๆ
+    isLegacyImportOnly: history.length === 1 && history[0].action === 'INITIAL_IMPORT',
   };
 }
 

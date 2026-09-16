@@ -38,6 +38,10 @@ SHEET_HEADERS[SHEET.WORKS] = [
   // เพิ่ม 2026-09-15 (รอบ 3) — "ด้าน/สาขา" generic ทุกตำแหน่ง (แทน medical_domain/medical_specialty ที่เลิกใช้
   // แล้ว — คอลัมน์เดิมทั้งสองยังอยู่ เขียนค่าว่างไปตลอด ไม่ลบทิ้งตามหลักของโปรเจกต์)
   'specialty',
+  // เพิ่ม 2026-09-16 (migrate ข้อมูลเก่าจาก Google Sheet ชุดล่าสุด — ดู LegacyMigration.gs) — secretary/
+  // requested_org_position เป็นฟิลด์ใหม่จริง (ไม่เคยมีในระบบ), legacy_seq ใช้กันนำเข้าซ้ำ (ลำดับต้นฉบับ ไม่ซ้ำ
+  // เลยทั้ง 240 แถว), legacy_team เก็บไว้เผื่อทำ CommitteeMaster ในอนาคต (ยังไม่ใช้งานจริงตอนนี้)
+  'secretary', 'requested_org_position', 'report_period', 'legacy_seq', 'legacy_team',
 ];
 SHEET_HEADERS[SHEET.STATUS_HISTORY] = [
   'history_id', 'work_id', 'tracking_no', 'action', 'from_station', 'to_station', 'from_org', 'to_org',
@@ -207,6 +211,7 @@ var ACTION_LABELS_ = {
   edited: 'แก้ไขข้อมูล',
   status_updated: 'ปรับสถานะ (ทะเบียนผลงานทั้งหมด)',
   transition: 'เปลี่ยนสถานะ',
+  INITIAL_IMPORT: 'นำเข้าข้อมูลเดิมจากระบบก่อนหน้า (ไม่มีรายละเอียด Timeline ย้อนหลังก่อนวันนี้)',
 };
 
 // ค่าตั้งต้นของ Settings (key-value) — ตรง docs/DESIGN.md 4.5 / A-list ในหัวข้อ 2

@@ -299,18 +299,20 @@ function migratePart10Updates() {
     'MasterPositions/MasterSpecialties, และ Settings (district11_provinces)');
 }
 
-/** เติม header คอลัมน์ใหม่ (position_no, medical_domain, medical_specialty, province, specialty) ต่อท้ายชีต Works
- *  จริงถ้ายังไม่มี — ต้องทำก่อนใช้ registerNewWork_/renderRegisterFormBody_ เวอร์ชันใหม่ ไม่งั้นข้อมูลเขียนเหลื่อมคอลัมน์ */
+/**
+ * เติม header คอลัมน์ที่ขาดต่อท้ายชีต Works จริง — เทียบ header แถวจริงกับ SHEET_HEADERS[SHEET.WORKS] ปัจจุบัน
+ * ทั้งหมด (ไม่ hardcode รายชื่อคอลัมน์ทีละรอบอีกต่อไป 2026-09-16 — เพิ่มฟิลด์ใหม่ที่ Constants.gs แล้วรันฟังก์ชัน
+ * นี้ซ้ำได้เลย จะเติมเฉพาะส่วนที่ขาดให้อัตโนมัติ) ต้องทำก่อนใช้ registerNewWork_/renderRegisterFormBody_/
+ * migrateLegacyRegistrations() เวอร์ชันล่าสุดเสมอ ไม่งั้นข้อมูลเขียนเหลื่อมคอลัมน์
+ */
 function migrateAddWorksColumns_() {
   var ss = getSpreadsheet_();
   var sheet = ss.getSheetByName(SHEET.WORKS);
   var lastCol = sheet.getLastColumn();
   var liveHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var newCols = ['position_no', 'medical_domain', 'medical_specialty', 'province', 'specialty'].filter(function (h) {
-    return liveHeaders.indexOf(h) === -1;
-  });
+  var newCols = SHEET_HEADERS[SHEET.WORKS].filter(function (h) { return liveHeaders.indexOf(h) === -1; });
   if (!newCols.length) {
-    Logger.log('ชีต Works มีคอลัมน์ position_no/medical_domain/medical_specialty/province/specialty ครบแล้ว — ข้าม');
+    Logger.log('ชีต Works มีคอลัมน์ครบตาม SHEET_HEADERS ปัจจุบันแล้ว — ข้าม');
     return;
   }
   sheet.getRange(1, lastCol + 1, 1, newCols.length).setValues([newCols]);
