@@ -21,6 +21,11 @@ var SHEET = {
   MASTER_MEDICAL_DOMAINS: 'MasterMedicalDomains',
   MASTER_MEDICAL_SPECIALTIES: 'MasterMedicalSpecialties',
   MASTER_SPECIALTIES: 'MasterSpecialties',
+  // 2026-09-16 (รอบ 2) — โครงสร้างคณะกรรมการ/ประธาน/เลขานุการ (ดู CommitteeMigration.gs) สร้างใหม่คู่ขนาน ไม่มี
+  // ชีต "ประธาน"/"เลขา"/"เลขา2" อยู่ในระบบจริงมาก่อน จึงไม่มีอะไรถูกทับ/ลบ
+  CHAIR_MASTER: 'ChairMaster',
+  SECRETARY_MASTER: 'SecretaryMaster',
+  COMMITTEE_SECRETARY_MAP: 'CommitteeSecretaryMap',
 };
 
 var SHEET_HEADERS = {};
@@ -76,6 +81,15 @@ SHEET_HEADERS[SHEET.MASTER_MEDICAL_DOMAINS] = ['domain_code', 'domain_name', 'ac
 SHEET_HEADERS[SHEET.MASTER_MEDICAL_SPECIALTIES] = ['specialty_code', 'specialty_name', 'domain_code', 'active', 'sort_order'];
 // generic "ด้าน/สาขา" ผูกกับตำแหน่งโดยตรง (position_code) ใช้กับทุกตำแหน่ง ไม่ใช่แค่นายแพทย์ (แทน MasterMedicalDomains/Specialties)
 SHEET_HEADERS[SHEET.MASTER_SPECIALTIES] = ['specialty_code', 'specialty_name', 'position_code', 'active', 'sort_order'];
+// โครงสร้างคณะกรรมการ/ประธาน/เลขานุการ 2026-09-16 (รอบ 2) — ดู CommitteeMigration.gs, schema ตามที่ผู้ใช้กำหนด
+SHEET_HEADERS[SHEET.CHAIR_MASTER] = [
+  'chair_id', 'committee_code', 'profession', 'field', 'specialty', 'team_no', 'chair_name', 'chair_position',
+  'organization', 'province', 'active', 'start_date', 'end_date', 'note',
+];
+SHEET_HEADERS[SHEET.SECRETARY_MASTER] = ['secretary_id', 'name', 'position', 'organization', 'province', 'email', 'phone', 'active', 'note'];
+SHEET_HEADERS[SHEET.COMMITTEE_SECRETARY_MAP] = [
+  'map_id', 'committee_code', 'profession', 'field', 'specialty', 'team_no', 'secretary_id', 'role', 'sequence', 'active', 'note',
+];
 
 // สถานี Workflow เริ่มต้น — ตรงกระบวนการจริงที่ผู้ใช้ให้มา (2026-09-02) แทนชุดเดิม
 // แก้ไขได้ภายหลังจากหน้า "จัดการ Workflow" ไม่กระทบ record ที่มีอยู่ เพราะ Works อ้างสถานีด้วย station_key ไม่ใช่ลำดับแถว
