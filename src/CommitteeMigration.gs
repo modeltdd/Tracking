@@ -134,6 +134,16 @@ function committeeCode_(ss, group) {
   return committeeProfessionCode_(ss, group.professionNo, group.profession) + '-' + group.teamNo;
 }
 
+/**
+ * บังคับคอลัมน์ team_no ให้เป็น Text จริง (numberFormat '@') ก่อนเขียนค่าเสมอ — กัน Google Sheets auto-detect
+ * เป็นตัวเลขแล้วตัดเลข 0 ท้ายทิ้ง (เช่น "1.10" กลายเป็น "1.1" ชนกับคณะที่ 1.1 จริง) ต้องตั้ง format ก่อนใส่ค่า
+ * เสมอ (ตั้งทีหลังไม่ช่วย เพราะเลขที่เพี้ยนไปแล้วจะยังเพี้ยนอยู่) เหมือนปัญหาเดียวกับ station_order ที่เคยแก้แล้ว
+ */
+function forceTeamNoColumnAsText_(sheet, headers) {
+  var col = headers.indexOf('team_no') + 1;
+  if (col > 0) sheet.getRange(1, col, sheet.getMaxRows(), 1).setNumberFormat('@');
+}
+
 /** key สำหรับกันเลขาซ้ำ (ห้ามใช้ชื่ออย่างเดียว — ตามที่ผู้ใช้กำหนด ข้อ 18) */
 function secretaryDedupeKey_(name, position, org) {
   return [name, position, org].map(function (s) { return String(s || '').trim(); }).join('||');
@@ -231,8 +241,10 @@ function previewCommitteeMigration() {
   var previewSheet = ss.getSheetByName(COMMITTEE_PREVIEW_SHEET_NAME_);
   if (previewSheet) ss.deleteSheet(previewSheet);
   previewSheet = ss.insertSheet(COMMITTEE_PREVIEW_SHEET_NAME_);
-  previewSheet.appendRow(['committee_code', 'profession', 'field', 'specialty', 'team_no', 'chair_name', 'chair_org',
-    'secretaries (role:name)', 'status']);
+  var previewHeaders = ['committee_code', 'profession', 'field', 'specialty', 'team_no', 'chair_name', 'chair_org',
+    'secretaries (role:name)', 'status'];
+  forceTeamNoColumnAsText_(previewSheet, previewHeaders); // ตั้ง format ก่อนใส่ค่าเสมอ (ดู docstring ฟังก์ชัน)
+  previewSheet.appendRow(previewHeaders);
   previewSheet.getRange(1, 1, 1, 9).setFontWeight('bold');
 
   groups.forEach(function (g) {
@@ -256,6 +268,7 @@ function migrateChairMaster() {
   var ss = getSpreadsheet_();
   ensureSheet_(ss, SHEET.CHAIR_MASTER, SHEET_HEADERS[SHEET.CHAIR_MASTER]);
   var sheet = ss.getSheetByName(SHEET.CHAIR_MASTER);
+  forceTeamNoColumnAsText_(sheet, SHEET_HEADERS[SHEET.CHAIR_MASTER]); // กันเลข 0 ท้ายหาย เช่น "1.10"->"1.1"
   var existingCodes = {};
   readSheetAsObjects_(sheet).forEach(function (row) { existingCodes[row.committee_code] = true; });
 
@@ -311,6 +324,7 @@ function migrateCommitteeSecretaryMap() {
   var ss = getSpreadsheet_();
   ensureSheet_(ss, SHEET.COMMITTEE_SECRETARY_MAP, SHEET_HEADERS[SHEET.COMMITTEE_SECRETARY_MAP]);
   var sheet = ss.getSheetByName(SHEET.COMMITTEE_SECRETARY_MAP);
+  forceTeamNoColumnAsText_(sheet, SHEET_HEADERS[SHEET.COMMITTEE_SECRETARY_MAP]); // กันเลข 0 ท้ายหาย เช่น "1.10"->"1.1"
   var secIndex = buildExistingSecretaryIndex_(ss);
   var existingPairs = {};
   readSheetAsObjects_(sheet).forEach(function (row) { existingPairs[row.committee_code + '||' + row.secretary_id + '||' + row.role] = true; });
