@@ -78,26 +78,32 @@ function buildCommitteeGroups_(rows) {
     var profMatch = a.match(/^(\d+)\.\s*ตำแหน่ง(.+?)ชำนาญการพิเศษ\s*$/);
     if (profMatch) {
       currentProfessionNo = Number(profMatch[1]);
-      var flatTeamMatch = String(r[4] || '').match(/ทีม\s*([\d.]+)/);
-      if (flatTeamMatch && !/\./.test(flatTeamMatch[1])) {
-        // วิชาชีพที่มีคณะเดียว ไม่แบ่งย่อย (ทีมเลขล้วน ไม่มีจุดทศนิยม) — เริ่มกลุ่มทันทีจากแถวนี้เลย
-        startGroup(currentProfessionNo, '', flatTeamMatch[1], '', '');
-      } else {
-        current = null; // รอแถว "คณะที่ N" ถัดไป
-      }
+      current = null; // รอแถว "คณะที่ N" หรือแถวสมาชิกโดยตรง (กรณีวิชาชีพเดียวไม่แบ่งย่อย — ดูด้านล่าง)
       return;
     }
 
+    // team_no คำนวณจาก "เลขวิชาชีพ.เลขคณะย่อย" (ทั้งคู่เป็นจำนวนเต็มล้วนที่ parse จากข้อความหัวข้อได้แม่นยำ 100%)
+    // ไม่พึ่งข้อความ "ทีม X.Y" ในคอลัมน์ E อีกต่อไป (2026-09-16 แก้บั๊กจริง) — คอลัมน์ E เก็บเป็น text "ทีม 1.10"
+    // ในไฟล์ต้นฉบับจริง แต่หลังผู้ใช้คัดลอกผ่าน Excel/Google Sheets ไปวางในชีต CommitteeImport เจอค่าเพี้ยนเป็น
+    // "1.1" (ตัดเลข 0 ท้ายทศนิยม) แม้ตั้ง numberFormat เป็น text ไว้ก่อนเขียนแล้วก็ตาม — คำนวณเองจาก int 2 ตัว
+    // ที่เชื่อถือได้กว่าแทนเลย ไม่ต้องพึ่งข้อความคอลัมน์ E เลยสักจุด
     var committeeMatch = a.match(/^คณะที่\s*(\d+)(?:\s+(.+))?$/);
     if (committeeMatch && currentProfessionNo !== null) {
-      var teamMatch = String(r[4] || '').match(/ทีม\s*([\d.]+)/);
       var parenMatch = (committeeMatch[2] || '').match(/\(([^)]+)\)/);
       var fs = parseFieldSpecialtyText_(parenMatch ? parenMatch[1] : '');
-      startGroup(currentProfessionNo, committeeMatch[1], teamMatch ? teamMatch[1] : committeeMatch[1], fs.field, fs.specialty);
+      startGroup(currentProfessionNo, committeeMatch[1], currentProfessionNo + '.' + committeeMatch[1], fs.field, fs.specialty);
       return;
     }
 
-    if (!current) return;
+    if (!current) {
+      // ไม่มีแถว "คณะที่" มาก่อนเลย — ถ้าเจอแถวสมาชิก (ลำดับเป็นตัวเลขล้วน) แปลว่าวิชาชีพนี้มีคณะเดียว ไม่แบ่งย่อย
+      // เปิดกลุ่มทันทีด้วย team_no = เลขวิชาชีพเฉยๆ (ไม่มีทศนิยม) ไม่ต้องอ่านคอลัมน์ E เช่นกัน
+      if (currentProfessionNo !== null && /^\d+$/.test(a)) {
+        startGroup(currentProfessionNo, '', String(currentProfessionNo), '', '');
+      } else {
+        return;
+      }
+    }
     var seq = a;
     if (!/^\d+$/.test(seq)) return; // ไม่ใช่แถวสมาชิก (เช่นแถวว่างคั่นกลาง)
 
