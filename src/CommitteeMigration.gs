@@ -139,10 +139,13 @@ function secretaryDedupeKey_(name, position, org) {
   return [name, position, org].map(function (s) { return String(s || '').trim(); }).join('||');
 }
 
-/** map key เลขา (name+position+org) -> secretary_id ที่มีอยู่แล้วในชีต SecretaryMaster จริง (idempotent lookup) */
+/** map key เลขา (name+position+org) -> secretary_id ที่มีอยู่แล้วในชีต SecretaryMaster จริง (idempotent lookup)
+ *  ensureSheet_ ก่อนเสมอ (ชีต production เดิมติดตั้งก่อนเพิ่ม SHEET.SECRETARY_MASTER — installSystem() เดิม
+ *  ไม่เคยรันซ้ำหลังเพิ่ม key นี้ สร้างชีตไม่ทัน) กันพังตอนเรียกจาก preview/analyze ก่อนรัน migrate ครั้งแรก */
 function buildExistingSecretaryIndex_(ss) {
   var index = {};
-  readSheetAsObjects_(ss.getSheetByName(SHEET.SECRETARY_MASTER)).forEach(function (row) {
+  var sheet = ensureSheet_(ss, SHEET.SECRETARY_MASTER, SHEET_HEADERS[SHEET.SECRETARY_MASTER]);
+  readSheetAsObjects_(sheet).forEach(function (row) {
     index[secretaryDedupeKey_(row.name, row.position, row.organization)] = row.secretary_id;
   });
   return index;
