@@ -58,10 +58,12 @@ function excelSerialToDate_(serial) {
 
 /** แก้ปี พ.ศ. ที่พิมพ์ผิดลงช่องวันที่ตรงๆ (ยืนยันกับผู้ใช้แล้ว — ดู docstring บนสุดของไฟล์) ลบ 543 ปีออก คง
  *  เดือน/วันเดิมไว้ทุกประการ คืน null ถ้า serial ไม่ใช่ตัวเลข/วันที่ที่ใช้ได้ (กันข้อมูลเสียพัง)
- *  2026-09-21: sheet.getRange().getValues() คืนค่าเป็น JS Date object จริง (ไม่ใช่เลข serial ดิบ) เมื่อคอลัมน์ F
- *  เป็นเซลล์ที่ Google Sheets จัดรูปแบบเป็นวันที่แล้ว (ยืนยันจากภาพชีต LegacyImport จริงที่ผู้ใช้วางไว้ — คอลัมน์ F
- *  แสดงเป็น "21/8/2569" ไม่ใช่เลขดิบแบบ "244123" เหมือนตอนอ่านจากไฟล์ Excel ตรงๆ) ต้องรองรับทั้ง 2 กรณี ไม่งั้น
- *  Number(dateObject) จะได้ epoch milliseconds มาคำนวณผิดทั้งหมด */
+ *  รองรับ 3 รูปแบบ input เท่าที่เจอจริงในชีต LegacyImport ของผู้ใช้ (ทุกแบบมาจากข้อมูล 244 แถวเดียวกัน แค่
+ *  paste/format แต่ละแถวเข้า Google Sheets ไม่เหมือนกัน — ยืนยันจากภาพจริงทุกกรณี):
+ *   1) JS Date object — เมื่อเซลล์ถูก Sheets จัดรูปแบบเป็นวันที่ (2026-09-21 เจอจริง คอลัมน์ F แสดง "21/8/2569")
+ *   2) ข้อความ "D/M/YYYY" ล้วนๆ — เมื่อเซลล์ยังเป็น plain text (2026-09-21 เจอจริงจาก LegacyPreview.issues
+ *      รายงาน "วันที่ลงรับไม่ใช่ตัวเลข/แปลงไม่ได้: '20/8/2569'" ทำให้ ~173/244 แถวถูกบล็อกไปก่อนแก้จุดนี้)
+ *   3) เลข serial ดิบแบบ Excel (เช่น 244123) — เมื่ออ่านจากไฟล์ .xlsx ตรงๆ ไม่ผ่าน Google Sheets paste เลย */
 function correctLegacyReceivedDate_(serial) {
   if (!serial) return null;
   var d;
@@ -69,8 +71,18 @@ function correctLegacyReceivedDate_(serial) {
     if (isNaN(serial.getTime())) return null;
     d = new Date(serial.getTime());
   } else {
-    if (isNaN(Number(serial))) return null;
-    d = excelSerialToDate_(serial);
+    var text = String(serial).trim();
+    var textMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (textMatch) {
+      var day = Number(textMatch[1]), month = Number(textMatch[2]), year = Number(textMatch[3]);
+      d = new Date(year, month - 1, day);
+      // new Date() ปัดเดือน/วันเกินขอบเขตข้ามไปเดือนถัดไปเงียบๆ (เช่น 31/4 -> 1 พ.ค.) เช็คย้อนกลับกันข้อมูลเพี้ยน
+      if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+    } else if (!isNaN(Number(serial))) {
+      d = excelSerialToDate_(serial);
+    } else {
+      return null;
+    }
   }
   d.setFullYear(d.getFullYear() - 543);
   return d;
