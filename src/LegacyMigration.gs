@@ -20,16 +20,28 @@ var LEGACY_SHEET_NAME_ = 'LegacyImport';
 var LEGACY_PREVIEW_SHEET_NAME_ = 'LegacyPreview';
 var LEGACY_COL_ = { SEQ: 0, NAME: 1, POSITION: 2, SPECIALTY: 3, PROVINCE: 4, RECEIVED: 5, TEAM: 6, SECRETARY: 7, ORG_POSITION: 8, MONTH: 9, STATE: 10 };
 
+/**
+ * หาแท็บด้วยชื่อ แบบ exact match ก่อน ถ้าไม่เจอค่อย fallback หาแบบ trim+case-insensitive (กัน user เผลอเว้น
+ * วรรคท้าย/ตัวพิมพ์เล็กใหญ่ตอนตั้งชื่อแท็บ) — เจอเคสจริง 2026-09-21: ผู้ใช้เห็นแท็บ "LegacyImport" ในลิสต์ log
+ * เอง (getSheets() คืนชื่อออกมาแล้ว) แต่ getSheetByName() ตรงๆ กลับหาไม่เจอ สาเหตุน่าจะเป็นช่องว่างแฝงที่ตัว
+ * viewer ของ Apps Script Editor (HTML) ยุบช่องว่างทิ้งตอนแสดงผล มองด้วยตาเปล่าแยกไม่ออกจากชื่อที่ถูกต้อง
+ */
+function findSheetLoose_(ss, targetName) {
+  var exact = ss.getSheetByName(targetName);
+  if (exact) return exact;
+  var target = targetName.trim().toLowerCase();
+  var match = ss.getSheets().filter(function (s) { return s.getName().trim().toLowerCase() === target; })[0];
+  return match || null;
+}
+
 /** อ่านชีต LegacyImport ทั้งชีตเป็น array of array (ดิบ ไม่ผ่าน readSheetAsObjects_ เพราะ header ไม่ตรงชื่อ field ในระบบ) */
 function readLegacySheetRaw_(ss) {
-  var sheet = ss.getSheetByName(LEGACY_SHEET_NAME_);
+  var sheet = findSheetLoose_(ss, LEGACY_SHEET_NAME_);
   if (!sheet) {
-    // 2026-09-21: เพิ่ม diagnostic ให้ชัดเจนแทนเดา — เจอเคสจริงที่ผู้ใช้เห็นแท็บ LegacyImport อยู่ตรงหน้าแต่
-    // สคริปต์ยังหาไม่เจอ (สงสัยว่าเปิดสเปรดชีตซ้ำกัน 2 ไฟล์ชื่อเดียวกัน คนละไฟล์กับที่ getSpreadsheet_() เปิดจริง)
-    var sheetNames = ss.getSheets().map(function (s) { return s.getName(); });
+    var sheetInfo = ss.getSheets().map(function (s) { return JSON.stringify(s.getName()) + '(len=' + s.getName().length + ')'; });
     throw new Error('ไม่พบชีต "' + LEGACY_SHEET_NAME_ + '" ใน Spreadsheet ID=' + ss.getId() +
-      ' (แท็บที่มีอยู่จริงตอนนี้: ' + sheetNames.join(', ') + ') — ถ้าไม่เห็นชื่อ LegacyImport ในลิสต์นี้ แปลว่า ' +
-      'สคริปต์นี้กำลังเปิดคนละไฟล์กับที่คุณเห็นบนหน้าจอ (เช็ค ID นี้เทียบกับ URL ของไฟล์ที่วางข้อมูลไว้จริง)');
+      ' (แท็บที่มีอยู่จริงตอนนี้: ' + sheetInfo.join(', ') + ') — เทียบความยาวชื่อ/อักขระตรงนี้กับ "LegacyImport" ' +
+      '(len=12) เพื่อหาอักขระแปลกปลอม (ช่องว่าง/สัญลักษณ์ซ่อน) ในชื่อแท็บจริง');
   }
   var lastRow = sheet.getLastRow();
   var lastCol = sheet.getLastColumn();
