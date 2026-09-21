@@ -1,6 +1,9 @@
 /**
- * นำเข้าข้อมูลเก่าจาก Google Sheet ชุดล่าสุด (2026-09-16) — ชีต "LegacyImport" (คัดลอกมาจากแท็บ "อวช(240)"
- * ของไฟล์ 1อวช060969.xlsx โดยผู้ใช้เอง วางเป็นแท็บใหม่ในสเปรดชีตฐานข้อมูลจริง) คอลัมน์ A-K ยืนยันจาก header จริง:
+ * นำเข้าข้อมูลเก่าจาก Google Sheet ชุดล่าสุด — ชีต "LegacyImport" (คัดลอกมาจากแท็บ "อวช(244)" ของไฟล์
+ * 1อวช140969.xlsx โดยผู้ใช้เอง วางเป็นแท็บใหม่ในสเปรดชีตฐานข้อมูลจริง — 2026-09-21 อัปเดตจากแหล่งข้อมูลเดิม
+ * "อวช(240)" ของไฟล์ 1อวช060969.xlsx เป็นชุดล่าสุด 244 รายการ ยืนยันจากไฟล์จริงว่า header/ลำดับคอลัมน์เหมือนเดิม
+ * ทุกประการ 240 แถวแรกข้อมูลตรงกัน มีแค่ 4 แถวท้ายเพิ่มมาใหม่ — โค้ดข้างล่างไม่ต้องแก้อะไร แค่เปลี่ยนแหล่งคัดลอก)
+ * คอลัมน์ A-K ยืนยันจาก header จริง:
  * ลำดับ, ชื่อ-สกุล, ตำแหน่ง, ด้าน, จังหวัด, วันที่ลงรับ, ทีม, เลขา, ส่วนราชการตำแหน่งที่ขอแต่งตั้ง, เดือน, สถานะ
  *
  * ลำดับการทำงาน (ห้ามข้ามขั้นตอน ตามที่ผู้ใช้กำหนด): analyzeLegacySheet() -> validateLegacyData() ->
@@ -20,7 +23,7 @@ var LEGACY_COL_ = { SEQ: 0, NAME: 1, POSITION: 2, SPECIALTY: 3, PROVINCE: 4, REC
 /** อ่านชีต LegacyImport ทั้งชีตเป็น array of array (ดิบ ไม่ผ่าน readSheetAsObjects_ เพราะ header ไม่ตรงชื่อ field ในระบบ) */
 function readLegacySheetRaw_(ss) {
   var sheet = ss.getSheetByName(LEGACY_SHEET_NAME_);
-  if (!sheet) throw new Error('ไม่พบชีต "' + LEGACY_SHEET_NAME_ + '" — คัดลอกแท็บ "อวช(240)" จาก Excel มาวางเป็นแท็บนี้ก่อน (ดู docs/DEPLOY.md หรือคำแนะนำที่ได้รับ)');
+  if (!sheet) throw new Error('ไม่พบชีต "' + LEGACY_SHEET_NAME_ + '" — คัดลอกแท็บ "อวช(244)" จากไฟล์ 1อวช140969.xlsx มาวางเป็นแท็บนี้ก่อน (ดู docs/DEPLOY.md หรือคำแนะนำที่ได้รับ)');
   var lastRow = sheet.getLastRow();
   var lastCol = sheet.getLastColumn();
   if (lastRow < 2) return [];
