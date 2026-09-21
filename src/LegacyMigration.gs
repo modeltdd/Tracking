@@ -23,7 +23,14 @@ var LEGACY_COL_ = { SEQ: 0, NAME: 1, POSITION: 2, SPECIALTY: 3, PROVINCE: 4, REC
 /** อ่านชีต LegacyImport ทั้งชีตเป็น array of array (ดิบ ไม่ผ่าน readSheetAsObjects_ เพราะ header ไม่ตรงชื่อ field ในระบบ) */
 function readLegacySheetRaw_(ss) {
   var sheet = ss.getSheetByName(LEGACY_SHEET_NAME_);
-  if (!sheet) throw new Error('ไม่พบชีต "' + LEGACY_SHEET_NAME_ + '" — คัดลอกแท็บ "อวช(244)" จากไฟล์ 1อวช140969.xlsx มาวางเป็นแท็บนี้ก่อน (ดู docs/DEPLOY.md หรือคำแนะนำที่ได้รับ)');
+  if (!sheet) {
+    // 2026-09-21: เพิ่ม diagnostic ให้ชัดเจนแทนเดา — เจอเคสจริงที่ผู้ใช้เห็นแท็บ LegacyImport อยู่ตรงหน้าแต่
+    // สคริปต์ยังหาไม่เจอ (สงสัยว่าเปิดสเปรดชีตซ้ำกัน 2 ไฟล์ชื่อเดียวกัน คนละไฟล์กับที่ getSpreadsheet_() เปิดจริง)
+    var sheetNames = ss.getSheets().map(function (s) { return s.getName(); });
+    throw new Error('ไม่พบชีต "' + LEGACY_SHEET_NAME_ + '" ใน Spreadsheet ID=' + ss.getId() +
+      ' (แท็บที่มีอยู่จริงตอนนี้: ' + sheetNames.join(', ') + ') — ถ้าไม่เห็นชื่อ LegacyImport ในลิสต์นี้ แปลว่า ' +
+      'สคริปต์นี้กำลังเปิดคนละไฟล์กับที่คุณเห็นบนหน้าจอ (เช็ค ID นี้เทียบกับ URL ของไฟล์ที่วางข้อมูลไว้จริง)');
+  }
   var lastRow = sheet.getLastRow();
   var lastCol = sheet.getLastColumn();
   if (lastRow < 2) return [];
