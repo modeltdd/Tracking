@@ -38,10 +38,21 @@ function excelSerialToDate_(serial) {
 }
 
 /** แก้ปี พ.ศ. ที่พิมพ์ผิดลงช่องวันที่ตรงๆ (ยืนยันกับผู้ใช้แล้ว — ดู docstring บนสุดของไฟล์) ลบ 543 ปีออก คง
- *  เดือน/วันเดิมไว้ทุกประการ คืน null ถ้า serial ไม่ใช่ตัวเลข (กันข้อมูลเสียพัง) */
+ *  เดือน/วันเดิมไว้ทุกประการ คืน null ถ้า serial ไม่ใช่ตัวเลข/วันที่ที่ใช้ได้ (กันข้อมูลเสียพัง)
+ *  2026-09-21: sheet.getRange().getValues() คืนค่าเป็น JS Date object จริง (ไม่ใช่เลข serial ดิบ) เมื่อคอลัมน์ F
+ *  เป็นเซลล์ที่ Google Sheets จัดรูปแบบเป็นวันที่แล้ว (ยืนยันจากภาพชีต LegacyImport จริงที่ผู้ใช้วางไว้ — คอลัมน์ F
+ *  แสดงเป็น "21/8/2569" ไม่ใช่เลขดิบแบบ "244123" เหมือนตอนอ่านจากไฟล์ Excel ตรงๆ) ต้องรองรับทั้ง 2 กรณี ไม่งั้น
+ *  Number(dateObject) จะได้ epoch milliseconds มาคำนวณผิดทั้งหมด */
 function correctLegacyReceivedDate_(serial) {
-  if (!serial || isNaN(Number(serial))) return null;
-  var d = excelSerialToDate_(serial);
+  if (!serial) return null;
+  var d;
+  if (serial instanceof Date) {
+    if (isNaN(serial.getTime())) return null;
+    d = new Date(serial.getTime());
+  } else {
+    if (isNaN(Number(serial))) return null;
+    d = excelSerialToDate_(serial);
+  }
   d.setFullYear(d.getFullYear() - 543);
   return d;
 }
