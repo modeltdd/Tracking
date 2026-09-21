@@ -63,6 +63,25 @@ function registerNewWork_(ss, user, e) {
     }
   }
 
+  // 2026-09-21: เชื่อมโยงกับคณะกรรมการจริง (ChairMaster) — คำนวณ/validate เสมอฝั่ง backend ไม่เชื่อ client
+  // (ดู resolveCommitteeForRegistration_ ใน CommitteeMigration.gs สำหรับที่มาของ 4 โหมด)
+  values.committee_code = '';
+  if (positionRow) {
+    var committeeResolution = resolveCommitteeForRegistration_(ss, values.position, values.specialty);
+    if (committeeResolution.mode === 'single' || committeeResolution.mode === 'specialty') {
+      values.committee_code = committeeResolution.committee.committee_code;
+    } else if (committeeResolution.mode === 'manual') {
+      var chosenCommittee = String(p.reg_committee_code || '').trim();
+      var validCodes = committeeResolution.committees.map(function (c) { return c.committee_code; });
+      if (!chosenCommittee || validCodes.indexOf(chosenCommittee) === -1) {
+        errors.push('ตำแหน่งนี้มีหลายคณะกรรมการ ไม่สามารถจับคู่อัตโนมัติได้ กรุณาเลือกคณะกรรมการที่รับผิดชอบ');
+      } else {
+        values.committee_code = chosenCommittee;
+      }
+    }
+    // mode 'none' — ตำแหน่งนี้ยังไม่มีคณะกรรมการในระบบ ไม่บังคับ ปล่อย committee_code ว่าง
+  }
+
   if (errors.length) {
     return { ok: false, errors: errors, values: values };
   }
@@ -110,6 +129,7 @@ function registerNewWork_(ss, user, e) {
     medical_specialty: '', // เลิกใช้แล้ว (2026-09-15 รอบ 3) — คอลัมน์เดิมยังอยู่ เขียนค่าว่างเสมอ
     province: values.province,
     specialty: values.specialty,
+    committee_code: values.committee_code,
   });
 
   var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);

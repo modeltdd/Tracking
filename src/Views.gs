@@ -1023,6 +1023,11 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
   var selectedPositionRow = positionRows.filter(function (row) { return row.position_name === values.position; })[0];
   var showSpecialty = !!selectedPositionRow && specialtyRows.some(function (row) { return row.position_code === selectedPositionRow.position_code; });
 
+  // 2026-09-21: auto-suggest คณะกรรมการที่รับผิดชอบ (ChairMaster) ตามตำแหน่ง+ด้าน/สาขาที่เลือก — ฝัง lookup
+  // ทั้งหมดเป็น JSON ให้ client JS ตัดสินใจแบบ reactive (ไม่มี AJAX ในระบบนี้) ฝั่ง backend validate ซ้ำเสมอที่
+  // registerNewWork_ (resolveCommitteeForRegistration_ ใช้ logic เดียวกันเป๊ะ ไม่มี drift)
+  var committeeLookup = buildCommitteeLookupForRegisterForm_(ss);
+
   return '' +
     errorHtml +
     '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" id="reg-form">' +
@@ -1036,6 +1041,8 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     (positionRows.length ? '' : '<p class="hint" style="margin-top:4px">ยังไม่มีตำแหน่งใน Master Data — เพิ่มได้ที่ Admin &gt; ข้อมูลหลัก</p>') + '</div>' +
     '<div class="field" id="reg-specialty-field" style="' + (showSpecialty ? '' : 'display:none') + '">' +
     '<label>ด้าน/สาขา</label><select class="input" name="reg_specialty" id="reg-specialty">' + specialtyOptionsHtml + '</select></div>' +
+    '<div class="field" id="reg-committee-field" style="display:none">' +
+    '<label>คณะกรรมการที่รับผิดชอบ</label><div id="reg-committee-info"></div></div>' +
     '<div class="field"><label>เลขตำแหน่งเดิม</label><input class="input" name="reg_position_no" value="' + v('position_no') + '"></div>' +
     '<div class="field"><label>ประเภทผลงาน</label>' + selectHtml('reg_work_type', typeOptions, values.work_type) + '</div>' +
     '<div class="field"><label>ถ้าเลือก "อื่น ๆ" ข้างต้น ระบุประเภทผลงาน</label><input class="input" name="reg_work_type_other" placeholder="ระบุประเภทผลงาน (ใช้เฉพาะกรณีเลือกอื่น ๆ)"></div>' +
@@ -1054,7 +1061,9 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '</div>' +
     '<button class="btn-primary" type="submit">บันทึกและออกเลขติดตาม</button>' +
     '</form>' +
-    REG_DYNAMIC_SCRIPT_;
+    '<script>var REG_COMMITTEE_LOOKUP_ = ' + JSON.stringify(committeeLookup) + ';</script>' +
+    REG_DYNAMIC_SCRIPT_ +
+    REG_COMMITTEE_SCRIPT_;
 }
 
 /** ซ่อน/โชว์+กรอง option ฟิลด์ "ด้าน/สาขา" ตามตำแหน่งที่เลือก (generic ทุกตำแหน่ง, รอบ 3) — ไม่มี framework
@@ -1082,6 +1091,43 @@ var REG_DYNAMIC_SCRIPT_ = '' +
   '}' +
   'posSel.addEventListener("change", syncVisibility);' +
   'syncVisibility();' +
+  '});' +
+  '</script>';
+
+/** auto-suggest คณะกรรมการที่รับผิดชอบ (ChairMaster) ตามตำแหน่ง+ด้าน/สาขาที่เลือก — อ่าน REG_COMMITTEE_LOOKUP_
+ *  ที่ฝังไว้ก่อนหน้า (buildCommitteeLookupForRegisterForm_) ไม่มี AJAX ทำงานฝั่ง client ล้วน backend validate
+ *  ซ้ำเสมอที่ registerNewWork_ (resolveCommitteeForRegistration_ — logic โหมดเดียวกันเป๊ะ) */
+var REG_COMMITTEE_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'var posSel = document.getElementById("reg-position");' +
+  'var specSel = document.getElementById("reg-specialty");' +
+  'var committeeField = document.getElementById("reg-committee-field");' +
+  'var infoDiv = document.getElementById("reg-committee-info");' +
+  'if (!posSel || !committeeField || !infoDiv || typeof REG_COMMITTEE_LOOKUP_ === "undefined") return;' +
+  'function escC(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }' +
+  'function syncCommittee() {' +
+  'var posName = posSel.options[posSel.selectedIndex] ? posSel.options[posSel.selectedIndex].text : "";' +
+  'var entry = REG_COMMITTEE_LOOKUP_[posName];' +
+  'if (!entry || !entry.committees.length) { committeeField.style.display = "none"; infoDiv.innerHTML = ""; return; }' +
+  'committeeField.style.display = "";' +
+  'if (entry.mode === "manual") {' +
+  'var html = `<select class="input" name="reg_committee_code" required><option value="">-- เลือกคณะกรรมการ --</option>`;' +
+  'entry.committees.forEach(function (c) {' +
+  'html += `<option value="` + escC(c.committee_code) + `">` + escC(c.committee_code) + ` — ประธาน: ` + escC(c.chair_name) + ` (` + escC(c.chair_org) + `)</option>`;' +
+  '});' +
+  'infoDiv.innerHTML = html + `<p class="hint">ตำแหน่งนี้มีหลายคณะ ไม่สามารถจับคู่อัตโนมัติได้ กรุณาเลือกเอง</p>`;' +
+  'return;' +
+  '}' +
+  'var match = entry.mode === "single" ? entry.committees[0] :' +
+  'entry.committees.filter(function (c) { return c.key === (specSel ? specSel.value : ""); })[0];' +
+  'infoDiv.innerHTML = match' +
+  '? `<p class="hint">` + escC(match.committee_code) + ` — ประธาน: ` + escC(match.chair_name) + ` (` + escC(match.chair_org) + `)</p>`' +
+  ': `<p class="hint">เลือก "ด้าน/สาขา" เพื่อดูคณะกรรมการที่รับผิดชอบ</p>`;' +
+  '}' +
+  'posSel.addEventListener("change", syncCommittee);' +
+  'if (specSel) specSel.addEventListener("change", syncCommittee);' +
+  'syncCommittee();' +
   '});' +
   '</script>';
 

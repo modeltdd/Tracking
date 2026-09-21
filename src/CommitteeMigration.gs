@@ -361,3 +361,50 @@ function migrateCommitteeSecretaryMap() {
   Logger.log('=== migrateCommitteeSecretaryMap เสร็จ — เพิ่มใหม่ ' + added + ' mapping, ข้าม (มีอยู่แล้ว) ' + skippedExisting +
     ', ข้าม (ยังไม่มี secretary_id — รัน migrateSecretaryMaster() ก่อน) ' + skippedNoSecretaryId + ' ===');
 }
+
+/**
+ * เชื่อมโยง Registration กับคณะกรรมการจริง (2026-09-21) — จัดกลุ่ม ChairMaster (active) ตาม profession แล้ว
+ * ตัดสินโหมดการจับคู่ตามข้อมูลจริงที่มี (ห้ามเดา ยืนยันจากการสแกน 1อวช140969.xlsx ทั้ง 15 วิชาชีพแล้ว):
+ *   - 'single'   : วิชาชีพนี้มีคณะเดียว ไม่ต้องมีสาขาก็จับคู่ได้ทันที (10 วิชาชีพ เช่น เภสัชกร/นักเทคนิคการแพทย์)
+ *   - 'specialty': ทุกคณะของวิชาชีพนี้มี specialty หรือ field ระบุครบ (ไม่ซ้ำกัน) จับคู่ด้วยค่า "ด้าน/สาขา" ที่
+ *                  เลือกตอนลงทะเบียนได้ตรง (นายแพทย์ 17 คณะ จับด้วย specialty, ทันตแพทย์ 2 คณะ จับด้วย field)
+ *   - 'manual'   : มีหลายคณะแต่ไม่มีข้อความแยกในข้อมูลต้นฉบับเลย (พยาบาลวิชาชีพ 7 คณะ/นักวิชาการสาธารณสุข 2 คณะ)
+ *                  — ผู้ใช้ยืนยันแล้วว่าห้าม auto-suggest กรณีนี้ ต้องให้เจ้าหน้าที่เลือกเองเสมอ
+ * คืนค่าเป็น map { [profession]: { mode, committees: [{committee_code, chair_name, chair_org, key}] } }
+ * ใช้ทั้งฝั่ง embed JSON ให้ client JS (renderRegisterFormBody_) และฝั่ง validate จริงที่ registerNewWork_
+ * (resolveCommitteeForRegistration_ ด้านล่าง) — จุดเดียว ไม่มี logic ซ้ำสองที่ให้ drift กัน
+ */
+function buildCommitteeLookupForRegisterForm_(ss) {
+  var chairSheet = ss.getSheetByName(SHEET.CHAIR_MASTER);
+  var allChairs = chairSheet ? readSheetAsObjects_(chairSheet).filter(function (r) { return r.active; }) : [];
+  var byProfession = {};
+  allChairs.forEach(function (r) { (byProfession[r.profession] = byProfession[r.profession] || []).push(r); });
+
+  var lookup = {};
+  Object.keys(byProfession).forEach(function (profession) {
+    var committees = byProfession[profession].map(function (r) {
+      return { committee_code: r.committee_code, chair_name: r.chair_name, chair_org: r.organization, key: r.specialty || r.field || '' };
+    });
+    var mode = committees.length === 1 ? 'single'
+      : (committees.every(function (c) { return c.key; }) ? 'specialty' : 'manual');
+    lookup[profession] = { mode: mode, committees: committees };
+  });
+  return lookup;
+}
+
+/**
+ * จับคู่คณะกรรมการที่รับผิดชอบสำหรับ 1 การลงทะเบียน (ตำแหน่ง+ด้าน/สาขาที่เลือก) — เรียกจาก registerNewWork_
+ * เสมอเพื่อ validate/คำนวณ committee_code จริง ไม่เชื่อค่าจาก client อย่างเดียว (เหมือนที่ validate position/
+ * specialty อยู่แล้ว) คืน { mode:'single'|'specialty'|'manual'|'none', committee?:{...}, committees?:[...] }
+ */
+function resolveCommitteeForRegistration_(ss, positionName, specialtyName) {
+  var entry = buildCommitteeLookupForRegisterForm_(ss)[positionName];
+  if (!entry || !entry.committees.length) return { mode: 'none', committees: [] };
+  if (entry.mode === 'single') return { mode: 'single', committee: entry.committees[0] };
+  if (entry.mode === 'specialty') {
+    var match = entry.committees.filter(function (c) { return c.key === specialtyName; })[0];
+    // ไม่พบตรงเป๊ะ (เช่น MasterSpecialties/ChairMaster เพี้ยนไม่ตรงกัน) — กันพลาดด้วยการให้เลือกเองแทนเดา
+    return match ? { mode: 'specialty', committee: match } : { mode: 'manual', committees: entry.committees };
+  }
+  return { mode: 'manual', committees: entry.committees };
+}

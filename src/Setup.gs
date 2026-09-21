@@ -300,6 +300,23 @@ function migratePart10Updates() {
 }
 
 /**
+ * แก้ชื่อสาขา "โสต ศอ นาสิก" (เดาไว้ก่อนเจอไฟล์คณะกรรมการจริง) เป็น "โสต นาสิก ลาริงซ์วิทยา" (ตรงกับ
+ * 1อวช140969.xlsx จริง) ในชีต MasterSpecialties — จำเป็นสำหรับ auto-suggest คณะกรรมการตอนลงทะเบียน (2026-09-21)
+ * ให้จับคู่ "ด้าน/สาขา" กับ ChairMaster.specialty ได้ตรงเป๊ะ รันเองจาก Editor ครั้งเดียว ปลอดภัยรันซ้ำได้
+ */
+function migrateFixDoctorSpecialtyName() {
+  var ss = getSpreadsheet_();
+  var sheet = ss.getSheetByName(SHEET.MASTER_SPECIALTIES);
+  if (!sheet) { Logger.log('ยังไม่มีชีต MasterSpecialties — รัน migratePart10Updates() ก่อน'); return; }
+  var row = readSheetAsObjects_(sheet).filter(function (r) {
+    return r.position_code === 'DOCTOR' && r.specialty_name === 'โสต ศอ นาสิก';
+  })[0];
+  if (!row) { Logger.log('ไม่พบแถว "โสต ศอ นาสิก" ของ DOCTOR — อาจแก้ไปแล้ว หรือยังไม่เคย seed'); return; }
+  updateSheetRowByKey_(sheet, 'specialty_code', row.specialty_code, { specialty_name: 'โสต นาสิก ลาริงซ์วิทยา' });
+  Logger.log('แก้ไขชื่อสาขาเรียบร้อย: "โสต ศอ นาสิก" -> "โสต นาสิก ลาริงซ์วิทยา" (specialty_code=' + row.specialty_code + ')');
+}
+
+/**
  * เติม header คอลัมน์ที่ขาดต่อท้ายชีต Works จริง — เทียบ header แถวจริงกับ SHEET_HEADERS[SHEET.WORKS] ปัจจุบัน
  * ทั้งหมด (ไม่ hardcode รายชื่อคอลัมน์ทีละรอบอีกต่อไป 2026-09-16 — เพิ่มฟิลด์ใหม่ที่ Constants.gs แล้วรันฟังก์ชัน
  * นี้ซ้ำได้เลย จะเติมเฉพาะส่วนที่ขาดให้อัตโนมัติ) ต้องทำก่อนใช้ registerNewWork_/renderRegisterFormBody_/
