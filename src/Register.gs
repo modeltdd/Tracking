@@ -170,17 +170,19 @@ function getFirstActiveStation_(ss) {
   return stations[0];
 }
 
-/** เลขติดตาม: <prefix>-<ปี พ.ศ.>-<เลขลำดับ 5 หลัก> รันแยกตามปี, กันชนกันด้วย LockService (docs/DESIGN.md A3) */
+/** เลขทะเบียน: <ปี พ.ศ.>-<เลขลำดับ> (เช่น "2568-131") รันแยกตามปี, กันชนกันด้วย LockService (docs/DESIGN.md A3)
+ *  2026-09-23: เปลี่ยนจากรูปแบบเดิม "<prefix>-<ปี>-<เลขลำดับ 5 หลัก>" (เช่น "อวช11-2568-00131") ตามที่ผู้ใช้ขอ —
+ *  ตัด prefix ออก + ไม่ pad เลข 0 นำหน้า ให้หน้าตาตรงกับเลขลำดับที่คนคุ้นเคยจาก Excel เดิม (setting
+ *  tracking_no_prefix ใน Settings ไม่ได้ใช้ต่อแล้ว แต่ไม่ลบทิ้ง เผื่อย้อนดู) */
 function nextTrackingNo_(ss) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     var year = String(getSetting_(ss, 'fiscal_year_current', String(getBuddhistYear_(now_()))));
-    var prefix = getSetting_(ss, 'tracking_no_prefix', 'อวช11');
     var seqKey = 'last_seq_' + year;
     var seq = Number(getSetting_(ss, seqKey, '0')) + 1;
     setSetting_(ss, seqKey, String(seq), 'เลขลำดับล่าสุดของปี ' + year + ' (ระบบเพิ่มอัตโนมัติ ห้ามแก้มือขณะมีคนใช้งาน)');
-    return prefix + '-' + year + '-' + padLeft_(seq, 5);
+    return year + '-' + seq;
   } finally {
     lock.releaseLock();
   }
