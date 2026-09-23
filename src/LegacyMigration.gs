@@ -367,16 +367,17 @@ function migrateLegacyRegistrations() {
 }
 
 /**
- * แก้เลขทะเบียนของงาน Legacy (import จาก Excel 244 ราย) ย้อนหลังให้เป็นรูปแบบ "<ปี พ.ศ. ที่รับจริง>-<legacy_seq>"
- * เช่น "2568-131" ให้ตรงกับเลขลำดับในไฟล์ Excel เดิม (2026-09-23 ตามที่ผู้ใช้ขอ) — migrateLegacyRegistrations()
+ * แก้เลขทะเบียนของงาน Legacy (import จาก Excel 244 ราย) ย้อนหลังให้เป็นรูปแบบ "<ปี พ.ศ. 2 หลัก>-<legacy_seq>"
+ * เช่น "69-131" ให้ตรงกับเลขลำดับในไฟล์ Excel เดิม (2026-09-23 ตามที่ผู้ใช้ขอ) — migrateLegacyRegistrations()
  * เดิมใช้ nextTrackingNo_() ตัวเดียวกับงานใหม่ ทำให้เลขทะเบียนไม่ตรงกับ Excel เลย
  *
  * ปีที่ใช้ = ปี พ.ศ. ของ received_date จริง (แก้ 543 ปีแล้ว) ของแต่ละแถว ไม่ใช่ปีปัจจุบัน — ยืนยันจากข้อมูลจริงว่า
  * legacy_seq เรียงตามปีอยู่แล้วเป๊ะไม่มีคาบเกี่ยว (สแกน 1อวช140969.xlsx: ลำดับ 1-33 = พ.ศ.2568, 34-244 = พ.ศ.2569)
  *
- * หลังแก้ tracking_no ของ Works+StatusHistory ทุกแถวแล้ว เลื่อน last_seq_<ปี> (ตัวนับของงานใหม่ที่ nextTrackingNo_
- * ใช้) ให้ไม่ต่ำกว่า legacy_seq สูงสุดของปีนั้น กันชนเลขทะเบียนกับงานใหม่ที่จะออกในปีเดียวกันต่อจากนี้ — ไม่ลดค่าเดิม
- * ถ้าสูงกว่าอยู่แล้ว (เผื่อมีงานใหม่จริงออกเลขไปก่อนรันฟังก์ชันนี้) ปลอดภัยรันซ้ำได้ (deterministic ล้วน)
+ * หลังแก้ tracking_no ของ Works+StatusHistory ทุกแถวแล้ว เลื่อน last_seq_<ปีเต็ม> (ตัวนับของงานใหม่ที่
+ * nextTrackingNo_ ใช้ — เก็บปีเต็ม 4 หลักภายในเสมอ กันชนข้ามศตวรรษ แม้ตอนแสดงจะตัดเหลือ 2 หลัก) ให้ไม่ต่ำกว่า
+ * legacy_seq สูงสุดของปีนั้น กันชนเลขทะเบียนกับงานใหม่ที่จะออกในปีเดียวกันต่อจากนี้ — ไม่ลดค่าเดิมถ้าสูงกว่าอยู่แล้ว
+ * (เผื่อมีงานใหม่จริงออกเลขไปก่อนรันฟังก์ชันนี้) ปลอดภัยรันซ้ำได้ (deterministic ล้วน)
  */
 function migrateFixLegacyTrackingNo() {
   var ss = getSpreadsheet_();
@@ -392,7 +393,7 @@ function migrateFixLegacyTrackingNo() {
 
   legacyWorks.forEach(function (w) {
     var year = getBuddhistYear_(new Date(w.received_date));
-    var newTrackingNo = year + '-' + w.legacy_seq;
+    var newTrackingNo = shortBuddhistYear_(year) + '-' + w.legacy_seq;
     if (String(w.tracking_no) !== newTrackingNo) {
       updateSheetRowByKey_(worksSheet, 'work_id', w.work_id, { tracking_no: newTrackingNo });
       fixed++;
@@ -453,7 +454,7 @@ function auditRegistrationNumbers() {
 
     if (w.created_by === LEGACY_IMPORT_MARKER_ && w.legacy_seq) {
       var year = getBuddhistYear_(new Date(w.received_date));
-      var expected = year + '-' + w.legacy_seq;
+      var expected = shortBuddhistYear_(year) + '-' + w.legacy_seq;
       if (no !== expected) {
         legacyMismatches.push({
           name: (w.title_name + w.first_name + ' ' + w.last_name), current: no, expected: expected,

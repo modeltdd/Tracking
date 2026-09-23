@@ -7,6 +7,12 @@ function getBuddhistYear_(date) {
   return date.getFullYear() + 543;
 }
 
+/** ปี พ.ศ. แบบ 2 หลักท้าย (เช่น 2569 -> "69") — ใช้แสดงในเลขทะเบียนตามที่ผู้ใช้ขอ 2026-09-23 (ไม่ใช้กับ
+ *  Settings key ภายใน เช่น last_seq_<ปี> ที่ยังคงเก็บปีเต็ม 4 หลักเหมือนเดิม กันชนข้ามศตวรรษ) */
+function shortBuddhistYear_(fullYear) {
+  return String(fullYear).slice(-2);
+}
+
 /** วันที่-เวลาปัจจุบัน (สำหรับบันทึกลงชีต ใช้ Date object ตรงๆ ให้ Sheets จัดรูปแบบเอง) */
 function now_() {
   return new Date();
