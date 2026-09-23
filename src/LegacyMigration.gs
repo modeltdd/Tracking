@@ -432,5 +432,46 @@ function migrateFixLegacyTrackingNo() {
     historyUpdated + ' แถว, เลื่อน last_seq_<ปี> ให้ไม่ต่ำกว่า: ' + JSON.stringify(maxSeqByYear) + ' ===');
 }
 
+/**
+ * ตรวจสอบเลขทะเบียน (tracking_no) ทุกงานในระบบ แบบ read-only ไม่แก้อะไรเลย (2026-09-23) — ผู้ใช้พบว่า Registry
+ * แสดงเลขทะเบียนบางรายการผิด เช่น "2569-4.3" ซึ่งตัวเลขท้าย "4.3" ตรงกับคอลัมน์ "ทีม" (legacy_team) ไม่ใช่
+ * "ลำดับ" (legacy_seq) — โค้ด migrateFixLegacyTrackingNo() อ่าน legacy_seq ถูกจุดอยู่แล้ว (ตรวจโค้ดแล้ว) จึงต้อง
+ * ดูข้อมูลจริงในชีตก่อนว่า legacy_seq ของแถวนั้นเก็บค่าอะไรจริงๆ — ฟังก์ชันนี้แค่รายงาน ไม่เขียนอะไรลงชีตทั้งสิ้น
+ */
+function auditRegistrationNumbers() {
+  var ss = getSpreadsheet_();
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var total = works.length, blank = 0, malformed = 0, dupCount = 0;
+  var seen = {};
+  var legacyMismatches = [];
+
+  works.forEach(function (w) {
+    var no = String(w.tracking_no || '').trim();
+    if (!no) { blank++; return; }
+    if (seen[no]) { dupCount++; } else { seen[no] = true; }
+    if (!/^\d+-\d+$/.test(no)) malformed++; // รูปแบบที่ถูกต้อง: <ปี>-<เลขลำดับล้วน> ไม่มีจุดทศนิยม/ตัวอักษร
+
+    if (w.created_by === LEGACY_IMPORT_MARKER_ && w.legacy_seq) {
+      var year = getBuddhistYear_(new Date(w.received_date));
+      var expected = year + '-' + w.legacy_seq;
+      if (no !== expected) {
+        legacyMismatches.push({
+          name: (w.title_name + w.first_name + ' ' + w.last_name), current: no, expected: expected,
+          legacy_seq: w.legacy_seq, legacy_team: w.legacy_team, work_id: w.work_id,
+        });
+      }
+    }
+  });
+
+  Logger.log('=== auditRegistrationNumbers สรุป === ทั้งหมด: ' + total + ' | ว่าง: ' + blank + ' | ซ้ำ: ' + dupCount +
+    ' | รูปแบบผิด (ไม่ใช่ ปี-เลขลำดับล้วน): ' + malformed);
+  Logger.log('งาน Legacy ที่ tracking_no ปัจจุบันไม่ตรงกับที่คำนวณจาก legacy_seq: ' + legacyMismatches.length);
+  legacyMismatches.slice(0, 30).forEach(function (m) {
+    Logger.log(' - ' + m.name + ': ปัจจุบัน="' + m.current + '" ควรเป็น="' + m.expected + '" (legacy_seq="' +
+      m.legacy_seq + '", legacy_team="' + m.legacy_team + '", work_id=' + m.work_id + ')');
+  });
+  if (legacyMismatches.length > 30) Logger.log('... และอีก ' + (legacyMismatches.length - 30) + ' รายการ (ตัดแสดงแค่ 30 แรก)');
+}
+
 /** เครื่องหมายกำกับแถวที่มาจากการ import ข้อมูลเก่า (ใช้ใน created_by/action_by) — ค้นหา/ลบทดสอบภายหลังได้ง่าย */
 var LEGACY_IMPORT_MARKER_ = 'legacy-import@system';
