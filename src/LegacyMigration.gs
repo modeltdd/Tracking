@@ -366,5 +366,71 @@ function migrateLegacyRegistrations() {
     skippedDup + ' รายการ, ข้าม (ยังมีปัญหาบล็อก) ' + skippedBlocked + ' รายการ ===');
 }
 
+/**
+ * แก้เลขทะเบียนของงาน Legacy (import จาก Excel 244 ราย) ย้อนหลังให้เป็นรูปแบบ "<ปี พ.ศ. ที่รับจริง>-<legacy_seq>"
+ * เช่น "2568-131" ให้ตรงกับเลขลำดับในไฟล์ Excel เดิม (2026-09-23 ตามที่ผู้ใช้ขอ) — migrateLegacyRegistrations()
+ * เดิมใช้ nextTrackingNo_() ตัวเดียวกับงานใหม่ ทำให้เลขทะเบียนไม่ตรงกับ Excel เลย
+ *
+ * ปีที่ใช้ = ปี พ.ศ. ของ received_date จริง (แก้ 543 ปีแล้ว) ของแต่ละแถว ไม่ใช่ปีปัจจุบัน — ยืนยันจากข้อมูลจริงว่า
+ * legacy_seq เรียงตามปีอยู่แล้วเป๊ะไม่มีคาบเกี่ยว (สแกน 1อวช140969.xlsx: ลำดับ 1-33 = พ.ศ.2568, 34-244 = พ.ศ.2569)
+ *
+ * หลังแก้ tracking_no ของ Works+StatusHistory ทุกแถวแล้ว เลื่อน last_seq_<ปี> (ตัวนับของงานใหม่ที่ nextTrackingNo_
+ * ใช้) ให้ไม่ต่ำกว่า legacy_seq สูงสุดของปีนั้น กันชนเลขทะเบียนกับงานใหม่ที่จะออกในปีเดียวกันต่อจากนี้ — ไม่ลดค่าเดิม
+ * ถ้าสูงกว่าอยู่แล้ว (เผื่อมีงานใหม่จริงออกเลขไปก่อนรันฟังก์ชันนี้) ปลอดภัยรันซ้ำได้ (deterministic ล้วน)
+ */
+function migrateFixLegacyTrackingNo() {
+  var ss = getSpreadsheet_();
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
+  var legacyWorks = readSheetAsObjects_(worksSheet).filter(function (w) {
+    return w.created_by === LEGACY_IMPORT_MARKER_ && w.legacy_seq;
+  });
+
+  var oldToNew = {}; // work_id -> เลขทะเบียนใหม่ (ใช้แก้ StatusHistory ต่อ)
+  var maxSeqByYear = {};
+  var fixed = 0;
+
+  legacyWorks.forEach(function (w) {
+    var year = getBuddhistYear_(new Date(w.received_date));
+    var newTrackingNo = year + '-' + w.legacy_seq;
+    if (String(w.tracking_no) !== newTrackingNo) {
+      updateSheetRowByKey_(worksSheet, 'work_id', w.work_id, { tracking_no: newTrackingNo });
+      fixed++;
+    }
+    oldToNew[w.work_id] = newTrackingNo;
+    var seqNum = Number(w.legacy_seq);
+    if (!isNaN(seqNum)) maxSeqByYear[year] = Math.max(maxSeqByYear[year] || 0, seqNum);
+  });
+
+  // อัปเดต tracking_no ทุกแถวใน StatusHistory ที่อ้างถึง work_id เหล่านี้ (ปกติมีแค่ INITIAL_IMPORT 1 แถวต่องาน
+  // แต่เผื่อมีคน action งานนี้ต่อไปแล้วหลัง migrate ก็ต้องแก้ให้ครบทุกแถว ไม่ใช่แค่แถวแรก)
+  var historyHeaders = SHEET_HEADERS[SHEET.STATUS_HISTORY];
+  var workIdCol = historyHeaders.indexOf('work_id') + 1;
+  var trackingCol = historyHeaders.indexOf('tracking_no') + 1;
+  var historyLastRow = historySheet.getLastRow();
+  var historyUpdated = 0;
+  if (historyLastRow >= 2) {
+    var historyData = historySheet.getRange(2, 1, historyLastRow - 1, historySheet.getLastColumn()).getValues();
+    for (var i = 0; i < historyData.length; i++) {
+      var newNo = oldToNew[historyData[i][workIdCol - 1]];
+      if (newNo && String(historyData[i][trackingCol - 1]) !== newNo) {
+        historySheet.getRange(i + 2, trackingCol).setValue(newNo);
+        historyUpdated++;
+      }
+    }
+  }
+
+  Object.keys(maxSeqByYear).forEach(function (year) {
+    var seqKey = 'last_seq_' + year;
+    var current = Number(getSetting_(ss, seqKey, '0'));
+    if (maxSeqByYear[year] > current) {
+      setSetting_(ss, seqKey, String(maxSeqByYear[year]), 'เลขลำดับล่าสุดของปี ' + year + ' (ระบบเพิ่มอัตโนมัติ ห้ามแก้มือขณะมีคนใช้งาน)');
+    }
+  });
+
+  Logger.log('=== migrateFixLegacyTrackingNo เสร็จ — แก้เลขทะเบียน Works ' + fixed + ' รายการ, StatusHistory ' +
+    historyUpdated + ' แถว, เลื่อน last_seq_<ปี> ให้ไม่ต่ำกว่า: ' + JSON.stringify(maxSeqByYear) + ' ===');
+}
+
 /** เครื่องหมายกำกับแถวที่มาจากการ import ข้อมูลเก่า (ใช้ใน created_by/action_by) — ค้นหา/ลบทดสอบภายหลังได้ง่าย */
 var LEGACY_IMPORT_MARKER_ = 'legacy-import@system';
