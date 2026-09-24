@@ -611,9 +611,11 @@ function renderPublicTrackFormBody_(baseUrl, errors, prevValues) {
     : '';
   return '' + errorHtml +
     '<div class="detail-card">' +
-    '<p>ค้นหาผลงานของท่านด้วยเลขตำแหน่งเดิม หรือ ชื่อ/นามสกุล</p>' +
+    '<p>ค้นหาผลงานของท่านด้วยเลขทะเบียน, เลขตำแหน่งเดิม หรือ ชื่อ/นามสกุล (กรอกอย่างน้อย 1 ช่อง)</p>' +
     '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;">' +
     '<input type="hidden" name="form_action" value="search_public">' +
+    '<div class="field"><label>เลขทะเบียน</label>' +
+    '<input class="input" name="tracking_no" value="' + escapeHtml_(prevValues.tracking_no || '') + '" placeholder="เช่น 69-176 (กรอกบางส่วนก็ได้)"></div>' +
     '<div class="field"><label>เลขตำแหน่งเดิม</label>' +
     '<input class="input" name="position_no" value="' + escapeHtml_(prevValues.position_no || '') + '" placeholder="กรอกถ้าทราบ"></div>' +
     '<div class="field"><label>ชื่อ หรือ นามสกุล</label>' +
@@ -794,9 +796,16 @@ function renderPublicTimeline_(steps) {
 
   function itemHtml(s) {
     var icon = s.state === 'done' ? '✓' : (s.state === 'current' ? '●' : '○');
+    var metaHtml = (s.org || s.enteredAt)
+      ? '<span class="pub-tl-meta">' +
+        (s.org ? 'ผู้รับผิดชอบ: ' + escapeHtml_(s.org) : '') +
+        (s.org && s.enteredAt ? ' — ' : '') +
+        (s.enteredAt ? escapeHtml_(formatDateTh_(s.enteredAt)) : '') +
+        '</span>'
+      : '';
     return '<div class="pub-tl-item pub-tl-' + s.state + '">' +
       '<span class="pub-tl-icon">' + icon + '</span>' +
-      '<span class="pub-tl-text"><b>' + escapeHtml_(s.order) + '</b> ' + escapeHtml_(s.name) + '</span></div>';
+      '<span class="pub-tl-text"><b>' + escapeHtml_(s.order) + '</b> ' + escapeHtml_(s.name) + metaHtml + '</span></div>';
   }
   function flushGroup() {
     if (!group) return;
@@ -1557,6 +1566,8 @@ var PUBLIC_CSS_ = '' +
   '.pub-tl-icon{flex-shrink:0;width:21px;height:21px;border-radius:50%;display:flex;align-items:center;justify-content:center;' +
   'font-size:.72rem;font-weight:700;background:#fff;border:1.5px solid var(--border);color:var(--muted);z-index:1;margin-top:1px;}' +
   '.pub-tl-text{font-size:.86rem;color:var(--muted);line-height:1.5;padding-top:1px;}' +
+  '.pub-tl-meta{display:block;font-size:.74rem;color:var(--muted);opacity:.85;margin-top:1px;}' +
+  '.pub-tl-current .pub-tl-meta{color:var(--navy);opacity:1;}' +
   '.pub-tl-done .pub-tl-icon{background:var(--done);border-color:var(--done);color:#fff;}' +
   '.pub-tl-done .pub-tl-text{color:var(--text);}' +
   '.pub-tl-done.pub-tl-item::before{background:var(--done);}' +

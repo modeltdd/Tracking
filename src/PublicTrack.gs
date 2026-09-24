@@ -93,14 +93,17 @@ function getLatestRevisionInfo_(ss, workId) {
 function buildPublicDetailedSteps_(ss, history, stationsMap, currentKey, currentStatus) {
   if (currentStatus === 'terminated') return null;
 
-  var visitedKeys = [];
+  // เก็บคู่ (station key, StatusHistory entry ที่พาไปถึง key นั้น) รักษาลำดับ/ค่าซ้ำแบบเดิมทุกประการ (รองรับ
+  // วนกลับ เช่น 3.2→2→3.1) — ใช้ h.action_date เป็น "เวลาที่เข้าสู่ state นั้นจริง" ต่อ 1 ครั้งที่เกิดขึ้นจริง
+  // (ข้อ 7 ของ requirement — ห้ามเดาเวลา ต้องมาจาก StatusHistory จริงเท่านั้น)
+  var visited = [];
   history.forEach(function (h) {
     if (!h.to_station) return;
     if (h.action !== 'registered' && h.action !== 'transition' && h.action !== 'reassigned') return;
-    if (visitedKeys.length && visitedKeys[visitedKeys.length - 1] === h.to_station) return;
-    visitedKeys.push(h.to_station);
+    if (visited.length && visited[visited.length - 1].key === h.to_station) return;
+    visited.push({ key: h.to_station, enteredAt: h.action_date });
   });
-  if (!visitedKeys.length || visitedKeys[visitedKeys.length - 1] !== currentKey) visitedKeys.push(currentKey);
+  if (!visited.length || visited[visited.length - 1].key !== currentKey) visited.push({ key: currentKey, enteredAt: null });
 
   var transitions = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_TRANSITIONS));
   var toStatesByFrom = {};
@@ -120,13 +123,18 @@ function buildPublicDetailedSteps_(ss, history, stationsMap, currentKey, current
     cursor = outs[0];
   }
 
-  function toStep(key, state) {
+  // ผู้รับผิดชอบต่อ state มาจาก WorkflowStates.org ตรงๆ (ข้อ 8 — ไม่แสดงชื่อบุคคล/อีเมลจริงต่อ state บนหน้า
+  // สาธารณะ ตามหลัก privacy ข้อ 17 เดิมอยู่แล้ว ชื่อ/อีเมลผู้ดำเนินการมีแค่ระดับ "ผู้รับผิดชอบปัจจุบัน" รวมด้านบนพอ)
+  function toStep(key, state, enteredAt) {
     var st = stationsMap[key];
-    return { key: key, order: st ? st.station_order : '', name: st ? splitStationNameDesc_(st.station_name).main : key, state: state };
+    return {
+      key: key, order: st ? st.station_order : '', name: st ? splitStationNameDesc_(st.station_name).main : key,
+      state: state, org: st ? st.org : '', enteredAt: state === 'upcoming' ? null : (enteredAt || null),
+    };
   }
 
-  var steps = visitedKeys.map(function (key) { return toStep(key, key === currentKey ? 'current' : 'done'); });
-  upcomingKeys.forEach(function (key) { steps.push(toStep(key, 'upcoming')); });
+  var steps = visited.map(function (v) { return toStep(v.key, v.key === currentKey ? 'current' : 'done', v.enteredAt); });
+  upcomingKeys.forEach(function (key) { steps.push(toStep(key, 'upcoming', null)); });
   return steps;
 }
 
@@ -193,6 +201,16 @@ function searchPublicRecordsByPositionNo_(ss, positionNo) {
   return matched.slice(0, PUBLIC_SEARCH_RESULT_LIMIT_);
 }
 
+/** ค้นหาด้วยเลขทะเบียน (tracking_no) แบบ partial match (2026-09-24 เพิ่มตามที่ผู้ใช้ขอ — เดิมค้นได้แค่เลขตำแหน่ง
+ *  เดิม/ชื่อ) เช่น "69-17" เจอ "69-176" — normalize เหมือน searchPublicRecordsByName_ (trim + lowercase) */
+function searchPublicRecordsByTrackingNo_(ss, trackingNo) {
+  var needle = String(trackingNo || '').trim().toLowerCase();
+  if (!needle) return [];
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var matched = works.filter(function (w) { return String(w.tracking_no || '').toLowerCase().indexOf(needle) !== -1; });
+  return matched.slice(0, PUBLIC_SEARCH_RESULT_LIMIT_);
+}
+
 /** collapse ช่องว่างซ้ำเหลือ 1 ตัว + trim หัวท้าย — ใช้ทั้งฝั่ง query และฝั่งชื่อในชีตก่อนเทียบ กันเว้นวรรคเกินทำให้หาไม่เจอ */
 function normalizeSearchName_(name) {
   return String(name || '').trim().replace(/\s+/g, ' ');
@@ -215,18 +233,23 @@ function searchPublicRecordsByName_(ss, name) {
 function handlePublicSearchPost_(ss, e) {
   var baseUrl = getWebAppUrl_();
   var p = (e && e.parameter) || {};
+  var trackingNo = String(p.tracking_no || '').trim();
   var positionNo = String(p.position_no || '').trim();
   var name = String(p.owner_name || '').trim();
 
-  var results = positionNo ? searchPublicRecordsByPositionNo_(ss, positionNo) : searchPublicRecordsByName_(ss, name);
+  // 2026-09-24: เพิ่มค้นด้วยเลขทะเบียน (partial match) — ลำดับความสำคัญ: เลขทะเบียน > เลขตำแหน่งเดิม > ชื่อ
+  // (เจาะจงที่สุดก่อน) กรอกได้แค่ช่องเดียวพอ
+  var results = trackingNo ? searchPublicRecordsByTrackingNo_(ss, trackingNo)
+    : positionNo ? searchPublicRecordsByPositionNo_(ss, positionNo) : searchPublicRecordsByName_(ss, name);
+  var prevValues = { tracking_no: trackingNo, position_no: positionNo, owner_name: name };
 
-  if (!positionNo && !name) {
+  if (!trackingNo && !positionNo && !name) {
     return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ',
-      renderPublicTrackFormBody_(baseUrl, ['กรุณากรอกเลขตำแหน่งเดิม หรือ ชื่อ/นามสกุล อย่างน้อย 1 ช่อง'], { position_no: positionNo, owner_name: name }));
+      renderPublicTrackFormBody_(baseUrl, ['กรุณากรอกเลขทะเบียน หรือ เลขตำแหน่งเดิม หรือ ชื่อ/นามสกุล อย่างน้อย 1 ช่อง'], prevValues));
   }
   if (!results.length) {
     return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ',
-      renderPublicTrackFormBody_(baseUrl, ['ไม่พบข้อมูลที่ตรงกับเงื่อนไขที่ค้นหา'], { position_no: positionNo, owner_name: name }));
+      renderPublicTrackFormBody_(baseUrl, ['ไม่พบข้อมูลที่ตรงกับคำค้น'], prevValues));
   }
   if (results.length === 1) {
     var data = buildPublicResultData_(ss, results[0]);
