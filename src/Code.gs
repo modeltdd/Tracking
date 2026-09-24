@@ -170,7 +170,7 @@ function doPost(e) {
         if (eligibleErr[i].transition_id === e.parameter.transition_id) { reTransition = eligibleErr[i]; break; }
       }
       if (!reTransition) {
-        return renderStaffPage_('สแกน QR', renderScanWorkBody_(transWork, stateDefErr, computeEligibleActions_(transWork, stateDefErr, user),
+        return renderStaffPage_('สแกน QR', renderScanWorkBody_(ss, transWork, computeEligibleActions_(transWork, stateDefErr, user),
           eligibleErr, baseUrl, transToken, transResult.errors), user, 'scan', baseUrl);
       }
       return renderStaffPage_('สแกน QR',

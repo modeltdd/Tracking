@@ -1122,26 +1122,43 @@ function renderScanEntryBody_(baseUrl, errorMsg) {
     '</form></div>';
 }
 
-/** การ์ดสรุปงาน + ปุ่มเปลี่ยนสถานะหลัก (จาก computeEligibleTransitions_) + ปุ่ม utility action เสริม (more_info/terminated/closed/reassigned) */
-function renderScanWorkBody_(work, station, eligible, eligibleTransitions, baseUrl, token, errors) {
+/**
+ * การ์ดสรุปงาน + ปุ่มเปลี่ยนสถานะ (2026-09-24 ปรับให้สอดคล้องกับหน้าค้นหา/หน้ารายละเอียดตามที่ผู้ใช้ขอ) — reuse
+ * building block เดียวกับ renderWorkDetailBody_/renderPublicResultBody_ ทั้งหมด (renderPubHero_/renderPubInfoGrid_/
+ * renderPubProgressSummary_/renderPubTimelineSection_ ผ่าน buildPublicResultData_) แทนการ์ด detail-row แบบเดิม
+ * ที่มีแค่ 4 บรรทัด ไม่มี Timeline/ความคืบหน้า — คำว่า "สถานีปัจจุบัน" เปลี่ยนเป็น "สถานะปัจจุบัน" ให้ตรงกับคำที่
+ * ใช้ทั้งระบบ (มาจาก renderPubHero_ เดียวกันอยู่แล้ว ไม่ต้องเขียนแยก) ปุ่มเปลี่ยนสถานะ (จาก computeEligibleTransitions_)
+ * + ปุ่ม utility action เสริม (more_info/terminated/closed/reassigned) วางไว้ระหว่างการ์ดสถานะกับ Progress/Timeline
+ * ตามที่ผู้ใช้ระบุ — business logic ของปุ่ม/การ scan ไม่แตะเลย
+ */
+function renderScanWorkBody_(ss, work, eligible, eligibleTransitions, baseUrl, token, errors) {
   var errorHtml = (errors && errors.length)
     ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
     : '';
-  var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
-  var statusLabel = PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public || '-';
 
-  var ownerName = (work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '');
-  var summaryHtml = '' +
-    '<div class="detail-card">' +
-    '<div class="detail-head"><span class="tracking-big">' + escapeHtml_(ownerName) + '</span>' +
-    '<span class="pill pill-' + cls + '">' + escapeHtml_(statusLabel) + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">เลขทะเบียน</span><span class="detail-value">' + escapeHtml_(work.tracking_no) + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">ชื่อผลงาน</span><span class="detail-value">' + escapeHtml_(work.work_title || '-') + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">สถานีปัจจุบัน</span><span class="detail-value">' +
-    escapeHtml_(station ? station.station_name : work.current_station_key) + '</span></div>' +
-    '<div class="detail-row"><span class="detail-label">ผู้รับผิดชอบ</span><span class="detail-value">' +
-    escapeHtml_(work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-')) + '</span></div>' +
+  var ownerName = ((work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')).trim();
+  var data = buildPublicResultData_(ss, work);
+  var stationsMap = data.stationsMap;
+
+  var nameBlockHtml = '' +
+    '<div class="pub-name-block">' +
+    '<div class="pub-name-owner">' + escapeHtml_(ownerName || '-') + '</div>' +
+    '<div class="pub-name-tracking">เลขทะเบียน ' + escapeHtml_(work.tracking_no) + '</div>' +
+    '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
     '</div>';
+
+  var heroHtml = renderPubHero_(work, data.currentStation, stationsMap, data.steps);
+
+  var actionInfoHtml = work.next_step_text
+    ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
+    : '';
+
+  var infoGridHtml = renderPubInfoGrid_([
+    { label: 'ผู้รับผิดชอบ', value: work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-') },
+    { label: 'รับงานเมื่อ', value: formatDateThShort_(work.updated_at) },
+    { label: 'รับเรื่องเมื่อ', value: formatDateThShort_(work.received_date) },
+    { label: 'ส่งให้ผู้ว่า', value: data.governorForwardDate ? formatDateThShort_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า' },
+  ]);
 
   var transitionButtonsHtml = eligibleTransitions.length
     ? '<div class="action-list">' + eligibleTransitions.map(function (t) {
@@ -1159,13 +1176,23 @@ function renderScanWorkBody_(work, station, eligible, eligibleTransitions, baseU
       }).join('') + '</div>'
     : '';
 
-  var buttonsHtml = (transitionButtonsHtml || utilityButtonsHtml)
+  var buttonsHtml = '<div class="pub-scan-actions">' + ((transitionButtonsHtml || utilityButtonsHtml)
     ? transitionButtonsHtml + utilityButtonsHtml
-    : '<div class="empty">ไม่มีการกระทำที่ทำได้กับงานนี้ในขณะนี้ (อาจไม่ใช่หน่วยงานที่รับผิดชอบ หรืองานสิ้นสุดแล้ว)</div>';
+    : '<div class="empty">ไม่มีการกระทำที่ทำได้กับงานนี้ในขณะนี้ (อาจไม่ใช่หน่วยงานที่รับผิดชอบ หรืองานสิ้นสุดแล้ว)</div>') + '</div>';
 
-  return errorHtml + summaryHtml + buttonsHtml +
-    '<p><a target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(work.work_id) + '">ดูรายละเอียด/ประวัติทั้งหมด &rarr;</a></p>' +
-    '<p><a target="_top" href="' + baseUrl + '?page=scan">&larr; สแกนรายการอื่น</a></p>';
+  var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
+  var timelineHtml = renderPubTimelineSection_(data.fixedTimeline);
+  if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
+
+  return '' +
+    '<div class="pub-compact">' +
+    errorHtml +
+    '<div class="detail-card">' +
+    nameBlockHtml + heroHtml + actionInfoHtml + infoGridHtml + buttonsHtml + progressHtml + timelineHtml +
+    '</div>' +
+    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(work.work_id) + '">ดูรายละเอียด/ประวัติทั้งหมด &rarr;</a></p>' +
+    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=scan">&larr; สแกนรายการอื่น</a></p>' +
+    '</div>';
 }
 
 /** ฟอร์มกรอกข้อมูลเฉพาะ action (หรือหน้ายืนยันเฉยๆ กรณี received/forwarded) — POST กลับไปที่ doPost form_action=work_action
@@ -1858,6 +1885,10 @@ var STAFF_CSS_ = '' +
   '.tl-meta{font-size:.78rem;color:var(--muted);margin-top:2px;}' +
   '.tl-note{font-size:.82rem;margin-top:3px;}' +
   '.action-list{display:flex;flex-direction:column;gap:8px;margin-bottom:14px;}' +
+  // หน้าสแกน QR (2026-09-24) — คั่นปุ่ม action ออกจากการ์ดสถานะ/ข้อมูลสำคัญด้านบน และ Progress/Timeline ด้านล่าง
+  // ด้วยเส้นบาง ลดความรู้สึกแน่น/รก ตามที่ผู้ใช้ขอ (ข้อ 9: "แยกจาก timeline")
+  '.pub-scan-actions{border-top:1px solid var(--border);padding-top:12px;margin-top:4px;margin-bottom:10px;}' +
+  '.pub-scan-actions .action-list:last-child{margin-bottom:0;}' +
   '.btn-action{display:block;text-align:center;padding:12px;border-radius:10px;font-weight:700;font-size:.92rem;text-decoration:none;color:#fff;}' +
   '.btn-action-primary{background:var(--teal);}' +
   '.btn-action-secondary{background:var(--navy);}' +

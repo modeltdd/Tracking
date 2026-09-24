@@ -220,7 +220,7 @@ function renderScanRoute_(ss, user, params, baseUrl) {
       if (eligibleTransitions[i].transition_id === transId) { transitionMatch = eligibleTransitions[i]; break; }
     }
     if (!transitionMatch) {
-      return renderStaffPage_('สแกน QR', renderScanWorkBody_(work, station, eligible, eligibleTransitions, baseUrl, token,
+      return renderStaffPage_('สแกน QR', renderScanWorkBody_(ss, work, eligible, eligibleTransitions, baseUrl, token,
         ['ไม่สามารถทำรายการนี้ได้ในสถานะปัจจุบัน']), user, 'scan', baseUrl);
     }
     return renderStaffPage_('สแกน QR', renderTransitionFormBody_(work, transitionMatch, baseUrl, token, [], {}), user, 'scan', baseUrl);
@@ -228,13 +228,13 @@ function renderScanRoute_(ss, user, params, baseUrl) {
 
   if (doAction) {
     if (eligible.indexOf(doAction) === -1) {
-      return renderStaffPage_('สแกน QR', renderScanWorkBody_(work, station, eligible, eligibleTransitions, baseUrl, token,
+      return renderStaffPage_('สแกน QR', renderScanWorkBody_(ss, work, eligible, eligibleTransitions, baseUrl, token,
         ['ไม่สามารถทำรายการนี้ได้ในสถานะปัจจุบัน']), user, 'scan', baseUrl);
     }
     return renderStaffPage_('สแกน QR', renderActionFormBody_(ss, work, station, doAction, baseUrl, token, [], {}), user, 'scan', baseUrl);
   }
 
-  return renderStaffPage_('สแกน QR', renderScanWorkBody_(work, station, eligible, eligibleTransitions, baseUrl, token, []), user, 'scan', baseUrl);
+  return renderStaffPage_('สแกน QR', renderScanWorkBody_(ss, work, eligible, eligibleTransitions, baseUrl, token, []), user, 'scan', baseUrl);
 }
 
 /** งานที่หน่วยงานนี้ทำ transition ต่อได้ ณ ขณะนี้ — ใช้กับเมนู "ส่งต่อ" (ไม่ต้องสแกน QR ก่อน) */
