@@ -555,6 +555,7 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
     '</div>' +
     renderPubDateGrid_(work.received_date, data.governorForwardDate);
 
+  var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
   var timelineHtml = data.steps ? renderPublicTimeline_(data.steps) : '';
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
@@ -596,7 +597,7 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
   return '' +
     '<div class="detail-card">' +
     '<div class="pub-subheader-label">เลขทะเบียน <b>' + escapeHtml_(work.tracking_no) + '</b></div>' +
-    nameBlockHtml + heroHtml + actionHtml + handoffHtml + timelineHtml + noteHtml + auditLogHtml + infoHtml + coverHtml +
+    nameBlockHtml + heroHtml + actionHtml + handoffHtml + progressHtml + timelineHtml + noteHtml + auditLogHtml + infoHtml + coverHtml +
     '<p style="margin-top:16px"><a class="btn-outline" target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
     '</div>' +
     '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>';
@@ -801,6 +802,7 @@ function renderPublicResultBody_(work, data, baseUrl) {
     '</div>' +
     renderPubDateGrid_(work.received_date, data.governorForwardDate);
 
+  var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
   var timelineHtml = data.steps ? renderPublicTimeline_(data.steps) : '';
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
@@ -827,7 +829,7 @@ function renderPublicResultBody_(work, data, baseUrl) {
 
   return '' +
     '<div class="pub-subheader"><span class="pub-subheader-label">เลขทะเบียน</span> <b>' + escapeHtml_(work.tracking_no) + '</b></div>' +
-    nameBlockHtml + heroHtml + actionHtml + handoffHtml + timelineHtml + ownerHtml + noteHtml +
+    nameBlockHtml + heroHtml + actionHtml + handoffHtml + progressHtml + timelineHtml + ownerHtml + noteHtml +
     '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '">&larr; ตรวจสอบรายการอื่น</a></p>';
 }
 
@@ -844,7 +846,9 @@ function renderPublicTimeline_(steps) {
   var group = null;
 
   function itemHtml(s) {
-    var icon = s.state === 'done' ? '✓' : (s.state === 'current' ? '●' : '○');
+    // s10 คือปลายทางจริงของทุกเส้นทาง (ยืนยันแล้วก่อนหน้านี้ในโปรเจกต์) ใช้สัญลักษณ์ ◎ เฉพาะ ยกเว้นเป็น current
+    // ก็ยังเน้น ● ตามปกติ (ข้อ 2/12 ของ requirement)
+    var icon = s.state === 'current' ? '●' : (s.key === 's10' ? '◎' : (s.state === 'done' ? '✓' : '○'));
     var metaHtml = (s.org || s.enteredAt)
       ? '<span class="pub-tl-meta">' +
         (s.org ? 'ผู้รับผิดชอบ: ' + escapeHtml_(s.org) : '') +
@@ -1612,6 +1616,18 @@ var PUBLIC_CSS_ = '' +
   '.pub-action-title{font-weight:700;color:var(--revision);font-size:.82rem;margin:0 0 6px;}' +
   '.pub-action-box p{margin:0;font-size:.9rem;line-height:1.6;color:var(--text);}' +
   // Timeline ละเอียด — เส้นบาง ไอคอนเล็ก สีนุ่ม ✓ ผ่านแล้ว/● ปัจจุบัน (เด่น)/○ ยังไม่ถึง (จาง)
+  // Summary Card "ความคืบหน้าของผลงาน" (Metro Progress) เหนือ Timeline — ผ่านแล้ว/ปัจจุบัน/เหลือ (2026-09-24)
+  '.pub-progress-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:16px;}' +
+  '.pub-progress-title{font-weight:700;color:var(--navy);font-size:.82rem;margin:0 0 10px;}' +
+  '.pub-progress-row{display:flex;flex-wrap:wrap;gap:8px 16px;}' +
+  '.pub-progress-item{font-size:.84rem;font-weight:600;white-space:nowrap;}' +
+  '.pub-progress-done{color:var(--done);}' +
+  '.pub-progress-current{color:var(--navy);}' +
+  '.pub-progress-remaining{color:var(--muted);font-weight:400;}' +
+  '.pub-progress-finished{color:var(--done);font-weight:700;font-size:.88rem;margin-top:8px;}' +
+  '.pub-progress-bar{background:var(--bg);border-radius:999px;height:8px;margin-top:12px;overflow:hidden;}' +
+  '.pub-progress-bar-fill{background:var(--done);height:100%;border-radius:999px;}' +
+  '.pub-progress-bar-label{font-size:.74rem;color:var(--muted);margin-top:6px;}' +
   '.pub-timeline{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px 6px;margin-bottom:16px;}' +
   '.pub-tl-item{display:flex;align-items:flex-start;gap:12px;padding-bottom:16px;position:relative;}' +
   '.pub-tl-item::before{content:"";position:absolute;left:10px;top:22px;bottom:0;width:1px;background:var(--border);}' +

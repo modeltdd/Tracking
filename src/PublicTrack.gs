@@ -112,11 +112,16 @@ function buildPublicDetailedSteps_(ss, history, stationsMap, currentKey, current
     (toStatesByFrom[t.from_state] = toStatesByFrom[t.from_state] || []).push(t.to_state);
   });
 
+  // reachedTerminal: เดินเส้นทางจริงจาก currentKey ไปจนสุด (ไม่มี transition ออกต่อเลย = จบกระบวนการจริง) —
+  // ใช้บอก progress summary (2026-09-24) ว่า "เหลือ N ขั้นตอน" นับได้แน่นอนหรือไม่ (false = ยังมีจุดแตกสายอยู่
+  // ข้างหน้าที่ยังไม่รู้ผล ห้ามเดาจำนวน ตามที่ผู้ใช้ขอ) แยกจากเหตุผลอื่นที่ทำให้หยุดเดิน (แตกสาย/วนซ้ำ)
   var upcomingKeys = [];
   var cursor = currentKey;
   var guard = {};
+  var reachedTerminal = false;
   while (true) {
     var outs = (toStatesByFrom[cursor] || []).filter(function (v, i, arr) { return arr.indexOf(v) === i; });
+    if (outs.length === 0) { reachedTerminal = true; break; } // ไม่มีทางออกต่อเลย = ถึงปลายทางจริง
     if (outs.length !== 1 || guard[outs[0]]) break; // แตกสาย หรือวนซ้ำ (กันลูปไม่รู้จบ) — หยุดเดา
     guard[outs[0]] = true;
     upcomingKeys.push(outs[0]);
@@ -135,7 +140,61 @@ function buildPublicDetailedSteps_(ss, history, stationsMap, currentKey, current
 
   var steps = visited.map(function (v) { return toStep(v.key, v.key === currentKey ? 'current' : 'done', v.enteredAt); });
   upcomingKeys.forEach(function (key) { steps.push(toStep(key, 'upcoming', null)); });
+  steps.reachedTerminal = reachedTerminal; // array ก็เป็น object ใน JS — แปะ flag ไว้เผื่อ progress summary ใช้ต่อ
   return steps;
+}
+
+/**
+ * สรุปความคืบหน้า (ผ่านแล้ว/ปัจจุบัน/เหลือ) สำหรับ "Metro Progress" ด้านบน Timeline (2026-09-24 ตามที่ผู้ใช้ขอ)
+ * นับ completed จาก step ที่ state==='done' จริง (มาจาก StatusHistory เท่านั้น ไม่เดา) remaining นับได้แน่นอน
+ * เฉพาะกรณี steps.reachedTerminal===true (เดินเส้นทางจริงจากปัจจุบันไปจนสุดไม่เจอจุดแตกสายเลย) — ถ้ายังมีจุด
+ * แตกสายข้างหน้าที่ยังไม่รู้ผล remainingKnown จะเป็น false ห้ามแสดงตัวเลขเดา (ข้อ 5/8/18 ของ requirement)
+ */
+function buildProgressSummary_(work, steps) {
+  if (!steps) return null; // terminated — ไม่มี timeline ให้สรุป
+  var completedCount = steps.filter(function (s) { return s.state === 'done'; }).length;
+  var currentStep = steps.filter(function (s) { return s.state === 'current'; })[0] || null;
+  var remainingCount = steps.filter(function (s) { return s.state === 'upcoming'; }).length;
+  return {
+    completedCount: completedCount,
+    currentStep: currentStep,
+    remainingKnown: !!steps.reachedTerminal,
+    remainingCount: remainingCount,
+    isFinished: work.current_status_public === 'done',
+  };
+}
+
+/** สร้าง HTML การ์ด "Metro Progress" เหนือ Timeline (2026-09-24) — ตัดสินใจว่าจะโชว์ตัวเลขหรือข้อความ
+ *  "รอผลการพิจารณา" (escapeHtml_ ประกาศใน Views.gs แต่ทุกไฟล์ .gs อยู่ global scope เดียวกัน เรียกข้ามไฟล์ได้ปกติ) */
+function renderPubProgressSummary_(summary) {
+  if (!summary) return '';
+  if (summary.isFinished) {
+    return '' +
+      '<div class="pub-progress-card">' +
+      '<div class="pub-progress-title">ความคืบหน้าของผลงาน</div>' +
+      '<div class="pub-progress-row"><span class="pub-progress-item pub-progress-done">&#10003; ผ่านแล้ว ' + summary.completedCount + ' ขั้นตอน</span></div>' +
+      '<div class="pub-progress-finished">&#9678; ดำเนินการเสร็จสิ้นแล้ว</div>' +
+      '</div>';
+  }
+  var remainingText = summary.remainingKnown ? 'เหลือ ' + summary.remainingCount + ' ขั้นตอน' : 'ขั้นตอนที่เหลือขึ้นอยู่กับผลการพิจารณา';
+  var currentLabel = summary.currentStep ? (escapeHtml_(summary.currentStep.order) + ' ' + escapeHtml_(summary.currentStep.name)) : '-';
+  var barHtml = '';
+  if (summary.remainingKnown) {
+    var total = summary.completedCount + 1 + summary.remainingCount;
+    var pct = total > 0 ? Math.round(((summary.completedCount + 1) / total) * 100) : 0;
+    barHtml = '<div class="pub-progress-bar"><div class="pub-progress-bar-fill" style="width:' + pct + '%"></div></div>' +
+      '<div class="pub-progress-bar-label">ผ่านแล้ว ' + (summary.completedCount + 1) + ' จาก ' + total + ' ขั้นตอน</div>';
+  }
+  return '' +
+    '<div class="pub-progress-card">' +
+    '<div class="pub-progress-title">ความคืบหน้าของผลงาน</div>' +
+    '<div class="pub-progress-row">' +
+    '<span class="pub-progress-item pub-progress-done">&#10003; ผ่านแล้ว ' + summary.completedCount + ' ขั้น</span>' +
+    '<span class="pub-progress-item pub-progress-current">&#9679; ปัจจุบัน ' + currentLabel + '</span>' +
+    '<span class="pub-progress-item pub-progress-remaining">&#9675; ' + escapeHtml_(remainingText) + '</span>' +
+    '</div>' +
+    barHtml +
+    '</div>';
 }
 
 /** แยกชื่อ state ("แก้ไข 6 เดือน (ปรับปรุงแก้ไขสาระสำคัญ)") เป็นหัวข้อหลัก + คำอธิบายในวงเล็บ ใช้กับการ์ด "สถานะปัจจุบัน" */
@@ -159,9 +218,11 @@ function buildPublicResultData_(ss, work) {
   var stationsMap = getStationsMap_(ss);
   var history = getHistoryForWork_(ss, work.work_id);
   var revisionInfo = work.current_status_public === 'need_revision' ? getLatestRevisionInfo_(ss, work.work_id) : null;
+  var steps = buildPublicDetailedSteps_(ss, history, stationsMap, work.current_station_key, work.current_status_public);
   return {
     revisionInfo: revisionInfo,
-    steps: buildPublicDetailedSteps_(ss, history, stationsMap, work.current_station_key, work.current_status_public),
+    steps: steps,
+    progressSummary: buildProgressSummary_(work, steps), // 2026-09-24 "Metro Progress" เหนือ Timeline
     currentStation: stationsMap[work.current_station_key] || null,
     latestNote: revisionInfo ? '' : getLatestTransitionNote_(ss, work.work_id),
     // เพิ่ม 2026-09-15 (ดูแชท requirement ข้อ I.9.6) — s10 คือขั้น "ส่งต่อให้ผู้ว่าราชการจังหวัด/แจ้งผลหน่วยงาน"
