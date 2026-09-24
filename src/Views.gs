@@ -501,10 +501,10 @@ function distinctValues_(rows, field) {
 }
 
 /** หน้าค้นหา — ช่องค้นหา (GET) + ผลลัพธ์ (ค้นหาแล้วครอบคลุมทุกหน่วยงาน, ไม่ค้นหาแสดงเฉพาะหน่วยงานตน) */
-function renderSearchBody_(org, query, results, baseUrl) {
+function renderSearchBody_(org, query, results, stationsMap, baseUrl) {
   var q = escapeHtml_(query || '');
   var listHtml = results.length
-    ? renderWorkList_(results, true, baseUrl)
+    ? renderSearchResultList_(results, stationsMap, baseUrl)
     : '<div class="empty">' + (query ? 'ไม่พบรายการที่ตรงกับ "' + q + '"' : 'ไม่มีงานของหน่วยงานนี้ในขณะนี้') + '</div>';
 
   return '' +
@@ -514,7 +514,35 @@ function renderSearchBody_(org, query, results, baseUrl) {
     '<button class="btn-primary" type="submit">ค้นหา</button>' +
     '</form>' +
     '<p class="scope-note">' + (query ? 'ผลการค้นหาทุกหน่วยงาน' : 'งานของหน่วยงาน: <b>' + escapeHtml_(org) + '</b>') + '</p>' +
-    '<section class="metric-card">' + listHtml + '</section>';
+    '<div class="search-results-list">' + listHtml + '</div>';
+}
+
+/**
+ * การ์ดผลการค้นหาแบบเต็ม (หน้า staff "ค้นหา" เท่านั้น 2026-09-24 — ต่างจาก renderWorkList_ ที่ใช้ร่วมกับ
+ * การ์ดย่อบน Dashboard ด้วย ไม่แก้ตัวนั้นตรงๆ กันกระทบพื้นที่จำกัดของ Dashboard) แสดง: ชื่อเจ้าของผลงาน(เด่นสุด)
+ * -> เลขทะเบียน(รอง) -> หน่วยงาน -> สถานะ(badge, รหัส+ชื่อ station จริงจาก WorkflowStates ไม่ใช่แค่ bucket กว้างๆ)
+ * -> ปุ่มดูรายละเอียด/ติดตาม — field ที่ใช้ยืนยันจากของจริงในระบบ (ไม่มี registration_no/owner_name/organization
+ * ตรงๆ ตามชื่อที่ขอมา): tracking_no, title_name+first_name+last_name, org_from, current_station_key
+ */
+function renderSearchResultList_(works, stationsMap, baseUrl) {
+  return works.map(function (w) {
+    var cls = STATUS_PILL_CLASS_[w.current_status_public] || 'pending';
+    var station = stationsMap[w.current_station_key];
+    var label = station
+      ? (station.station_order + ' ' + splitStationNameDesc_(station.station_name).main)
+      : (PUBLIC_STATUS_LABELS[w.current_status_public] || w.current_status_public || '-');
+    var ownerName = ((w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '')).trim();
+    return '' +
+      '<a class="search-result-card" target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(w.work_id) + '">' +
+      '<div class="search-result-owner">' + escapeHtml_(ownerName || '-') + '</div>' +
+      '<div class="search-result-tracking">เลขทะเบียน ' + escapeHtml_(w.tracking_no || '-') + '</div>' +
+      '<div class="search-result-org"><span class="search-result-org-label">หน่วยงาน</span> ' + escapeHtml_(w.org_from || '-') + '</div>' +
+      '<div class="search-result-footer">' +
+      '<span class="pill pill-' + cls + '">' + escapeHtml_(label) + '</span>' +
+      '<span class="search-result-cta">ดูรายละเอียด/ติดตาม &rarr;</span>' +
+      '</div>' +
+      '</a>';
+  }).join('');
 }
 
 /**
@@ -1499,6 +1527,17 @@ var STAFF_CSS_ = '' +
   '.metric-label{font-weight:700;color:var(--navy);}' +
   '.metric-count{font-size:1.3rem;font-weight:700;color:var(--teal);font-variant-numeric:tabular-nums;}' +
   '.metric-hint{font-size:.78rem;color:var(--muted);margin:2px 0 10px;}' +
+  // Search Result Card เต็มรูปแบบ (หน้า staff "ค้นหา" เท่านั้น 2026-09-24) — ชื่อเจ้าของผลงานเด่นสุด, เลขทะเบียน
+  // รอง (muted), หน่วยงาน, badge สถานะ+ปุ่มดูรายละเอียด แถวล่าง wrap ได้บนจอแคบ (ห้าม horizontal scroll)
+  '.search-results-list{display:flex;flex-direction:column;gap:12px;}' +
+  '.search-result-card{display:block;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;text-decoration:none;color:inherit;}' +
+  '.search-result-owner{font-weight:700;font-size:1.15rem;color:var(--navy);line-height:1.3;word-wrap:break-word;}' +
+  '.search-result-tracking{font-size:.82rem;font-weight:500;color:var(--muted);margin-top:4px;}' +
+  '.search-result-org{font-size:.88rem;color:var(--text);margin-top:8px;line-height:1.5;word-wrap:break-word;}' +
+  '.search-result-org-label{color:var(--muted);margin-right:4px;}' +
+  '.search-result-footer{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;}' +
+  '.search-result-footer .pill{font-size:.8rem;font-weight:600;padding:4px 11px;}' +
+  '.search-result-cta{font-size:.8rem;color:var(--teal);font-weight:600;white-space:nowrap;}' +
   '.work-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--border);text-decoration:none;color:inherit;cursor:pointer;}' +
   '.work-row:first-child{border-top:none;}' +
   '.work-main{display:flex;flex-direction:column;min-width:0;}' +

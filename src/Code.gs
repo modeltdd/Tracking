@@ -64,7 +64,7 @@ function routeStaffPage_(e, user) {
     case 'search':
       var query = params.q || '';
       var results = searchWorks_(ss, user.organization, query);
-      return renderStaffPage_('ค้นหา', renderSearchBody_(user.organization, query, results, baseUrl), user, 'search', baseUrl);
+      return renderStaffPage_('ค้นหา', renderSearchBody_(user.organization, query, results, getStationsMap_(ss), baseUrl), user, 'search', baseUrl);
     case 'detail':
       var work = findWorkById_(ss, params.id);
       if (!work) {
