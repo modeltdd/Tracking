@@ -75,7 +75,7 @@ function routeStaffPage_(e, user) {
         return renderStaffPage_('ไม่มีสิทธิ์เข้าถึง', renderStubBody_('งานนี้ไม่เกี่ยวข้องกับหน่วยงานของท่าน จึงไม่สามารถดูรายละเอียดได้', baseUrl), user, 'search', baseUrl);
       }
       var stationsMap = getStationsMap_(ss);
-      return renderStaffPage_('รายละเอียดผลงาน', renderWorkDetailBody_(work, workHistory, stationsMap, baseUrl), user, 'search', baseUrl);
+      return renderStaffPage_('รายละเอียดผลงาน', renderWorkDetailBody_(ss, work, workHistory, stationsMap, baseUrl), user, 'search', baseUrl);
     case 'qrprint':
       var qrWork = findWorkById_(ss, params.id);
       if (!qrWork) {

@@ -514,38 +514,70 @@ function renderSearchBody_(org, query, results, baseUrl) {
     '<section class="metric-card">' + listHtml + '</section>';
 }
 
-/** หน้ารายละเอียดงาน — ข้อมูลเต็ม + Timeline จาก StatusHistory (อ่านอย่างเดียว ปุ่มการกระทำจะเพิ่มใน Part ถัดไป) */
-function renderWorkDetailBody_(work, history, stationsMap, baseUrl) {
+/**
+ * หน้ารายละเอียดงาน (staff, login แล้ว) — 2026-09-24 ปรับเป็น "หน้าติดตามความคืบหน้า" ตามที่ผู้ใช้ขอ reuse
+ * building block เดียวกับหน้าสาธารณะทั้งหมด (buildPublicResultData_/renderPublicTimeline_) ต่างแค่ 2 จุด:
+ * (1) ชื่อเจ้าของผลงานไม่ mask (staff login แล้ว มีสิทธิ์เห็นชื่อจริง) (2) เก็บ log ละเอียดทุกแถวจริงไว้ต่างหาก
+ * ด้านล่าง (ใครทำอะไรเมื่อไร+หมายเหตุ) ไม่ลบทิ้ง — ตัดออกจากหน้านี้เฉพาะการแสดงผล: เลขบัตรประชาชน/เบอร์โทร/
+ * อีเมล/ระดับ/ผู้ดำเนินการล่าสุด (คอลัมน์เดิมในชีตยังอยู่ครบ ไม่ได้ลบข้อมูลจริง)
+ */
+function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
   var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
-  var statusLabel = PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public || '-';
-  var station = stationsMap[work.current_station_key];
+  var ownerName = ((work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')).trim();
+  var data = buildPublicResultData_(ss, work);
+  var split = data.currentStation ? splitStationNameDesc_(data.currentStation.station_name) : { main: PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public, desc: '' };
+  var orderLabel = data.currentStation ? data.currentStation.station_order : '';
 
-  var fields = [
-    ['ชื่อ-สกุล', (work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')],
-    ['ตำแหน่ง', work.position],
-    ['ระดับ', (work.current_level || '-') + ' → ' + (work.requested_level || '-')],
-    ['ประเภทผลงาน', work.work_type],
-    ['ชื่อผลงาน', work.work_title],
-    ['หน่วยงานต้นสังกัด', work.org_from],
-    ['เลขบัตรประชาชน', 'xxxxxxxxx' + (work.citizen_id_last4 || '----')],
-    ['เบอร์โทร', work.phone || '-'],
-    ['อีเมล', work.email || '-'],
-    ['สถานีปัจจุบัน', station ? station.station_name : work.current_station_key],
-    ['หน่วยงานที่รับผิดชอบ', work.handoff_pending ? '(รอปลายทางรับเอกสาร)' : (work.current_owner_org || '-')],
-    ['ผู้ดำเนินการล่าสุด', work.current_handler_name || '-'],
-    ['ขั้นตอนถัดไป', work.next_step_text || '-'],
-  ];
+  var nameBlockHtml = '' +
+    '<div class="pub-name-block">' +
+    '<div class="pub-name-owner">' + escapeHtml_(ownerName || '-') + '</div>' +
+    '<div class="pub-name-title">' + escapeHtml_(work.work_title || '-') + '</div>' +
+    '</div>';
 
-  var fieldsHtml = fields.map(function (f) {
-    return '<div class="detail-row"><span class="detail-label">' + escapeHtml_(f[0]) + '</span>' +
-      '<span class="detail-value">' + escapeHtml_(f[1] || '-') + '</span></div>';
-  }).join('');
+  var heroHtml = '' +
+    '<div class="pub-hero pub-hero-' + cls + '">' +
+    '<div class="pub-hero-label">สถานะปัจจุบัน</div>' +
+    '<div class="pub-hero-main">' + (orderLabel ? escapeHtml_(orderLabel) + ' ' : '') + escapeHtml_(split.main) + '</div>' +
+    (split.desc ? '<div class="pub-hero-desc">' + escapeHtml_(split.desc) + '</div>' : '') +
+    '<div class="pub-hero-current-note">ขณะนี้ผลงานอยู่ขั้นตอนนี้</div>' +
+    '<div class="pub-hero-updated">อัปเดตล่าสุด ' + formatDateTh_(work.updated_at) + '</div>' +
+    '</div>';
+
+  var actionHtml = work.next_step_text
+    ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
+    : '';
+
+  var handoffHtml = '' +
+    '<div class="pub-owner-card">' +
+    renderPubOwnerRow_('ผู้รับผิดชอบ', work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-')) +
+    renderPubOwnerRow_('รับงานเมื่อ', formatDateTh_(work.updated_at)) +
+    renderPubOwnerRow_('รับเรื่องเมื่อ', formatDateTh_(work.received_date)) +
+    renderPubOwnerRow_('ส่งต่อผู้ว่าเมื่อ', data.governorForwardDate ? formatDateTh_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า') +
+    '</div>';
+
+  var timelineHtml = data.steps ? renderPublicTimeline_(data.steps) : '';
+  if (data.isLegacyImportOnly) {
+    timelineHtml += '<p class="hint" style="margin:-8px 0 16px">ข้อมูลก่อนเริ่มใช้ระบบออนไลน์ไม่มีรายละเอียด Timeline ครบทุกขั้นตอน แสดงได้เฉพาะสถานะปัจจุบัน</p>';
+  }
+
+  var infoHtml = '' +
+    '<div class="pub-owner-card">' +
+    '<div class="pub-owner-title">ข้อมูลเพิ่มเติม (ภายใน)</div>' +
+    renderPubOwnerRow_('ตำแหน่ง', work.position) +
+    renderPubOwnerRow_('หน่วยงานต้นสังกัด', work.org_from) +
+    '</div>';
+
+  var noteHtml = data.latestNote
+    ? '<div class="pub-note-box"><div class="pub-note-title">หมายเหตุจากผู้รับผิดชอบ</div><p>' + escapeHtml_(data.latestNote) + '</p></div>'
+    : '';
 
   var coverHtml = work.cover_image_url
     ? '<p><a href="' + escapeHtml_(work.cover_image_url) + '" target="_blank" rel="noopener">ดูภาพหน้าปกที่อัปโหลด</a></p>'
     : '';
 
-  var timelineHtml = history.length
+  // ประวัติละเอียดทุกแถวจริง (ใครทำอะไรเมื่อไร+หมายเหตุ) — เก็บไว้เป็นข้อมูลเชิงลึกสำหรับเจ้าหน้าที่ แยกจาก
+  // Timeline สรุปด้านบน ไม่ลบของเดิมตามที่ผู้ใช้ขอ (ห้าม rewrite ใหม่ทั้งหมด/ห้ามทำ StatusHistory เดิมเสีย)
+  var auditLogHtml = history.length
     ? '<ul class="timeline">' + history.map(function (h) {
         var label = h.action === 'transition'
           ? (stationsMap[h.to_station] ? stationsMap[h.to_station].station_name : h.to_station)
@@ -561,12 +593,11 @@ function renderWorkDetailBody_(work, history, stationsMap, baseUrl) {
 
   return '' +
     '<div class="detail-card">' +
-    '<div class="detail-head"><span class="tracking-big">' + escapeHtml_(work.tracking_no) + '</span>' +
-    '<span class="pill pill-' + cls + '">' + escapeHtml_(statusLabel) + '</span></div>' +
-    fieldsHtml + coverHtml +
-    '<p><a target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
+    '<div class="pub-subheader-label">เลขทะเบียน <b>' + escapeHtml_(work.tracking_no) + '</b></div>' +
+    nameBlockHtml + heroHtml + actionHtml + handoffHtml + timelineHtml + infoHtml + coverHtml + noteHtml +
+    '<p style="margin-top:16px"><a target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
     '</div>' +
-    '<section class="metric-card"><div class="metric-head"><span class="metric-label">ประวัติการดำเนินการ</span></div>' + timelineHtml + '</section>' +
+    '<section class="metric-card"><div class="metric-head"><span class="metric-label">ประวัติการดำเนินการแบบละเอียด (ภายใน)</span></div>' + auditLogHtml + '</section>' +
     '<p><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>';
 }
 
@@ -644,6 +675,7 @@ function renderPublicSearchResultsBody_(results, baseUrl) {
       '<span class="worktitle">' + escapeHtml_(w.work_title || '-') + ' &middot; ' + escapeHtml_(w.org_from || '-') +
       ' &middot; ' + escapeHtml_(w.tracking_no) + '</span></div>' +
       '<span class="pill pill-' + cls + '">' + escapeHtml_(label) + '</span>' +
+      '<span class="pub-search-cta">ดูรายละเอียด/ติดตาม &rarr;</span>' +
       '</a>';
   }).join('');
 
@@ -733,6 +765,7 @@ function renderPublicResultBody_(work, data, baseUrl) {
     '<div class="pub-hero-label">สถานะปัจจุบัน</div>' +
     '<div class="pub-hero-main">' + (orderLabel ? escapeHtml_(orderLabel) + ' ' : '') + escapeHtml_(split.main) + '</div>' +
     (split.desc ? '<div class="pub-hero-desc">' + escapeHtml_(split.desc) + '</div>' : '') +
+    '<div class="pub-hero-current-note">ขณะนี้ผลงานของท่านอยู่ขั้นตอนนี้</div>' +
     '<div class="pub-hero-updated">อัปเดตล่าสุด ' + formatDateTh_(work.updated_at) + '</div>' +
     '</div>';
 
@@ -747,7 +780,7 @@ function renderPublicResultBody_(work, data, baseUrl) {
     renderPubOwnerRow_('ผู้รับผิดชอบ', work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-')) +
     renderPubOwnerRow_('รับงานเมื่อ', formatDateTh_(work.updated_at)) +
     renderPubOwnerRow_('เขตรับเรื่องเมื่อ', formatDateTh_(work.received_date)) +
-    (data.governorForwardDate ? renderPubOwnerRow_('ส่งต่อผู้ว่าเมื่อ', formatDateTh_(data.governorForwardDate)) : '') +
+    renderPubOwnerRow_('ส่งต่อผู้ว่าเมื่อ', data.governorForwardDate ? formatDateTh_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า') +
     '</div>';
 
   var timelineHtml = data.steps ? renderPublicTimeline_(data.steps) : '';
@@ -1446,6 +1479,7 @@ var STAFF_CSS_ = '' +
   '.tracking{font-size:.72rem;color:var(--muted);font-variant-numeric:tabular-nums;}' +
   '.worktitle{font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60vw;}' +
   '.pill{font-size:.72rem;padding:3px 9px;border-radius:999px;color:#fff;white-space:nowrap;background:var(--pending);}' +
+  '.pub-search-cta{font-size:.72rem;color:var(--teal);white-space:nowrap;flex-shrink:0;}' +
   '.pill-pending{background:var(--pending);}.pill-active{background:var(--active);}' +
   '.pill-revision{background:var(--revision);}.pill-danger{background:var(--danger);}.pill-done{background:var(--done);}' +
   '.empty{font-size:.8rem;color:var(--muted);padding:6px 0;}' +
