@@ -132,8 +132,12 @@ function buildPublicDetailedSteps_(ss, history, stationsMap, currentKey, current
   // สาธารณะ ตามหลัก privacy ข้อ 17 เดิมอยู่แล้ว ชื่อ/อีเมลผู้ดำเนินการมีแค่ระดับ "ผู้รับผิดชอบปัจจุบัน" รวมด้านบนพอ)
   function toStep(key, state, enteredAt) {
     var st = stationsMap[key];
+    // 2026-09-24: บังคับ order เป็น string เสมอ — เจอบั๊กจริงบนชีต production ที่ station_order บางแถวถูก
+    // Google Sheets auto-detect เป็น Number (บั๊กคลาสเดียวกับ team_no/tracking_no ที่เจอมาก่อนหน้านี้ในโปรเจกต์)
+    // ทำให้ renderPublicTimeline_ เรียก .indexOf('.') บน Number พังจริง (TypeError: s.order.indexOf is not a
+    // function) แก้ที่จุดสร้างข้อมูลนี้จุดเดียว กัน consumer ทุกจุด (timeline/mini timeline) ต้องเดาเอง
     return {
-      key: key, order: st ? st.station_order : '', name: st ? splitStationNameDesc_(st.station_name).main : key,
+      key: key, order: st ? String(st.station_order) : '', name: st ? splitStationNameDesc_(st.station_name).main : key,
       state: state, org: st ? st.org : '', enteredAt: state === 'upcoming' ? null : (enteredAt || null),
     };
   }

@@ -161,7 +161,14 @@ function updateWorkStationRow_(ss, stationKey, fields) {
     var rowNum = i + 2;
     Object.keys(fields).forEach(function (k) {
       var col = headers.indexOf(k) + 1;
-      if (col > 0) sheet.getRange(rowNum, col).setValue(fields[k]);
+      if (col <= 0) return;
+      var range = sheet.getRange(rowNum, col);
+      // 2026-09-24: station_order เป็นสตริงตัวเลขล้วน (เช่น "7", "7.1") — cell แบบ General ของ Sheets auto-detect
+      // เป็น Number ทันทีตอน setValue (บั๊กคลาสเดียวกับ team_no/tracking_no ที่เจอมาก่อนหน้านี้ในโปรเจกต์ พังจริง
+      // บน production: หน้า public/staff อ่าน station_order มาเรียก .indexOf('.') แล้ว error เพราะได้ Number ไม่ใช่
+      // string) บังคับ setNumberFormat('@') ก่อน setValue เสมอเฉพาะคอลัมน์นี้ กันไม่ให้เกิดซ้ำอีก
+      if (k === 'station_order') range.setNumberFormat('@');
+      range.setValue(fields[k]);
     });
     return;
   }
