@@ -457,3 +457,24 @@ function deleteTestRecords() {
 
   Logger.log('=== deleteTestRecords เสร็จ — ลบ Works ' + deletedWorks + ' แถว, StatusHistory ' + deletedHistory + ' แถว ===');
 }
+
+/**
+ * รายชื่อ tracking_no + qr_token ตัวอย่างจากชีตจริง (2026-09-25, ผู้ใช้ขอ — ไว้หา token มาทดสอบหน้าสแกน QR
+ * เองโดยไม่ต้องสแกนจริง) log เฉพาะ 10 รายการล่าสุดที่ยังไม่จบกระบวนการ (ไม่ done/terminated) ก่อน — เอา token
+ * ไปแปะต่อท้าย URL แบบ ...?page=scan&t=<token> เปิดดูหน้าสแกนได้เลย อ่านอย่างเดียว ไม่แก้ข้อมูลใดๆ
+ */
+function logSampleQrTokens() {
+  var ss = getSpreadsheet_();
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS))
+    .filter(function (w) { return TERMINAL_STATUSES_.indexOf(w.current_status_public) === -1; })
+    .sort(byUpdatedAtDesc_)
+    .slice(0, 10);
+  if (!works.length) {
+    Logger.log('ไม่พบงานที่ยังไม่จบกระบวนการเลย — ลองดูทุกงานแทนที่ Works sheet โดยตรง');
+    return;
+  }
+  works.forEach(function (w) {
+    Logger.log('tracking_no=' + w.tracking_no + ' | qr_token=' + w.qr_token + ' | สถานะ=' + w.current_station_key);
+  });
+  Logger.log('=== เอา qr_token ตัวไหนก็ได้ข้างบน ไปต่อท้าย URL: ' + getWebAppUrl_() + '?page=scan&t=<qr_token> ===');
+}
