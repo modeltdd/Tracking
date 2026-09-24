@@ -691,11 +691,8 @@ function renderSearchResultList_(works, stationsMap, baseUrl) {
  * อีเมล/ระดับ/ผู้ดำเนินการล่าสุด (คอลัมน์เดิมในชีตยังอยู่ครบ ไม่ได้ลบข้อมูลจริง)
  */
 function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
-  var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
   var ownerName = ((work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')).trim();
   var data = buildPublicResultData_(ss, work);
-  var split = data.currentStation ? splitStationNameDesc_(data.currentStation.station_name) : { main: PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public, desc: '' };
-  var orderLabel = data.currentStation ? data.currentStation.station_order : '';
 
   // ลำดับหัวหน้า (2026-09-24 ตามที่ผู้ใช้ขอ): ชื่อเจ้าของผลงาน (เด่นสุด) -> เลขทะเบียน (รอง, muted) -> ชื่อผลงาน
   var nameBlockHtml = '' +
@@ -705,13 +702,7 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
     '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
     '</div>';
 
-  var heroHtml = '' +
-    '<div class="pub-hero pub-hero-' + cls + '">' +
-    '<div class="pub-hero-label">สถานะปัจจุบัน</div>' +
-    '<div class="pub-hero-main">' + (orderLabel ? escapeHtml_(orderLabel) + ' ' : '') + escapeHtml_(split.main) + '</div>' +
-    (split.desc ? '<div class="pub-hero-desc">' + escapeHtml_(split.desc) + '</div>' : '') +
-    '<div class="pub-hero-updated">อัปเดตล่าสุด ' + formatDateTh_(work.updated_at) + '</div>' +
-    '</div>';
+  var heroHtml = renderPubHero_(work, data.currentStation, stationsMap);
 
   var actionHtml = work.next_step_text
     ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
@@ -939,16 +930,47 @@ function renderPubInfoGrid_(items) {
     '</div>';
 }
 
+/**
+ * การ์ด "สถานะปัจจุบัน" (Compact Status Card) — reuse ทั้งหน้าสาธารณะและหน้า staff (2026-09-24 แยกสถานะหลัก/
+ * สถานะย่อยตามที่ผู้ใช้ขอ) ถ้า current station เป็น state ทศนิยมที่มี parent จริง (buildHeroDisplayInfo_ หาให้
+ * จาก PublicTrack.gs) แสดง "ขั้นตอนที่ N" + ชื่อสถานะหลัก (เด่นสุด) แล้วตามด้วย "ผลการพิจารณา" + badge สถานะย่อย
+ * สีตามคำในชื่อ state จริง (ผ่าน=เขียว/แก้ไข=เหลือง/ไม่ผ่าน=แดง) — ถ้าไม่มี parent จริง แสดงแบบเดิมทุกประการ
+ */
+function renderPubHero_(work, currentStation, stationsMap) {
+  var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
+  var info = buildHeroDisplayInfo_(currentStation, stationsMap || {});
+  var bodyHtml;
+  if (info.isSub) {
+    bodyHtml = '' +
+      '<div class="pub-hero-step-label">ขั้นตอนที่ ' + escapeHtml_(info.parentOrder) + '</div>' +
+      '<div class="pub-hero-main">' + escapeHtml_(info.parentSplit.main) + '</div>' +
+      (info.parentSplit.desc ? '<div class="pub-hero-desc">' + escapeHtml_(info.parentSplit.desc) + '</div>' : '') +
+      '<div class="pub-hero-sub-row"><span class="pub-hero-sub-label">ผลการพิจารณา</span>' +
+      '<span class="pub-hero-sub-badge pub-hero-sub-' + info.subTone + '">' +
+      escapeHtml_(info.subOrder) + ' ' + escapeHtml_(info.subSplit.main) + '</span></div>' +
+      (info.subSplit.desc ? '<div class="pub-hero-desc">' + escapeHtml_(info.subSplit.desc) + '</div>' : '');
+  } else {
+    var split = currentStation ? splitStationNameDesc_(currentStation.station_name) : { main: PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public, desc: '' };
+    var orderLabel = currentStation ? currentStation.station_order : '';
+    bodyHtml = '' +
+      '<div class="pub-hero-main">' + (orderLabel ? escapeHtml_(orderLabel) + ' ' : '') + escapeHtml_(split.main) + '</div>' +
+      (split.desc ? '<div class="pub-hero-desc">' + escapeHtml_(split.desc) + '</div>' : '');
+  }
+  return '' +
+    '<div class="pub-hero pub-hero-' + cls + '">' +
+    '<div class="pub-hero-label">สถานะปัจจุบัน</div>' +
+    bodyHtml +
+    '<div class="pub-hero-updated">อัปเดตล่าสุด ' + formatDateTh_(work.updated_at) + '</div>' +
+    '</div>';
+}
+
 /** กล่องแจ้งข้อมูล Legacy เล็กๆ (ไม่แย่งความเด่นจากสถานะปัจจุบัน) แทนข้อความยาวกลางหน้าแบบเดิม (2026-09-24) */
 function renderPubLegacyInfoBox_() {
   return '<div class="pub-info-box"><b>&#9432; ข้อมูลเดิม</b><span>ข้อมูลก่อนเริ่มใช้ระบบออนไลน์อาจไม่มีรายละเอียด Timeline ครบทุกขั้นตอน</span></div>';
 }
 
 function renderPublicResultBody_(work, data, baseUrl) {
-  var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
   var maskedName = maskNameForPublic_(work.title_name, work.first_name, work.last_name);
-  var split = data.currentStation ? splitStationNameDesc_(data.currentStation.station_name) : { main: PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public, desc: '' };
-  var orderLabel = data.currentStation ? data.currentStation.station_order : '';
 
   // ลำดับหัวหน้า (2026-09-24 ตามที่ผู้ใช้ขอ): ชื่อเจ้าของผลงาน (เด่นสุด) -> เลขทะเบียน (รอง, muted) -> ชื่อผลงาน
   var nameBlockHtml = '' +
@@ -958,13 +980,7 @@ function renderPublicResultBody_(work, data, baseUrl) {
     '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
     '</div>';
 
-  var heroHtml = '' +
-    '<div class="pub-hero pub-hero-' + cls + '">' +
-    '<div class="pub-hero-label">สถานะปัจจุบัน</div>' +
-    '<div class="pub-hero-main">' + (orderLabel ? escapeHtml_(orderLabel) + ' ' : '') + escapeHtml_(split.main) + '</div>' +
-    (split.desc ? '<div class="pub-hero-desc">' + escapeHtml_(split.desc) + '</div>' : '') +
-    '<div class="pub-hero-updated">อัปเดตล่าสุด ' + formatDateTh_(work.updated_at) + '</div>' +
-    '</div>';
+  var heroHtml = renderPubHero_(work, data.currentStation, data.stationsMap);
 
   var actionHtml = work.next_step_text
     ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
@@ -1016,8 +1032,15 @@ function renderPubOwnerRow_(label, value) {
     '<span class="pub-owner-value">' + escapeHtml_(value || '-') + '</span></div>';
 }
 
-/** Timeline แนวตั้งละเอียด — ✓ ผ่านแล้ว / ● ปัจจุบัน / ○ ยังไม่ถึง จัดกลุ่ม state 8.x/9.x ไว้ใน <details> พับเก็บได้
- *  (ไม่ต้องใช้ JS — <details>/<summary> มาตรฐาน HTML) เปิดค้างไว้อัตโนมัติถ้ากลุ่มนั้นมีขั้นที่ผ่านแล้ว/ปัจจุบันอยู่ */
+/**
+ * Timeline แนวตั้งละเอียด — ✓ ผ่านแล้ว / ● ปัจจุบัน / ○ ยังไม่ถึง จัดกลุ่ม state ทศนิยมไว้ใน <details> พับเก็บได้
+ * (ไม่ต้องใช้ JS — <details>/<summary> มาตรฐาน HTML) เปิดค้างไว้อัตโนมัติถ้ากลุ่มนั้นมีขั้นที่ผ่านแล้ว/ปัจจุบันอยู่
+ * 2 กลไกกลุ่ม:
+ *  (1) 2026-09-24 ใหม่ — state ทศนิยมที่มี "สถานะหลัก" จริงอยู่ใน steps ด้วย (เช่น 7 -> 7.1/7.2/7.3/7.4) รวม
+ *      สถานะหลัก+ย่อยทั้งหมดไว้กลุ่มเดียว หัวข้อ = "ขั้นตอนที่ N ชื่อสถานะหลัก" จากข้อมูลจริง (ไม่ hardcode)
+ *  (2) เดิม — state ทศนิยมที่ไม่มีสถานะหลักจริงในระบบ (8.x/9.x ไม่มี state "8"/"9" ตรงๆ) ยังคงกลุ่มแบบเดิมด้วย
+ *      label คงที่ที่ตั้งไว้ก่อนหน้า (ไม่แก้ กันกระทบพฤติกรรมเดิม)
+ */
 function renderPublicTimeline_(steps) {
   var GROUP_LABELS = { s8: '8 กรณีมีการแก้ไขผลงาน', s9: '9 ประชุมพิจารณา ครั้งที่ 2' };
   var html = '';
@@ -1045,7 +1068,25 @@ function renderPublicTimeline_(steps) {
     group = null;
   }
 
-  steps.forEach(function (s) {
+  var i = 0;
+  while (i < steps.length) {
+    var s = steps[i];
+    // (1) สถานะหลักจริงที่มีสถานะย่อยตามมาติดกัน (order ถัดไปขึ้นต้นด้วย "<order นี้>.") — รวมเป็นกลุ่มเดียว
+    var hasRealChildren = s.order.indexOf('.') === -1 &&
+      i + 1 < steps.length && steps[i + 1].order.indexOf(s.order + '.') === 0;
+    if (hasRealChildren) {
+      flushGroup();
+      var children = [];
+      var j = i + 1;
+      while (j < steps.length && steps[j].order.indexOf(s.order + '.') === 0) { children.push(steps[j]); j++; }
+      var anyActive = s.state !== 'upcoming' || children.some(function (c) { return c.state !== 'upcoming'; });
+      html += '<details class="pub-tl-group"' + (anyActive ? ' open' : '') + '><summary>' +
+        escapeHtml_('ขั้นตอนที่ ' + s.order + ' ' + s.name) + '</summary>' +
+        itemHtml(s) + children.map(itemHtml).join('') + '</details>';
+      i = j;
+      continue;
+    }
+    // (2) เดิม — กลุ่ม virtual 8.x/9.x (ไม่มีสถานะหลักจริง)
     var prefix = s.key.indexOf('s8_') === 0 ? 's8' : (s.key.indexOf('s9_') === 0 ? 's9' : null);
     if (prefix) {
       if (!group || group.prefix !== prefix) {
@@ -1058,7 +1099,8 @@ function renderPublicTimeline_(steps) {
       flushGroup();
       html += itemHtml(s);
     }
-  });
+    i++;
+  }
   flushGroup();
 
   return '<div class="pub-timeline">' + html + '</div>';
@@ -1965,6 +2007,17 @@ var PUBLIC_CSS_ = '' +
   '.pub-hero-main{font-size:1.55rem;font-weight:700;color:var(--navy);line-height:1.25;}' +
   '.pub-hero-desc{font-size:.82rem;color:var(--muted);margin-top:3px;line-height:1.4;}' +
   '.pub-hero-updated{font-size:.72rem;color:var(--muted);margin-top:6px;}' +
+  // สถานะหลัก/สถานะย่อย (2026-09-24 ตามที่ผู้ใช้ขอ) — state ทศนิยมที่มี parent จริง (เช่น 7.1/7.2/7.3/7.4 ของ
+  // state 7) แยกแสดง "ขั้นตอนที่ N" (label เล็ก) + ชื่อสถานะหลัก (ใน .pub-hero-main เดิม เด่นสุด) แล้วตามด้วย
+  // "ผลการพิจารณา" + badge สถานะย่อยสีตามคำในชื่อจริง (ผ่าน=เขียว/แก้ไข=เหลือง/ไม่ผ่าน=แดง)
+  '.pub-hero-step-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;}' +
+  '.pub-hero-sub-row{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap;}' +
+  '.pub-hero-sub-label{font-size:.72rem;color:var(--muted);}' +
+  '.pub-hero-sub-badge{display:inline-block;font-size:.86rem;font-weight:700;padding:3px 10px;border-radius:999px;}' +
+  '.pub-hero-sub-done{background:#d9f0e1;color:#166534;}' +
+  '.pub-hero-sub-revision{background:#fbecc0;color:#8a6300;}' +
+  '.pub-hero-sub-danger{background:#f6d4d1;color:#9a2d24;}' +
+  '.pub-hero-sub-pending{background:#e3e8eb;color:var(--muted);}' +
   // กล่อง "สิ่งที่ต้องดำเนินการ" — เด่นรองจากสถานะ พื้นสีอ่อนโทนเดียวกับ revision กันความสับสน
   '.pub-action-box{background:#fff8ec;border:1px solid #f0e0ab;border-radius:12px;padding:10px 14px;margin-bottom:10px;}' +
   '.pub-action-title{font-weight:700;color:var(--revision);font-size:.78rem;margin:0 0 4px;}' +

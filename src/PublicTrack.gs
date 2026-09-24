@@ -204,6 +204,44 @@ function splitStationNameDesc_(stationName) {
   return m ? { main: m[1], desc: m[2] } : { main: name, desc: '' };
 }
 
+/**
+ * แยก "สถานะหลัก" (เลขขั้นตอนหลัก+ชื่อ) จาก "สถานะย่อย/ผลการดำเนินงาน" (state ทศนิยมจริง เช่น 7.1/7.2/7.3)
+ * ให้การ์ด "สถานะปัจจุบัน" (2026-09-24 ตามที่ผู้ใช้ขอ) — หลักการ: ถ้า station_order ของสถานะปัจจุบันมีจุดทศนิยม
+ * (เช่น "7.1") ให้หา station อื่นที่ station_order ตรงกับเลขหน้าจุด ("7") เป็น "สถานะหลัก" จริงจากข้อมูลจริง
+ * (ไม่เดาชื่อ) ถ้าไม่พบ (เช่น 8.x/9.x ไม่มี state "8"/"9" ตรงๆ ในระบบ) ถือว่าไม่มีสถานะหลักให้แยก คืน isSub=false
+ * แสดงแบบเดิม — ใช้หลักการเดียวกันกับทุก state ทศนิยมที่มี parent จริง ไม่ hardcode เฉพาะ 7.x
+ */
+function buildHeroDisplayInfo_(currentStation, stationsMap) {
+  if (!currentStation) return { isSub: false };
+  var order = String(currentStation.station_order || '');
+  var dot = order.indexOf('.');
+  if (dot === -1) return { isSub: false };
+  var parentOrder = order.slice(0, dot);
+  var parent = null;
+  for (var key in stationsMap) {
+    if (String(stationsMap[key].station_order) === parentOrder) { parent = stationsMap[key]; break; }
+  }
+  if (!parent) return { isSub: false };
+  return {
+    isSub: true,
+    parentOrder: parentOrder,
+    parentSplit: splitStationNameDesc_(parent.station_name),
+    subOrder: order,
+    subSplit: splitStationNameDesc_(currentStation.station_name),
+    subTone: subStatusToneClass_(currentStation.station_name),
+  };
+}
+
+/** สีของ "สถานะย่อย/ผลการดำเนินงาน" ตามคำในชื่อ state จริง (2026-09-24 ตามที่ผู้ใช้ขอ) — เช็ค "ไม่ผ่าน" ก่อน
+ *  "ผ่าน" เสมอ (ไม่งั้น "ไม่ผ่าน" จะแมตช์ "ผ่าน" ก่อนผิดความหมาย) ใช้หลักการเดียวกันกับทุก state ทศนิยม */
+function subStatusToneClass_(stationName) {
+  var name = String(stationName || '');
+  if (name.indexOf('ไม่ผ่าน') !== -1) return 'danger';
+  if (name.indexOf('แก้ไข') !== -1) return 'revision';
+  if (name.indexOf('ผ่าน') !== -1) return 'done';
+  return 'pending';
+}
+
 /** หมายเหตุล่าสุดจากผู้รับผิดชอบ (transition ล่าสุดที่มี note) ไม่จำกัดแค่ตอน need_revision — ใช้กับ section "หมายเหตุจากผู้รับผิดชอบ" */
 function getLatestTransitionNote_(ss, workId) {
   var history = getHistoryForWork_(ss, workId); // เก่า -> ใหม่
@@ -224,6 +262,10 @@ function buildPublicResultData_(ss, work) {
     steps: steps,
     progressSummary: buildProgressSummary_(work, steps), // 2026-09-24 "Metro Progress" เหนือ Timeline
     currentStation: stationsMap[work.current_station_key] || null,
+    // 2026-09-24 (redesign แยกสถานะหลัก/ย่อย): ให้ renderPublicResultBody_ (Views.gs) หา "สถานะหลัก" ของ state
+    // ทศนิยม (เช่น 7.1 -> หา state order='7') ได้โดยไม่ต้องอ่านชีตซ้ำ — renderWorkDetailBody_ (staff) มี
+    // stationsMap เป็นพารามิเตอร์ตรงอยู่แล้ว ไม่ต้องใช้ตัวนี้
+    stationsMap: stationsMap,
     latestNote: revisionInfo ? '' : getLatestTransitionNote_(ss, work.work_id),
     // เพิ่ม 2026-09-15 (ดูแชท requirement ข้อ I.9.6) — s10 คือขั้น "ส่งต่อให้ผู้ว่าราชการจังหวัด/แจ้งผลหน่วยงาน"
     // อยู่แล้วในตัว (ยืนยันกับผู้ใช้แล้ว ไม่ใช่ state แยก) ใช้ StatusHistory จริง ไม่เดา งานที่ยังไม่ถึง s10 จะได้ null
