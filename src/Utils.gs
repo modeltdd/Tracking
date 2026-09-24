@@ -109,6 +109,24 @@ function formatDateTh_(date) {
   }
 }
 
+/** จัดรูปแบบวันที่-เวลาแบบไทยอ่านง่าย "24 ก.ย. 2569 เวลา 10.15 น." (2026-09-24, ใช้เฉพาะการ์ด "สถานะปัจจุบัน"/
+ *  Timeline หน้าติดตามผลงานตามที่ผู้ใช้ขอ — formatDateTh_ เดิม 24 ชม./คั่นด้วย : ยังใช้ที่อื่นทั่วระบบเหมือนเดิม
+ *  ไม่แตะ) ใช้ getBuddhistYear_/padLeft_ เดิม รูปแบบเดียวกับที่ใช้ทั่วโปรเจกต์ (ปี พ.ศ. จาก Date object ตรงๆ) */
+function formatDateThShort_(date) {
+  if (!date) return '-';
+  try {
+    var d = new Date(date);
+    var day = d.getDate();
+    var month = THAI_MONTHS_SHORT_[d.getMonth()];
+    var year = getBuddhistYear_(d);
+    var hh = padLeft_(d.getHours(), 2);
+    var mm = padLeft_(d.getMinutes(), 2);
+    return day + ' ' + month + ' ' + year + ' เวลา ' + hh + '.' + mm + ' น.';
+  } catch (err) {
+    return String(date);
+  }
+}
+
 /** ปกปิดชื่อ-สกุลสำหรับแสดงบนหน้าสาธารณะ (docs/DESIGN.md A10) — 2 ตัวอักษรแรกของชื่อ/สกุล ตามด้วย "***"
  *  เช่น "นาย นภ*** ทุม***" — คำนำหน้าไม่ใช่ข้อมูลระบุตัวตน แสดงเต็มได้ ใช้กับหน้าติดตามสถานะสาธารณะเท่านั้น
  *  (หน้าเจ้าหน้าที่/Admin ยังเห็นชื่อเต็มตามเดิม ไม่เปลี่ยน) */

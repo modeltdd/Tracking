@@ -148,17 +148,41 @@ function buildPublicDetailedSteps_(ss, history, stationsMap, currentKey, current
   return steps;
 }
 
+/** เลขขั้นตอนหลัก (เลขหน้าจุด) ของ order ใดๆ — "7.1" -> "7", "7" -> "7" ใช้ร่วมกับ buildProgressSummary_/
+ *  buildHeroDisplayInfo_ (2026-09-24) นับ/จัดกลุ่ม state ทศนิยมเป็นขั้นตอนหลักเดียวกันเสมอ ไม่ hardcode */
+function parentStepOrder_(order) {
+  var s = String(order);
+  var dot = s.indexOf('.');
+  return dot === -1 ? s : s.slice(0, dot);
+}
+
 /**
- * สรุปความคืบหน้า (ผ่านแล้ว/ปัจจุบัน/เหลือ) สำหรับ "Metro Progress" ด้านบน Timeline (2026-09-24 ตามที่ผู้ใช้ขอ)
- * นับ completed จาก step ที่ state==='done' จริง (มาจาก StatusHistory เท่านั้น ไม่เดา) remaining นับได้แน่นอน
- * เฉพาะกรณี steps.reachedTerminal===true (เดินเส้นทางจริงจากปัจจุบันไปจนสุดไม่เจอจุดแตกสายเลย) — ถ้ายังมีจุด
- * แตกสายข้างหน้าที่ยังไม่รู้ผล remainingKnown จะเป็น false ห้ามแสดงตัวเลขเดา (ข้อ 5/8/18 ของ requirement)
+ * สรุปความคืบหน้า (ผ่านแล้ว/ปัจจุบัน/เหลือ) สำหรับการ์ด "ความคืบหน้าของผลงาน" (2026-09-24 แก้บั๊กนับซ้ำตามที่
+ * ผู้ใช้ขอ): นับ "ขั้นตอนหลัก" (เลขหน้าจุด) แบบไม่ซ้ำ — state ทศนิยมในขั้นตอนหลักเดียวกัน (เช่น 7 ที่ done จริง
+ * และ 7.2 ที่ done จริงเช่นกันตอนงานเดินหน้าไปแล้ว) ถูกนับเป็น "ขั้นตอนที่ 7" ครั้งเดียว ไม่ใช่ 2 ขั้นตอน — เดิม
+ * นับทุกแถวใน steps ตรงๆ ทำให้ตัวเลขเฟ้อเกินจริงเมื่อ workflow ผ่าน state ทศนิยมหลายตัวในขั้นตอนหลักเดียวกัน
+ * completed จาก step ที่ state==='done' จริง (มาจาก StatusHistory เท่านั้น ไม่เดา) remaining นับได้แน่นอนเฉพาะ
+ * กรณี steps.reachedTerminal===true (เดินเส้นทางจริงจากปัจจุบันไปจนสุดไม่เจอจุดแตกสายเลย) — ถ้ายังมีจุดแตกสาย
+ * ข้างหน้าที่ยังไม่รู้ผล remainingKnown จะเป็น false ห้ามแสดงตัวเลขเดา (ข้อ 5/8/18 ของ requirement เดิม)
  */
 function buildProgressSummary_(work, steps) {
   if (!steps) return null; // terminated — ไม่มี timeline ให้สรุป
-  var completedCount = steps.filter(function (s) { return s.state === 'done'; }).length;
   var currentStep = steps.filter(function (s) { return s.state === 'current'; })[0] || null;
-  var remainingCount = steps.filter(function (s) { return s.state === 'upcoming'; }).length;
+  var currentParent = currentStep ? parentStepOrder_(currentStep.order) : null;
+
+  var doneParents = {};
+  steps.forEach(function (s) { if (s.state === 'done') doneParents[parentStepOrder_(s.order)] = true; });
+  var completedCount = Object.keys(doneParents).length;
+
+  var upcomingParents = {};
+  steps.forEach(function (s) {
+    if (s.state !== 'upcoming') return;
+    var p = parentStepOrder_(s.order);
+    if (doneParents[p] || p === currentParent) return; // กันนับซ้ำขั้นตอนหลักเดียวกับที่ done/current ไปแล้ว
+    upcomingParents[p] = true;
+  });
+  var remainingCount = Object.keys(upcomingParents).length;
+
   return {
     completedCount: completedCount,
     currentStep: currentStep,
@@ -212,28 +236,53 @@ function splitStationNameDesc_(stationName) {
  * แยก "สถานะหลัก" (เลขขั้นตอนหลัก+ชื่อ) จาก "สถานะย่อย/ผลการดำเนินงาน" (state ทศนิยมจริง เช่น 7.1/7.2/7.3)
  * ให้การ์ด "สถานะปัจจุบัน" (2026-09-24 ตามที่ผู้ใช้ขอ) — หลักการ: ถ้า station_order ของสถานะปัจจุบันมีจุดทศนิยม
  * (เช่น "7.1") ให้หา station อื่นที่ station_order ตรงกับเลขหน้าจุด ("7") เป็น "สถานะหลัก" จริงจากข้อมูลจริง
- * (ไม่เดาชื่อ) ถ้าไม่พบ (เช่น 8.x/9.x ไม่มี state "8"/"9" ตรงๆ ในระบบ) ถือว่าไม่มีสถานะหลักให้แยก คืน isSub=false
- * แสดงแบบเดิม — ใช้หลักการเดียวกันกับทุก state ทศนิยมที่มี parent จริง ไม่ hardcode เฉพาะ 7.x
+ * (ไม่เดาชื่อ) ถ้าไม่พบ (เช่น 8.x/9.x ไม่มี state "8"/"9" ตรงๆ ในระบบ) ถือว่าไม่มีสถานะหลักให้แยก — คืน stepOrder/
+ * stepSplit เป็นของ station ปัจจุบันตรงๆ แทน (isSub=false) ใช้หลักการเดียวกันกับทุก state ทศนิยมที่มี parent จริง
+ * ไม่ hardcode เฉพาะ 7.x — 2026-09-24 รอบ 2 (ปรับปรุงการ์ดสถานะปัจจุบัน): เพิ่ม stepOrder/stepSplit ที่มีเสมอ
+ * ไม่ว่า isSub หรือไม่ ให้ renderPubHero_ (Views.gs) ไม่ต้องแยกเงื่อนไข "เลขขั้นตอนหลัก+ชื่อ" เป็น 2 เคสอีกต่อไป
  */
 function buildHeroDisplayInfo_(currentStation, stationsMap) {
-  if (!currentStation) return { isSub: false };
+  if (!currentStation) return { isSub: false, stepOrder: '', stepSplit: { main: '', desc: '' } };
   var order = String(currentStation.station_order || '');
   var dot = order.indexOf('.');
-  if (dot === -1) return { isSub: false };
-  var parentOrder = order.slice(0, dot);
-  var parent = null;
-  for (var key in stationsMap) {
-    if (String(stationsMap[key].station_order) === parentOrder) { parent = stationsMap[key]; break; }
+  if (dot !== -1) {
+    var parentOrder = order.slice(0, dot);
+    var parent = null;
+    for (var key in stationsMap) {
+      if (String(stationsMap[key].station_order) === parentOrder) { parent = stationsMap[key]; break; }
+    }
+    if (parent) {
+      return {
+        isSub: true,
+        stepOrder: parentOrder,
+        stepSplit: splitStationNameDesc_(parent.station_name),
+        parentOrder: parentOrder,
+        parentSplit: splitStationNameDesc_(parent.station_name),
+        subOrder: order,
+        subSplit: splitStationNameDesc_(currentStation.station_name),
+        subTone: subStatusToneClass_(currentStation.station_name),
+      };
+    }
   }
-  if (!parent) return { isSub: false };
-  return {
-    isSub: true,
-    parentOrder: parentOrder,
-    parentSplit: splitStationNameDesc_(parent.station_name),
-    subOrder: order,
-    subSplit: splitStationNameDesc_(currentStation.station_name),
-    subTone: subStatusToneClass_(currentStation.station_name),
-  };
+  return { isSub: false, stepOrder: order, stepSplit: splitStationNameDesc_(currentStation.station_name) };
+}
+
+/**
+ * "ขั้นตอนถัดไป" สำหรับการ์ดสถานะปัจจุบัน (2026-09-24 ใหม่) — เอา upcoming step แรกจาก steps (buildPublicDetailedSteps_
+ * เดินหน้าแบบไม่เดาอยู่แล้ว มีค่าเฉพาะตอนเส้นทางข้างหน้าแน่นอน) ถ้า step นั้นดันเป็น state ทศนิยม (ในทางทฤษฎี เช่น
+ * ห่วงโซ่ 8.x/9.x ที่ไม่มีสถานะหลักจริง) ให้ปรับมาแสดงสถานะหลักของมันแทนผ่าน buildHeroDisplayInfo_ เดียวกัน กัน
+ * "ห้ามแสดง 7.1 เป็นขั้นตอนหลัก" ตามที่ผู้ใช้ขอ ไม่มี upcoming (จุดแตกสาย/จบกระบวนการ) คืน null ไม่เดา
+ */
+function findNextStepDisplay_(steps, stationsMap) {
+  if (!steps) return null;
+  var next = steps.filter(function (s) { return s.state === 'upcoming'; })[0] || null;
+  if (!next) return null;
+  var st = stationsMap[next.key];
+  if (st) {
+    var info = buildHeroDisplayInfo_(st, stationsMap);
+    return { order: info.stepOrder, split: info.stepSplit };
+  }
+  return { order: next.order, split: { main: next.name, desc: '' } };
 }
 
 /** สีของ "สถานะย่อย/ผลการดำเนินงาน" ตามคำในชื่อ state จริง (2026-09-24 ตามที่ผู้ใช้ขอ) — เช็ค "ไม่ผ่าน" ก่อน

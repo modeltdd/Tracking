@@ -702,7 +702,7 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
     '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
     '</div>';
 
-  var heroHtml = renderPubHero_(work, data.currentStation, stationsMap);
+  var heroHtml = renderPubHero_(work, data.currentStation, stationsMap, data.steps);
 
   var actionHtml = work.next_step_text
     ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
@@ -712,9 +712,9 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
   // (เดิมแยก 2 การ์ด: pub-owner-card "ผู้รับผิดชอบปัจจุบัน" + renderPubDateGrid_ "วันที่สำคัญ")
   var infoGridHtml = renderPubInfoGrid_([
     { label: 'ผู้รับผิดชอบ', value: work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-') },
-    { label: 'รับงานเมื่อ', value: formatDateTh_(work.updated_at) },
-    { label: 'รับเรื่องเมื่อ', value: formatDateTh_(work.received_date) },
-    { label: 'ส่งให้ผู้ว่า', value: data.governorForwardDate ? formatDateTh_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า' },
+    { label: 'รับงานเมื่อ', value: formatDateThShort_(work.updated_at) },
+    { label: 'รับเรื่องเมื่อ', value: formatDateThShort_(work.received_date) },
+    { label: 'ส่งให้ผู้ว่า', value: data.governorForwardDate ? formatDateThShort_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า' },
   ]);
 
   var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
@@ -931,36 +931,43 @@ function renderPubInfoGrid_(items) {
 }
 
 /**
- * การ์ด "สถานะปัจจุบัน" (Compact Status Card) — reuse ทั้งหน้าสาธารณะและหน้า staff (2026-09-24 แยกสถานะหลัก/
- * สถานะย่อยตามที่ผู้ใช้ขอ) ถ้า current station เป็น state ทศนิยมที่มี parent จริง (buildHeroDisplayInfo_ หาให้
- * จาก PublicTrack.gs) แสดง "ขั้นตอนที่ N" + ชื่อสถานะหลัก (เด่นสุด) แล้วตามด้วย "ผลการพิจารณา" + badge สถานะย่อย
- * สีตามคำในชื่อ state จริง (ผ่าน=เขียว/แก้ไข=เหลือง/ไม่ผ่าน=แดง) — ถ้าไม่มี parent จริง แสดงแบบเดิมทุกประการ
+ * การ์ด "สถานะปัจจุบัน" (Compact Status Card) — reuse ทั้งหน้าสาธารณะและหน้า staff (2026-09-24 รอบ 2 ตามที่
+ * ผู้ใช้ขอ) ลำดับเนื้อหา: ป้าย "สถานะปัจจุบัน" -> "ขั้นตอนที่ N" -> ชื่อสถานะหลัก (เด่นสุด) -> ผลการพิจารณา/
+ * สถานะย่อย (เฉพาะ state ทศนิยมที่มี parent จริง, badge สีตามคำในชื่อจริง: ผ่าน=เขียว/แก้ไข=เหลือง/ไม่ผ่าน=แดง) ->
+ * ผู้รับผิดชอบ -> วันที่-เวลาอัปเดตล่าสุด (รูปแบบไทยย่อ) -> ขั้นตอนถัดไป (ไม่เดา — ไม่มีให้แสดงถ้าจุดแตกสาย/จบแล้ว)
+ * buildHeroDisplayInfo_/findNextStepDisplay_ (PublicTrack.gs) หา "สถานะหลัก" จากข้อมูลจริงเสมอ ไม่ hardcode
  */
-function renderPubHero_(work, currentStation, stationsMap) {
+function renderPubHero_(work, currentStation, stationsMap, steps) {
   var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
   var info = buildHeroDisplayInfo_(currentStation, stationsMap || {});
-  var bodyHtml;
+
+  var bodyHtml = '' +
+    '<div class="pub-hero-step-label">ขั้นตอนที่ ' + escapeHtml_(info.stepOrder) + '</div>' +
+    '<div class="pub-hero-main">' + escapeHtml_(info.stepSplit.main) + '</div>' +
+    (info.stepSplit.desc ? '<div class="pub-hero-desc">' + escapeHtml_(info.stepSplit.desc) + '</div>' : '');
   if (info.isSub) {
-    bodyHtml = '' +
-      '<div class="pub-hero-step-label">ขั้นตอนที่ ' + escapeHtml_(info.parentOrder) + '</div>' +
-      '<div class="pub-hero-main">' + escapeHtml_(info.parentSplit.main) + '</div>' +
-      (info.parentSplit.desc ? '<div class="pub-hero-desc">' + escapeHtml_(info.parentSplit.desc) + '</div>' : '') +
+    bodyHtml += '' +
       '<div class="pub-hero-sub-row"><span class="pub-hero-sub-label">ผลการพิจารณา</span>' +
       '<span class="pub-hero-sub-badge pub-hero-sub-' + info.subTone + '">' +
       escapeHtml_(info.subOrder) + ' ' + escapeHtml_(info.subSplit.main) + '</span></div>' +
       (info.subSplit.desc ? '<div class="pub-hero-desc">' + escapeHtml_(info.subSplit.desc) + '</div>' : '');
-  } else {
-    var split = currentStation ? splitStationNameDesc_(currentStation.station_name) : { main: PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public, desc: '' };
-    var orderLabel = currentStation ? currentStation.station_order : '';
-    bodyHtml = '' +
-      '<div class="pub-hero-main">' + (orderLabel ? escapeHtml_(orderLabel) + ' ' : '') + escapeHtml_(split.main) + '</div>' +
-      (split.desc ? '<div class="pub-hero-desc">' + escapeHtml_(split.desc) + '</div>' : '');
   }
+
+  var ownerText = work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-');
+  bodyHtml += '<div class="pub-hero-meta-row"><span class="pub-hero-meta-label">ผู้รับผิดชอบ</span>' +
+    '<span class="pub-hero-meta-value">' + escapeHtml_(ownerText) + '</span></div>';
+  bodyHtml += '<div class="pub-hero-updated">อัปเดตล่าสุด ' + escapeHtml_(formatDateThShort_(work.updated_at)) + '</div>';
+
+  var nextStep = findNextStepDisplay_(steps, stationsMap || {});
+  if (nextStep) {
+    bodyHtml += '<div class="pub-hero-next-row"><span class="pub-hero-next-label">ขั้นตอนถัดไป</span>' +
+      '<span class="pub-hero-next-value">' + escapeHtml_(nextStep.order) + ' ' + escapeHtml_(nextStep.split.main) + '</span></div>';
+  }
+
   return '' +
     '<div class="pub-hero pub-hero-' + cls + '">' +
     '<div class="pub-hero-label">สถานะปัจจุบัน</div>' +
     bodyHtml +
-    '<div class="pub-hero-updated">อัปเดตล่าสุด ' + formatDateTh_(work.updated_at) + '</div>' +
     '</div>';
 }
 
@@ -980,7 +987,7 @@ function renderPublicResultBody_(work, data, baseUrl) {
     '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
     '</div>';
 
-  var heroHtml = renderPubHero_(work, data.currentStation, data.stationsMap);
+  var heroHtml = renderPubHero_(work, data.currentStation, data.stationsMap, data.steps);
 
   var actionHtml = work.next_step_text
     ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
@@ -990,9 +997,9 @@ function renderPublicResultBody_(work, data, baseUrl) {
   // (เดิมแยก 2 การ์ด: pub-owner-card "ผู้รับผิดชอบปัจจุบัน" + renderPubDateGrid_ "วันที่สำคัญ")
   var infoGridHtml = renderPubInfoGrid_([
     { label: 'ผู้รับผิดชอบ', value: work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-') },
-    { label: 'รับงานเมื่อ', value: formatDateTh_(work.updated_at) },
-    { label: 'รับเรื่องเมื่อ', value: formatDateTh_(work.received_date) },
-    { label: 'ส่งให้ผู้ว่า', value: data.governorForwardDate ? formatDateTh_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า' },
+    { label: 'รับงานเมื่อ', value: formatDateThShort_(work.updated_at) },
+    { label: 'รับเรื่องเมื่อ', value: formatDateThShort_(work.received_date) },
+    { label: 'ส่งให้ผู้ว่า', value: data.governorForwardDate ? formatDateThShort_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า' },
   ]);
 
   var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
@@ -1038,15 +1045,20 @@ function renderPubOwnerRow_(label, value) {
  * 2 กลไกกลุ่ม:
  *  (1) 2026-09-24 ใหม่ — state ทศนิยมที่มี "สถานะหลัก" จริงอยู่ใน steps ด้วย (เช่น 7 -> 7.1/7.2/7.3/7.4) รวม
  *      สถานะหลัก+ย่อยทั้งหมดไว้กลุ่มเดียว หัวข้อ = "ขั้นตอนที่ N ชื่อสถานะหลัก" จากข้อมูลจริง (ไม่ hardcode)
+ *      แต่ละสถานะย่อยในกลุ่มนี้ใช้สีตามคำในชื่อจริง (ผ่าน=เขียว/แก้ไข=เหลือง/ไม่ผ่าน=แดง) แทนสีเขียว-done เดิม
  *  (2) เดิม — state ทศนิยมที่ไม่มีสถานะหลักจริงในระบบ (8.x/9.x ไม่มี state "8"/"9" ตรงๆ) ยังคงกลุ่มแบบเดิมด้วย
  *      label คงที่ที่ตั้งไว้ก่อนหน้า (ไม่แก้ กันกระทบพฤติกรรมเดิม)
+ * 2026-09-24 รอบ 2 (เพิ่ม): step แรกที่เป็น "upcoming" ทั้งไทม์ไลน์ได้ badge "ขั้นตอนถัดไป" สีเทา (แยกจาก badge
+ * "ปัจจุบัน" เดิม) — วันที่ใน meta เปลี่ยนเป็นรูปแบบไทยย่อ (formatDateThShort_) ตามที่ผู้ใช้ขอ
  */
 function renderPublicTimeline_(steps) {
   var GROUP_LABELS = { s8: '8 กรณีมีการแก้ไขผลงาน', s9: '9 ประชุมพิจารณา ครั้งที่ 2' };
   var html = '';
   var group = null;
+  var firstUpcoming = steps.filter(function (s) { return s.state === 'upcoming'; })[0] || null;
+  var firstUpcomingKey = firstUpcoming ? firstUpcoming.key : null;
 
-  function itemHtml(s) {
+  function itemHtml(s, tone) {
     // s10 คือปลายทางจริงของทุกเส้นทาง (ยืนยันแล้วก่อนหน้านี้ในโปรเจกต์) ใช้สัญลักษณ์ ◎ เฉพาะ ยกเว้นเป็น current
     // ก็ยังเน้น ● ตามปกติ (ข้อ 2/12 ของ requirement)
     var icon = s.state === 'current' ? '●' : (s.key === 's10' ? '◎' : (s.state === 'done' ? '✓' : '○'));
@@ -1054,11 +1066,13 @@ function renderPublicTimeline_(steps) {
       ? '<span class="pub-tl-meta">' +
         (s.org ? 'ผู้รับผิดชอบ: ' + escapeHtml_(s.org) : '') +
         (s.org && s.enteredAt ? ' — ' : '') +
-        (s.enteredAt ? escapeHtml_(formatDateTh_(s.enteredAt)) : '') +
+        (s.enteredAt ? escapeHtml_(formatDateThShort_(s.enteredAt)) : '') +
         '</span>'
       : '';
-    var badge = s.state === 'current' ? '<span class="pub-tl-badge">ปัจจุบัน</span>' : '';
-    return '<div class="pub-tl-item pub-tl-' + s.state + '">' +
+    var badge = s.state === 'current' ? '<span class="pub-tl-badge">ปัจจุบัน</span>' :
+      (s.key === firstUpcomingKey ? '<span class="pub-tl-badge pub-tl-badge-next">ขั้นตอนถัดไป</span>' : '');
+    var toneCls = tone ? ' pub-tl-tone-' + tone : '';
+    return '<div class="pub-tl-item pub-tl-' + s.state + toneCls + '">' +
       '<span class="pub-tl-icon">' + icon + '</span>' +
       '<span class="pub-tl-text"><b>' + escapeHtml_(s.order) + '</b> ' + escapeHtml_(s.name) + badge + metaHtml + '</span></div>';
   }
@@ -1082,7 +1096,7 @@ function renderPublicTimeline_(steps) {
       var anyActive = s.state !== 'upcoming' || children.some(function (c) { return c.state !== 'upcoming'; });
       html += '<details class="pub-tl-group"' + (anyActive ? ' open' : '') + '><summary>' +
         escapeHtml_('ขั้นตอนที่ ' + s.order + ' ' + s.name) + '</summary>' +
-        itemHtml(s) + children.map(itemHtml).join('') + '</details>';
+        itemHtml(s) + children.map(function (c) { return itemHtml(c, subStatusToneClass_(c.name)); }).join('') + '</details>';
       i = j;
       continue;
     }
@@ -1106,40 +1120,11 @@ function renderPublicTimeline_(steps) {
   return '<div class="pub-timeline">' + html + '</div>';
 }
 
-/**
- * Mini Timeline — 3 จุดหลักเท่านั้น (2026-09-24 redesign รอบ compact ตามที่ผู้ใช้ขอ ข้อ 8): ล่าสุดที่ผ่าน /
- * สถานะปัจจุบัน / ขั้นตอนถัดไป ไม่เดา ไม่มี ถ้าไม่มีจริง (เช่น ยังไม่มีขั้นที่ผ่านแล้ว หรือขั้นถัดไปยังไม่แน่นอน
- * เพราะแตกสาย — steps ที่ได้จาก buildPublicDetailedSteps_ ไม่เดาอยู่แล้ว จุดนี้แค่เลือกแสดงบางส่วน)
- */
-function renderPubMiniTimeline_(steps) {
-  var doneSteps = steps.filter(function (s) { return s.state === 'done'; });
-  var lastDone = doneSteps.length ? doneSteps[doneSteps.length - 1] : null;
-  var current = steps.filter(function (s) { return s.state === 'current'; })[0] || null;
-  var currentIdx = current ? steps.indexOf(current) : -1;
-  var nextUpcoming = currentIdx !== -1
-    ? (steps.slice(currentIdx + 1).filter(function (s) { return s.state === 'upcoming'; })[0] || null)
-    : null;
-
-  function miniItem(s) {
-    if (!s) return '';
-    var icon = s.state === 'current' ? '●' : (s.key === 's10' ? '◎' : (s.state === 'done' ? '✓' : '○'));
-    return '<div class="pub-tl-item pub-tl-' + s.state + '">' +
-      '<span class="pub-tl-icon">' + icon + '</span>' +
-      '<span class="pub-tl-text"><b>' + escapeHtml_(s.order) + '</b> ' + escapeHtml_(s.name) + '</span></div>';
-  }
-
-  return '<div class="pub-tl-mini">' + [lastDone, current, nextUpcoming].map(miniItem).join('') + '</div>';
-}
-
-/**
- * รวม Mini Timeline (แสดงเสมอ) + Timeline ฉบับเต็ม (พับเก็บด้วย <details> ค่าเริ่มต้นปิด — ตามข้อ 8/19: หน้า
- * compact ก่อน เปิดดูเพิ่มได้ทีหลัง) แทนที่การเรียก renderPublicTimeline_ ตรงๆ เดิม — ไม่แก้ renderPublicTimeline_
- * เอง (ยังใช้แสดง timeline ฉบับเต็มเหมือนเดิมทุกประการ แค่ห่อด้วย <details> เพิ่ม)
- */
+/** ห่อ Timeline ฉบับเต็มไว้ใน <details> ปิดโดยดีฟอลต์ (ข้อ 1/8: การ์ด Timeline แบบย่อที่เคยแสดงคู่กันถูกตัดออก
+ *  แล้ว เพราะข้อมูลซ้ำกับที่การ์ด "สถานะปัจจุบัน" แสดงอยู่แล้ว — ปุ่มเปิด/ปิดใช้ <details>/<summary> ล้วนไม่มี JS) */
 function renderPubTimelineSection_(steps) {
   if (!steps) return '';
-  return renderPubMiniTimeline_(steps) +
-    '<details class="pub-tl-full-details"><summary>ดู timeline เพิ่มเติม</summary>' + renderPublicTimeline_(steps) + '</details>';
+  return '<details class="pub-tl-full-details"><summary>ดู timeline เพิ่มเติม</summary>' + renderPublicTimeline_(steps) + '</details>';
 }
 
 /** หน้าสแกน QR — ยังไม่มี token (เข้าจากเมนู ไม่ใช่จากลิงก์ QR) — กรอกรหัสเองได้กรณีกล้องอ่านไม่ออก */
@@ -2018,6 +2003,12 @@ var PUBLIC_CSS_ = '' +
   '.pub-hero-sub-revision{background:#fbecc0;color:#8a6300;}' +
   '.pub-hero-sub-danger{background:#f6d4d1;color:#9a2d24;}' +
   '.pub-hero-sub-pending{background:#e3e8eb;color:var(--muted);}' +
+  // การ์ดสถานะปัจจุบัน รอบ 2 (2026-09-24) — เพิ่มแถว "ผู้รับผิดชอบ" และ "ขั้นตอนถัดไป" (label/value ชิดกันแนวนอน)
+  '.pub-hero-meta-row,.pub-hero-next-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:6px;flex-wrap:wrap;}' +
+  '.pub-hero-meta-label,.pub-hero-next-label{font-size:.72rem;color:var(--muted);flex-shrink:0;}' +
+  '.pub-hero-meta-value{font-size:.82rem;font-weight:600;color:var(--text);text-align:right;}' +
+  '.pub-hero-next-value{font-size:.82rem;font-weight:600;color:var(--muted);text-align:right;}' +
+  '.pub-hero-next-row{padding-top:6px;border-top:1px dashed var(--border);}' +
   // กล่อง "สิ่งที่ต้องดำเนินการ" — เด่นรองจากสถานะ พื้นสีอ่อนโทนเดียวกับ revision กันความสับสน
   '.pub-action-box{background:#fff8ec;border:1px solid #f0e0ab;border-radius:12px;padding:10px 14px;margin-bottom:10px;}' +
   '.pub-action-title{font-weight:700;color:var(--revision);font-size:.78rem;margin:0 0 4px;}' +
@@ -2051,21 +2042,23 @@ var PUBLIC_CSS_ = '' +
   '.pub-tl-current .pub-tl-icon{background:var(--navy);border-color:var(--navy);color:#fff;width:24px;height:24px;font-size:.78rem;margin-top:-1px;}' +
   '.pub-tl-current .pub-tl-text{color:var(--navy);font-weight:700;}' +
   '.pub-tl-badge{display:inline-block;margin-left:6px;font-size:.66rem;font-weight:700;color:#fff;background:var(--navy);padding:2px 8px;border-radius:999px;vertical-align:middle;}' +
+  '.pub-tl-badge-next{background:var(--muted);}' +
+  // สีสถานะย่อยใน Timeline (2026-09-24 รอบ 2) — เฉพาะ item ที่เป็นลูกในกลุ่มสถานะหลักจริง (7.1/7.2/7.3/7.4)
+  // ใช้สีตามคำในชื่อจริงแทนสีเขียว-done เดิม (ผ่าน=เขียวเดิมอยู่แล้วไม่ต้อง override, แก้ไข=เหลือง, ไม่ผ่าน=แดง)
+  // เฉพาะตอน done (ผ่านไปแล้วจริง) — ตอน current ยังคงสีกรมท่าเดิมเสมอ (สีปัจจุบันสำคัญกว่าสีผลลัพธ์)
+  '.pub-tl-done.pub-tl-tone-revision .pub-tl-icon{background:var(--revision);border-color:var(--revision);}' +
+  '.pub-tl-done.pub-tl-tone-revision.pub-tl-item::before{background:var(--revision);}' +
+  '.pub-tl-done.pub-tl-tone-danger .pub-tl-icon{background:var(--danger);border-color:var(--danger);}' +
+  '.pub-tl-done.pub-tl-tone-danger.pub-tl-item::before{background:var(--danger);}' +
   '.pub-tl-group{margin-bottom:4px;}' +
   '.pub-tl-group summary{cursor:pointer;font-size:.78rem;font-weight:600;color:var(--muted);padding:4px 0 12px 33px;list-style:none;position:relative;}' +
   '.pub-tl-group summary::-webkit-details-marker{display:none;}' +
   '.pub-tl-group summary::before{content:"›";position:absolute;left:9px;top:0;font-size:1rem;transition:transform .15s;}' +
   '.pub-tl-group[open] summary::before{transform:rotate(90deg);}' +
   '.pub-tl-group .pub-tl-item{padding-left:14px;}' +
-  // Mini Timeline (2026-09-24, ใหม่) — แสดงแค่ 3 จุดหลัก (ล่าสุดที่ผ่าน/ปัจจุบัน/ถัดไป) ไม่มีเส้นเชื่อมแนวตั้ง
-  // ระยะห่างแน่นกว่า .pub-timeline เต็ม, reuse .pub-tl-icon/.pub-tl-text/.pub-tl-current/.pub-tl-done เดิมทั้งหมด
-  '.pub-tl-mini{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:6px;}' +
-  '.pub-tl-mini .pub-tl-item{padding-bottom:8px;gap:8px;}' +
-  '.pub-tl-mini .pub-tl-item::before{display:none;}' +
-  '.pub-tl-mini .pub-tl-item:last-child{padding-bottom:0;}' +
-  '.pub-tl-mini .pub-tl-text{font-size:.82rem;}' +
-  // ลิงก์ "ดู timeline เพิ่มเติม" — <details> เล็กๆ ใต้ mini timeline ค่าเริ่มต้นปิด (compact ก่อนตามข้อ 8/19)
-  '.pub-tl-full-details{margin-bottom:10px;}' +
+  // ลิงก์ "ดู timeline เพิ่มเติม" — <details> เล็กๆ ค่าเริ่มต้นปิด (2026-09-24 รอบ 2: ตัด Mini Timeline ที่เคย
+  // แสดงคู่กันออกแล้ว เพราะข้อมูลซ้ำกับการ์ด "สถานะปัจจุบัน" ที่ขยายเนื้อหาครอบคลุมแล้ว)
+  '.pub-tl-full-details{margin-bottom:10px;margin-top:10px;}' +
   '.pub-tl-full-details summary{cursor:pointer;font-size:.78rem;font-weight:600;color:var(--teal);list-style:none;padding:2px 0;text-align:center;}' +
   '.pub-tl-full-details summary::-webkit-details-marker{display:none;}' +
   '.pub-tl-full-details[open] summary{margin-bottom:6px;}' +
