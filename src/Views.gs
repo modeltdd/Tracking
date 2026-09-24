@@ -192,9 +192,16 @@ function renderDashboardBody_(ss, user, metrics, filters, baseUrl) {
   var respQuery = 'resp=' + encodeURIComponent(org);
   var stationsMap = getStationsMap_(ss);
   var history = readSheetAsObjects_(ss.getSheetByName(SHEET.STATUS_HISTORY));
+  var allWorksForFilterOptions = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var worksById = {};
+  allWorksForFilterOptions.forEach(function (w) { worksById[w.work_id] = w; });
 
+  // Quick Action (2026-09-24 รอบ 2) — จาก teal bar เต็มความกว้าง เปลี่ยนเป็น card ขนาดพอดี ชิดขวาบน desktop
   var registryLinkHtml = canAccessRegistry_(user)
-    ? '<a class="btn-action btn-action-primary" target="_top" href="' + baseUrl + '?page=registry" style="display:block;margin-bottom:14px;">เปิดทะเบียนผลงานทั้งหมด &rarr;</a>'
+    ? '<div class="dash-quick-action-wrap"><a class="dash-quick-action" target="_top" href="' + baseUrl + '?page=registry">' +
+      '<span class="dash-quick-action-title">ทะเบียนผลงานทั้งหมด</span>' +
+      '<span class="dash-quick-action-sub">ดูและจัดการทะเบียนทั้งหมด &rarr;</span>' +
+      '</a></div>'
     : '';
 
   var kpiDefs = [
@@ -203,11 +210,12 @@ function renderDashboardBody_(ss, user, metrics, filters, baseUrl) {
     { label: 'รอแก้ไข', count: metrics.returnedForRevision.length, href: 'page=registry&bucket=revision&' + respQuery, icon: '✎', tone: 'revision' },
     { label: 'ใกล้ครบกำหนด', count: metrics.nearDue.length + metrics.overdue.length, href: 'page=registry&bucket=overdue&' + respQuery, icon: '◷', tone: 'danger' },
   ];
+  // KPI compact (2026-09-24 รอบ 2) — พื้นขาวเสมอ ไม่มี icon วงกลมสีเต็ม ใช้เส้น accent ซ้าย+ตัวเลขสีแทน (scope
+  // เฉพาะ .kpi-grid-4 ผ่าน CSS ไม่กระทบ KPI 6 กล่องของ Dashboard ผู้รับผิดชอบที่ยังใช้ .kpi-grid เดิม)
   var kpiHtml = '<div class="kpi-grid kpi-grid-4">' + kpiDefs.map(function (k) {
-    return '<a class="kpi-card" target="_top" href="' + baseUrl + '?' + k.href + '">' +
-      '<span class="kpi-icon kpi-icon-' + k.tone + '">' + k.icon + '</span>' +
-      '<span class="kpi-count">' + k.count + '</span><span class="kpi-label">' + escapeHtml_(k.label) + '</span>' +
-      '<span class="kpi-hint">รายการ</span>' +
+    return '<a class="kpi-card kpi-card-' + k.tone + '" target="_top" href="' + baseUrl + '?' + k.href + '">' +
+      '<span class="kpi-label"><span class="kpi-icon kpi-icon-' + k.tone + '">' + k.icon + '</span>' + escapeHtml_(k.label) + '</span>' +
+      '<span class="kpi-count">' + k.count + ' <span class="kpi-hint">รายการ</span></span>' +
       '</a>';
   }).join('') + '</div>';
 
@@ -220,7 +228,6 @@ function renderDashboardBody_(ss, user, metrics, filters, baseUrl) {
   var yearOptions = '<option value="">ทุกปี</option>' + [yearNow, yearNow - 1, yearNow - 2, yearNow - 3].map(function (y) {
     return '<option value="' + y + '"' + (Number(filters.year) === y ? ' selected' : '') + '>' + y + '</option>';
   }).join('');
-  var allWorksForFilterOptions = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
   var orgFromOptions = '<option value="">ทุกหน่วยงาน</option>' + distinctValues_(allWorksForFilterOptions, 'org_from').map(function (o) {
     return '<option value="' + escapeHtml_(o) + '"' + (filters.orgFrom === o ? ' selected' : '') + '>' + escapeHtml_(o) + '</option>';
   }).join('');
@@ -236,10 +243,15 @@ function renderDashboardBody_(ss, user, metrics, filters, baseUrl) {
     '<div class="field"><label>ปี</label><select class="input" name="year">' + yearOptions + '</select></div>' +
     '<div class="field"><label>หน่วยงาน</label><select class="input" name="orgfrom">' + orgFromOptions + '</select></div>' +
     '<div class="field"><label>จังหวัด</label><select class="input" name="province">' + provinceOptions + '</select></div>' +
-    '<button class="btn-primary" type="submit" style="flex-shrink:0">กรองข้อมูล</button>' +
+    '<button class="btn-primary" type="submit">กรองข้อมูล</button>' +
     '</form>';
 
-  // "งานที่ต้องติดตาม" — inProgress ล่าสุด 5 รายการ (เรียงตาม updated_at ใหม่สุดก่อน)
+  function ownerNameOf_(w) {
+    return ((w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '')).trim() || '-';
+  }
+
+  // "งานที่ต้องติดตาม" — inProgress ล่าสุด 5 รายการ (เรียงตาม updated_at ใหม่สุดก่อน) 2026-09-24 รอบ 2: เพิ่ม
+  // ชื่อเจ้าของผลงาน + ปุ่ม "ดูรายละเอียด" ชัดเจน (เดิมทั้งแถวคลิกได้แต่ไม่มีข้อความปุ่ม ผู้ใช้แจ้งว่าไม่ชัด)
   var followList = metrics.inProgress.slice().sort(function (a, b) {
     return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
   }).slice(0, 5);
@@ -247,38 +259,84 @@ function renderDashboardBody_(ss, user, metrics, filters, baseUrl) {
     ? followList.map(function (w) {
         var station = stationsMap[w.current_station_key];
         var statusLabel = station ? (station.station_order + ' ' + splitStationNameDesc_(station.station_name).main) : '-';
-        return '<a class="dash-follow-row" target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(w.work_id) + '">' +
-          '<div class="dash-follow-main"><span class="dash-follow-tracking">' + escapeHtml_(w.tracking_no) + '</span>' +
+        var detailHref = baseUrl + '?page=detail&id=' + encodeURIComponent(w.work_id);
+        return '<div class="dash-follow-row">' +
+          '<div class="dash-follow-main"><span class="dash-follow-owner">' + escapeHtml_(ownerNameOf_(w)) + '</span>' +
+          '<span class="dash-follow-tracking">' + escapeHtml_(w.tracking_no) + '</span>' +
           '<span class="dash-follow-title">' + escapeHtml_(w.work_title || '-') + '</span>' +
           '<span class="dash-follow-org">' + escapeHtml_(w.org_from || '-') + '</span></div>' +
           '<div class="dash-follow-side"><span class="pill pill-' + (STATUS_PILL_CLASS_[w.current_status_public] || 'pending') + '">' + escapeHtml_(statusLabel) + '</span>' +
-          '<span class="dash-follow-date">' + formatDateTh_(w.updated_at) + '</span></div>' +
-          '</a>';
+          '<span class="dash-follow-date">' + formatDateTh_(w.updated_at) + '</span>' +
+          '<a class="dash-follow-cta" target="_top" href="' + detailHref + '">ดูรายละเอียด &rarr;</a></div>' +
+          '</div>';
       }).join('')
     : '<div class="empty">ไม่มีงานที่ต้องติดตาม</div>';
 
   // "งานใกล้ครบกำหนด" — เกินกำหนดมาก่อน ตามด้วยใกล้ครบกำหนด รวม 5 รายการ (badge สีอ่อนโทนเดียวกัน ไม่ใช้แดงจัด)
+  // 2026-09-24 รอบ 2: เพิ่มชื่อเจ้าของผลงาน + สถานะ (State) + จำนวนวันเหลือ/เกิน (คำนวณจาก computeStationDueDate_
+  // เดิม ไม่เดาถ้าคำนวณไม่ได้ — แสดง fallback text เดิม)
   var dueList = metrics.overdue.concat(metrics.nearDue).slice(0, 5);
   var dueHtml = dueList.length
     ? dueList.map(function (w) {
         var station = stationsMap[w.current_station_key];
+        var statusLabel = station ? (station.station_order + ' ' + splitStationNameDesc_(station.station_name).main) : '-';
         var dueDate = computeStationDueDate_(history, w, station);
         var isOverdue = metrics.overdue.indexOf(w) !== -1;
-        return '<a class="dash-follow-row" target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(w.work_id) + '">' +
-          '<div class="dash-follow-main"><span class="dash-follow-tracking">' + escapeHtml_(w.tracking_no) + '</span>' +
-          '<span class="dash-follow-title">' + escapeHtml_(w.work_title || '-') + '</span></div>' +
-          '<div class="dash-follow-side"><span class="dash-due-badge' + (isOverdue ? ' dash-due-badge-over' : '') + '">' +
-          (dueDate ? 'กำหนดเสร็จ ' + formatDateTh_(dueDate) : (isOverdue ? 'เกินกำหนดแล้ว' : 'ใกล้ครบกำหนด')) + '</span></div>' +
-          '</a>';
+        var daysLabel;
+        if (dueDate) {
+          var diff = daysBetween_(now_(), dueDate);
+          daysLabel = diff >= 0 ? 'เหลือ ' + diff + ' วัน' : 'เกิน ' + Math.abs(diff) + ' วัน';
+        } else {
+          daysLabel = isOverdue ? 'เกินกำหนดแล้ว' : 'ใกล้ครบกำหนด';
+        }
+        var detailHref = baseUrl + '?page=detail&id=' + encodeURIComponent(w.work_id);
+        return '<div class="dash-follow-row">' +
+          '<div class="dash-follow-main"><span class="dash-follow-owner">' + escapeHtml_(ownerNameOf_(w)) + '</span>' +
+          '<span class="dash-follow-tracking">' + escapeHtml_(w.tracking_no) + '</span>' +
+          '<span class="dash-follow-title">' + escapeHtml_(w.work_title || '-') + '</span>' +
+          '<span class="dash-follow-org">' + escapeHtml_(statusLabel) + '</span></div>' +
+          '<div class="dash-follow-side"><span class="dash-due-badge' + (isOverdue ? ' dash-due-badge-over' : '') + '">' + daysLabel + '</span>' +
+          '<a class="dash-follow-cta" target="_top" href="' + detailHref + '">ดูรายละเอียด &rarr;</a></div>' +
+          '</div>';
       }).join('')
     : '<div class="empty">ไม่มีงานใกล้ครบกำหนด</div>';
 
+  // "อัปเดตล่าสุด" — 2026-09-24 รอบ 2 (ใหม่ทั้งหมด) ประวัติ StatusHistory ล่าสุดที่เกี่ยวกับหน่วยงานนี้
+  // (action_by_org หรือ from_org หรือ to_org ตรงกับ org ของผู้ login — field จริงทั้งหมดจาก STATUS_HISTORY
+  // ไม่ต้องเดา) เรียงตาม action_date ใหม่สุดก่อน 5 รายการ
+  var recentHistory = history.filter(function (h) {
+    return h.action_by_org === org || h.from_org === org || h.to_org === org;
+  }).sort(function (a, b) {
+    return new Date(b.action_date).getTime() - new Date(a.action_date).getTime();
+  }).slice(0, 5);
+  var recentHtml = recentHistory.length
+    ? recentHistory.map(function (h) {
+        var w = worksById[h.work_id];
+        var fromStation = stationsMap[h.from_station];
+        var toStation = stationsMap[h.to_station];
+        var fromLabel = fromStation ? splitStationNameDesc_(fromStation.station_name).main : (h.from_station || '-');
+        var toLabel = toStation ? splitStationNameDesc_(toStation.station_name).main : (h.to_station || '-');
+        var detailHref = w ? baseUrl + '?page=detail&id=' + encodeURIComponent(w.work_id) : '#';
+        return '<a class="dash-recent-row" target="_top" href="' + detailHref + '">' +
+          '<div class="dash-recent-main"><span class="dash-recent-tracking">' + escapeHtml_(h.tracking_no || '-') + '</span>' +
+          '<span class="dash-recent-owner">' + escapeHtml_(w ? ownerNameOf_(w) : '-') + '</span>' +
+          '<span class="dash-recent-move">' + escapeHtml_(fromLabel) + ' &rarr; ' + escapeHtml_(toLabel) + '</span></div>' +
+          '<div class="dash-recent-side"><span class="dash-recent-org">' + escapeHtml_(h.action_by_org || '-') + '</span>' +
+          '<span class="dash-recent-date">' + formatDateTh_(h.action_date) + '</span></div>' +
+          '</a>';
+      }).join('')
+    : '<div class="empty">ยังไม่มีความเคลื่อนไหวล่าสุด</div>';
+
   return '' +
     registryLinkHtml + kpiHtml + filterFormHtml +
+    '<div class="dash-row-2-1">' +
     '<section class="dash-section"><div class="dash-section-head"><span class="dash-section-title">งานที่ต้องติดตาม</span>' +
     '<a target="_top" href="' + baseUrl + '?page=registry&bucket=progress&' + respQuery + '">ดูทั้งหมด &rarr;</a></div>' + followHtml + '</section>' +
     '<section class="dash-section"><div class="dash-section-head"><span class="dash-section-title">งานใกล้ครบกำหนด</span>' +
-    '<a target="_top" href="' + baseUrl + '?page=registry&bucket=overdue&' + respQuery + '">ดูทั้งหมด &rarr;</a></div>' + dueHtml + '</section>';
+    '<a target="_top" href="' + baseUrl + '?page=registry&bucket=overdue&' + respQuery + '">ดูทั้งหมด &rarr;</a></div>' + dueHtml + '</section>' +
+    '</div>' +
+    '<section class="dash-section dash-section-recent"><div class="dash-section-head"><span class="dash-section-title">อัปเดตล่าสุด</span></div>' +
+    recentHtml + '</section>';
 }
 
 /**
@@ -1692,8 +1750,9 @@ var STAFF_CSS_ = '' +
   '.admin-table th,.admin-table td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--border);}' +
   '.cell-danger{color:var(--danger);font-weight:700;}' +
   // Dashboard ผู้รับผิดชอบ (หน้าแรกใหม่) — KPI grid + กราฟ + งานของฉันแบบย่อ ใช้ token สีเดิมทั้งหมด
-  '.dash-filter-form{display:flex;gap:10px;margin-bottom:6px;}' +
+  '.dash-filter-form{display:flex;gap:10px;margin-bottom:6px;align-items:flex-end;}' +
   '.dash-filter-form .field{flex:1;margin-bottom:0;}' +
+  '.dash-filter-form .btn-primary{width:auto;flex-shrink:0;padding:9px 20px;margin-top:0;}' + // 2026-09-24 รอบ 2 — เดิม width:100% (สืบทอดจาก .btn-primary) ทำให้ปุ่มยาวเต็มแถว
   '.kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0;}' +
   '.kpi-grid-4{grid-template-columns:repeat(4,1fr);}' + // Dashboard Admin (2026-09-24) — 4 กล่อง KPI หลัก ตาม spec ข้อ 13
   '.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 12px;text-align:center;text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:3px;box-shadow:0 1px 2px rgba(20,40,55,.06);}' +
@@ -1703,6 +1762,21 @@ var STAFF_CSS_ = '' +
   '.kpi-count{font-size:1.5rem;font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums;}' +
   '.kpi-label{font-size:.78rem;color:var(--text);font-weight:600;}' +
   '.kpi-hint{font-size:.68rem;color:var(--muted);}' +
+  // KPI compact — สโคปเฉพาะ .kpi-grid-4 (Dashboard Admin) เท่านั้น ไม่กระทบ .kpi-grid เดิมของ Dashboard
+  // ผู้รับผิดชอบ (2026-09-24 รอบ 2): พื้นขาวเสมอ, เส้น accent ซ้ายแทนวงกลมไอคอนสีเต็ม, สูงกะทัดรัด (~90-100px),
+  // label+icon อยู่แถวเดียวกันด้านบน ตัวเลขใหญ่ชิดล่าง
+  '.kpi-grid-4 .kpi-card{align-items:flex-start;text-align:left;padding:10px 12px;gap:6px;min-height:0;border-left:3px solid var(--border);border-radius:10px;}' +
+  '.kpi-grid-4 .kpi-label{display:flex;align-items:center;gap:6px;font-size:.74rem;color:var(--muted);font-weight:600;}' +
+  '.kpi-grid-4 .kpi-icon{width:auto;height:auto;border-radius:0;background:none;color:inherit;font-size:.95rem;margin-bottom:0;}' +
+  '.kpi-grid-4 .kpi-count{font-size:1.35rem;}' +
+  '.kpi-grid-4 .kpi-card-navy{border-left-color:var(--navy);}.kpi-grid-4 .kpi-card-navy .kpi-icon{color:var(--navy);}' +
+  '.kpi-grid-4 .kpi-card-active{border-left-color:var(--active);}.kpi-grid-4 .kpi-card-active .kpi-icon{color:var(--active);}' +
+  '.kpi-grid-4 .kpi-card-revision{border-left-color:var(--revision);}.kpi-grid-4 .kpi-card-revision .kpi-icon{color:var(--revision);}' +
+  '.kpi-grid-4 .kpi-card-danger{border-left-color:var(--danger);}.kpi-grid-4 .kpi-card-danger .kpi-icon{color:var(--danger);}' +
+  '.dash-quick-action-wrap{display:flex;justify-content:flex-end;margin-bottom:10px;}' +
+  '.dash-quick-action{display:flex;flex-direction:column;gap:2px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 16px;text-decoration:none;min-width:220px;}' +
+  '.dash-quick-action-title{font-size:.86rem;font-weight:700;color:var(--navy);}' +
+  '.dash-quick-action-sub{font-size:.74rem;color:var(--teal);font-weight:600;}' +
   '.chart-row{display:flex;gap:12px;margin-bottom:14px;}' +
   '.chart-box{flex:1;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;min-width:0;}' +
   '.chart-title{font-weight:700;color:var(--navy);font-size:.85rem;margin-bottom:8px;}' +
@@ -1712,21 +1786,38 @@ var STAFF_CSS_ = '' +
   '.mywork-head{font-size:.8rem;color:var(--muted);font-weight:600;margin-bottom:6px;}' +
   '@media (max-width:640px){.kpi-grid{grid-template-columns:repeat(2,1fr);}.chart-row{flex-direction:column;}.dash-filter-form{flex-wrap:wrap;}}' +
   // Dashboard Admin (2026-09-24) — section "งานที่ต้องติดตาม"/"งานใกล้ครบกำหนด" การ์ดขาวเรียบๆ badge สีอ่อน
-  '.dash-section{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:16px;}' +
-  '.dash-section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:10px;}' +
+  // (รอบ 2: padding/margin ลดลงเพื่อลด whitespace, ห่อ 2 section แรกเป็น grid 2fr/1fr บน desktop)
+  '.dash-row-2-1{display:grid;grid-template-columns:2fr 1fr;gap:14px;align-items:start;}' +
+  '.dash-section{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 16px;margin-bottom:14px;}' +
+  '.dash-section-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;gap:10px;}' +
   '.dash-section-title{font-weight:600;color:var(--navy);font-size:1rem;}' +
   '.dash-section-head a{font-size:.82rem;color:var(--teal);font-weight:600;text-decoration:none;white-space:nowrap;}' +
-  '.dash-follow-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--border);text-decoration:none;color:inherit;flex-wrap:wrap;}' +
+  '.dash-follow-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:9px 0;border-top:1px solid var(--border);color:inherit;flex-wrap:wrap;}' +
   '.dash-follow-row:first-child{border-top:none;padding-top:0;}' +
   '.dash-follow-main{display:flex;flex-direction:column;min-width:0;gap:2px;}' +
-  '.dash-follow-tracking{font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums;}' +
-  '.dash-follow-title{font-size:.9rem;color:var(--text);font-weight:600;word-wrap:break-word;}' +
-  '.dash-follow-org{font-size:.78rem;color:var(--muted);}' +
+  '.dash-follow-owner{font-size:.88rem;color:var(--navy);font-weight:700;}' +
+  '.dash-follow-tracking{font-size:.76rem;color:var(--muted);font-variant-numeric:tabular-nums;}' +
+  '.dash-follow-title{font-size:.84rem;color:var(--text);font-weight:600;word-wrap:break-word;}' +
+  '.dash-follow-org{font-size:.76rem;color:var(--muted);}' +
   '.dash-follow-side{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;}' +
-  '.dash-follow-date{font-size:.74rem;color:var(--muted);}' +
+  '.dash-follow-date{font-size:.72rem;color:var(--muted);}' +
+  '.dash-follow-cta{font-size:.76rem;color:var(--teal);font-weight:700;text-decoration:none;white-space:nowrap;}' +
   '.dash-due-badge{font-size:.76rem;font-weight:600;padding:4px 10px;border-radius:999px;background:#fdf6e3;color:var(--revision);white-space:nowrap;}' +
   '.dash-due-badge-over{background:#fbeceb;color:var(--danger);}' +
-  '@media (max-width:640px){.kpi-grid-4{grid-template-columns:repeat(2,1fr);}.dash-follow-row{flex-direction:column;align-items:flex-start;}.dash-follow-side{align-items:flex-start;flex-direction:row;gap:8px;}}';
+  // "อัปเดตล่าสุด" (ใหม่ทั้งหมด 2026-09-24 รอบ 2) — reuse .dash-section/.dash-section-head เดิม แถวย่อยคลิกได้
+  '.dash-recent-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--border);text-decoration:none;color:inherit;flex-wrap:wrap;}' +
+  '.dash-recent-row:first-child{border-top:none;padding-top:0;}' +
+  '.dash-recent-main{display:flex;flex-direction:column;min-width:0;gap:2px;}' +
+  '.dash-recent-tracking{font-size:.76rem;color:var(--muted);font-variant-numeric:tabular-nums;}' +
+  '.dash-recent-owner{font-size:.86rem;color:var(--navy);font-weight:700;}' +
+  '.dash-recent-move{font-size:.8rem;color:var(--text);}' +
+  '.dash-recent-side{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;}' +
+  '.dash-recent-org{font-size:.76rem;color:var(--teal);font-weight:600;}' +
+  '.dash-recent-date{font-size:.72rem;color:var(--muted);}' +
+  '@media (max-width:640px){.kpi-grid-4{grid-template-columns:repeat(2,1fr);}.dash-row-2-1{grid-template-columns:1fr;}' +
+  '.dash-follow-row,.dash-recent-row{flex-direction:column;align-items:flex-start;}' +
+  '.dash-follow-side{align-items:flex-start;flex-direction:row;gap:8px;}.dash-recent-side{align-items:flex-start;}' +
+  '.dash-filter-form{flex-wrap:wrap;}.dash-filter-form .btn-primary{width:100%;}}';
 
 var PUBLIC_CSS_ = '' +
   '.public-body{padding-bottom:24px;}' +
