@@ -293,7 +293,7 @@ function renderResponsibleDashboardBody_(ss, user, m, month, year, baseUrl) {
     (recentRows
       ? '<div class="table-scroll"><table class="admin-table"><thead><tr>' +
         '<th>เลขทะเบียน</th><th>เจ้าของผลงาน</th><th>ชื่อผลงาน</th><th>หน่วยงาน</th>' +
-        '<th>วันที่รับเรื่อง</th><th>State ล่าสุด</th><th>วันที่อัปเดต</th><th>จัดการ</th>' +
+        '<th>วันที่รับเรื่อง</th><th>สถานะล่าสุด</th><th>วันที่อัปเดต</th><th>จัดการ</th>' +
         '</tr></thead><tbody>' + recentRows + '</tbody></table></div>'
       : '<div class="empty">ไม่มีรายการในเดือนที่เลือก</div>');
 
@@ -396,7 +396,7 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
   var allStates = listStationsSorted_(ss);
   var allWorks = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
 
-  var stateOptions = '<option value="">ทุก state</option>' + allStates.map(function (s) {
+  var stateOptions = '<option value="">ทุกสถานะ</option>' + allStates.map(function (s) {
     var sel = rp.state === s.station_key ? ' selected' : '';
     return '<option value="' + escapeHtml_(s.station_key) + '"' + sel + '>' + escapeHtml_(s.station_name) + '</option>';
   }).join('');
@@ -431,7 +431,7 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
     '" placeholder="เลขทะเบียน / ชื่อเจ้าของผลงาน / ชื่อผลงาน / หน่วยงาน"></div>' +
     '</div>' +
     '<div class="field-row">' +
-    '<div class="field"><label>State</label><select class="input" name="state">' + stateOptions + '</select></div>' +
+    '<div class="field"><label>สถานะ</label><select class="input" name="state">' + stateOptions + '</select></div>' +
     '<div class="field"><label>ผู้รับผิดชอบ</label><select class="input" name="resp">' + respOptions + '</select></div>' +
     '</div>' +
     '<div class="field-row">' +
@@ -463,7 +463,7 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
   var tableHtml = pageResult.items.length
     ? '<div class="table-scroll"><table class="admin-table"><thead><tr>' +
       '<th>เลขทะเบียน</th><th>ชื่อผลงาน</th><th>หน่วยงาน</th><th>เจ้าของผลงาน</th>' +
-      '<th>State ปัจจุบัน</th><th>ผู้รับผิดชอบ</th><th>วันที่อัปเดตล่าสุด</th><th>จัดการ</th>' +
+      '<th>สถานะปัจจุบัน</th><th>ผู้รับผิดชอบ</th><th>วันที่อัปเดตล่าสุด</th><th>จัดการ</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>'
     : '<div class="empty">ไม่พบรายการที่ตรงกับเงื่อนไข</div>';
 
@@ -482,7 +482,7 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
   }
 
   return flashHtml + tilesHtml + filterFormHtml +
-    '<p class="hint" style="margin:0 0 10px">คลิก "ดูรายละเอียด/จัดการ" — เห็นได้ทุกรายการ แก้สถานะได้เฉพาะที่หน่วยงานตนรับผิดชอบ ณ state ปัจจุบันเท่านั้น</p>' +
+    '<p class="hint" style="margin:0 0 10px">คลิก "ดูรายละเอียด/จัดการ" — เห็นได้ทุกรายการ แก้สถานะได้เฉพาะที่หน่วยงานตนรับผิดชอบ ณ สถานะปัจจุบันเท่านั้น</p>' +
     '<section class="metric-card">' + tableHtml + pagerHtml + '</section>';
 }
 
