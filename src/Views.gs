@@ -710,7 +710,6 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
     '<div class="pub-hero-label">สถานะปัจจุบัน</div>' +
     '<div class="pub-hero-main">' + (orderLabel ? escapeHtml_(orderLabel) + ' ' : '') + escapeHtml_(split.main) + '</div>' +
     (split.desc ? '<div class="pub-hero-desc">' + escapeHtml_(split.desc) + '</div>' : '') +
-    '<div class="pub-hero-current-note">ขณะนี้ผลงานอยู่ขั้นตอนนี้</div>' +
     '<div class="pub-hero-updated">อัปเดตล่าสุด ' + formatDateTh_(work.updated_at) + '</div>' +
     '</div>';
 
@@ -718,16 +717,17 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
     ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
     : '';
 
-  var handoffHtml = '' +
-    '<div class="pub-owner-card">' +
-    '<div class="pub-owner-title">ผู้รับผิดชอบปัจจุบัน</div>' +
-    renderPubOwnerRow_('ผู้รับผิดชอบ', work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-')) +
-    renderPubOwnerRow_('รับงานเมื่อ', formatDateTh_(work.updated_at)) +
-    '</div>' +
-    renderPubDateGrid_(work.received_date, data.governorForwardDate);
+  // Mini Important Info Grid (2026-09-24 redesign รอบ compact) — รวมผู้รับผิดชอบ+วันที่สำคัญไว้ grid เดียว
+  // (เดิมแยก 2 การ์ด: pub-owner-card "ผู้รับผิดชอบปัจจุบัน" + renderPubDateGrid_ "วันที่สำคัญ")
+  var infoGridHtml = renderPubInfoGrid_([
+    { label: 'ผู้รับผิดชอบ', value: work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-') },
+    { label: 'รับงานเมื่อ', value: formatDateTh_(work.updated_at) },
+    { label: 'รับเรื่องเมื่อ', value: formatDateTh_(work.received_date) },
+    { label: 'ส่งให้ผู้ว่า', value: data.governorForwardDate ? formatDateTh_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า' },
+  ]);
 
   var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
-  var timelineHtml = data.steps ? renderPublicTimeline_(data.steps) : '';
+  var timelineHtml = renderPubTimelineSection_(data.steps);
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
   // ข้อมูลภายในสำหรับเจ้าหน้าที่ — พับเก็บด้วย <details> ไม่ให้เด่นเกินสถานะ/Timeline ตามที่ผู้ใช้ขอ 2026-09-24
@@ -766,11 +766,13 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
     : '';
 
   return '' +
+    '<div class="pub-compact">' +
     '<div class="detail-card">' +
-    nameBlockHtml + heroHtml + actionHtml + handoffHtml + progressHtml + timelineHtml + noteHtml + auditLogHtml + infoHtml + coverHtml +
-    '<p style="margin-top:16px"><a class="btn-outline" target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
+    nameBlockHtml + heroHtml + actionHtml + infoGridHtml + progressHtml + timelineHtml + noteHtml + auditLogHtml + infoHtml + coverHtml +
+    '<p style="margin-top:12px"><a class="btn-outline" target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
     '</div>' +
-    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>';
+    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>' +
+    '</div>';
 }
 
 /** หน้าพิมพ์ QR ใหม่ — qr_token เดิมไม่เปลี่ยน จึงสร้างภาพ QR เดิมซ้ำได้ทุกเมื่อ (ใช้ตอน QR บนเอกสารเสีย/หาย) */
@@ -920,15 +922,20 @@ var QR_PHOTO_SCAN_SCRIPT_ = '' +
  * เฉพาะฟิลด์ที่เปิดเผยได้ (ชื่อปกปิดบางส่วนตาม A10 เสมอ — ไม่มี audit log/ปุ่มแก้ไข/ข้อมูลคนอื่น)
  * data = { revisionInfo, steps, currentStation, latestNote, governorForwardDate } จาก buildPublicResultData_ (PublicTrack.gs)
  */
-/** "วันที่สำคัญ" — grid 2 คอลัมน์ (รับเรื่องเมื่อ/ส่งให้ผู้ว่า) reuse ทั้งหน้าสาธารณะและหน้า staff (2026-09-24) */
-function renderPubDateGrid_(receivedDate, governorForwardDate) {
+/**
+ * "ข้อมูลสำคัญ" — Mini Important Info Grid 2x2 (2026-09-24 redesign รอบ compact): รวม "ผู้รับผิดชอบปัจจุบัน"
+ * (ผู้รับผิดชอบ/รับงานเมื่อ — เดิมเป็นการ์ดแยก pub-owner-card) เข้ากับ "วันที่สำคัญ" (รับเรื่องเมื่อ/ส่งให้ผู้ว่า —
+ * เดิม renderPubDateGrid_) ให้เหลือ grid เดียว การ์ดเดียว ลด section ที่ซ้อนกันตามที่ผู้ใช้ขอ (ข้อ 6/15) reuse
+ * ทั้งหน้าสาธารณะและหน้า staff — items: [{label, value}] เสมอ 4 รายการตามลำดับที่ผู้ใช้ระบุ (ข้อ 6)
+ */
+function renderPubInfoGrid_(items) {
   return '' +
-    '<div class="pub-date-section-title">วันที่สำคัญ</div>' +
-    '<div class="pub-date-grid">' +
-    '<div class="pub-date-card"><div class="pub-date-label">รับเรื่องเมื่อ</div>' +
-    '<div class="pub-date-value">' + escapeHtml_(formatDateTh_(receivedDate) || '-') + '</div></div>' +
-    '<div class="pub-date-card"><div class="pub-date-label">ส่งให้ผู้ว่า</div>' +
-    '<div class="pub-date-value">' + escapeHtml_(governorForwardDate ? formatDateTh_(governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า') + '</div></div>' +
+    '<div class="pub-date-section-title">ข้อมูลสำคัญ</div>' +
+    '<div class="pub-date-grid pub-info-grid-4">' +
+    items.map(function (it) {
+      return '<div class="pub-date-card"><div class="pub-date-label">' + escapeHtml_(it.label) + '</div>' +
+        '<div class="pub-date-value">' + escapeHtml_(it.value || '-') + '</div></div>';
+    }).join('') +
     '</div>';
 }
 
@@ -956,7 +963,6 @@ function renderPublicResultBody_(work, data, baseUrl) {
     '<div class="pub-hero-label">สถานะปัจจุบัน</div>' +
     '<div class="pub-hero-main">' + (orderLabel ? escapeHtml_(orderLabel) + ' ' : '') + escapeHtml_(split.main) + '</div>' +
     (split.desc ? '<div class="pub-hero-desc">' + escapeHtml_(split.desc) + '</div>' : '') +
-    '<div class="pub-hero-current-note">ขณะนี้ผลงานของท่านอยู่ขั้นตอนนี้</div>' +
     '<div class="pub-hero-updated">อัปเดตล่าสุด ' + formatDateTh_(work.updated_at) + '</div>' +
     '</div>';
 
@@ -964,18 +970,17 @@ function renderPublicResultBody_(work, data, baseUrl) {
     ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
     : '';
 
-  // ผู้รับผิดชอบปัจจุบัน (current_owner_org/updated_at) แยกการ์ดจาก "วันที่สำคัญ" (received_date/governorForwardDate
-  // — ข้อ I.9.4-9.6) ตามที่ผู้ใช้ขอ 2026-09-24 (เดิมรวมอยู่การ์ดเดียวกันทั้ง 4 แถว)
-  var handoffHtml = '' +
-    '<div class="pub-owner-card">' +
-    '<div class="pub-owner-title">ผู้รับผิดชอบปัจจุบัน</div>' +
-    renderPubOwnerRow_('ผู้รับผิดชอบ', work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-')) +
-    renderPubOwnerRow_('รับงานเมื่อ', formatDateTh_(work.updated_at)) +
-    '</div>' +
-    renderPubDateGrid_(work.received_date, data.governorForwardDate);
+  // Mini Important Info Grid (2026-09-24 redesign รอบ compact) — รวมผู้รับผิดชอบ+วันที่สำคัญไว้ grid เดียว
+  // (เดิมแยก 2 การ์ด: pub-owner-card "ผู้รับผิดชอบปัจจุบัน" + renderPubDateGrid_ "วันที่สำคัญ")
+  var infoGridHtml = renderPubInfoGrid_([
+    { label: 'ผู้รับผิดชอบ', value: work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-') },
+    { label: 'รับงานเมื่อ', value: formatDateTh_(work.updated_at) },
+    { label: 'รับเรื่องเมื่อ', value: formatDateTh_(work.received_date) },
+    { label: 'ส่งให้ผู้ว่า', value: data.governorForwardDate ? formatDateTh_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า' },
+  ]);
 
   var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
-  var timelineHtml = data.steps ? renderPublicTimeline_(data.steps) : '';
+  var timelineHtml = renderPubTimelineSection_(data.steps);
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
   var ownerHtml = '' +
@@ -1000,8 +1005,10 @@ function renderPublicResultBody_(work, data, baseUrl) {
   }
 
   return '' +
-    nameBlockHtml + heroHtml + actionHtml + handoffHtml + progressHtml + timelineHtml + ownerHtml + noteHtml +
-    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '">&larr; ตรวจสอบรายการอื่น</a></p>';
+    '<div class="pub-compact">' +
+    nameBlockHtml + heroHtml + actionHtml + infoGridHtml + progressHtml + timelineHtml + ownerHtml + noteHtml +
+    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '">&larr; ตรวจสอบรายการอื่น</a></p>' +
+    '</div>';
 }
 
 function renderPubOwnerRow_(label, value) {
@@ -1055,6 +1062,42 @@ function renderPublicTimeline_(steps) {
   flushGroup();
 
   return '<div class="pub-timeline">' + html + '</div>';
+}
+
+/**
+ * Mini Timeline — 3 จุดหลักเท่านั้น (2026-09-24 redesign รอบ compact ตามที่ผู้ใช้ขอ ข้อ 8): ล่าสุดที่ผ่าน /
+ * สถานะปัจจุบัน / ขั้นตอนถัดไป ไม่เดา ไม่มี ถ้าไม่มีจริง (เช่น ยังไม่มีขั้นที่ผ่านแล้ว หรือขั้นถัดไปยังไม่แน่นอน
+ * เพราะแตกสาย — steps ที่ได้จาก buildPublicDetailedSteps_ ไม่เดาอยู่แล้ว จุดนี้แค่เลือกแสดงบางส่วน)
+ */
+function renderPubMiniTimeline_(steps) {
+  var doneSteps = steps.filter(function (s) { return s.state === 'done'; });
+  var lastDone = doneSteps.length ? doneSteps[doneSteps.length - 1] : null;
+  var current = steps.filter(function (s) { return s.state === 'current'; })[0] || null;
+  var currentIdx = current ? steps.indexOf(current) : -1;
+  var nextUpcoming = currentIdx !== -1
+    ? (steps.slice(currentIdx + 1).filter(function (s) { return s.state === 'upcoming'; })[0] || null)
+    : null;
+
+  function miniItem(s) {
+    if (!s) return '';
+    var icon = s.state === 'current' ? '●' : (s.key === 's10' ? '◎' : (s.state === 'done' ? '✓' : '○'));
+    return '<div class="pub-tl-item pub-tl-' + s.state + '">' +
+      '<span class="pub-tl-icon">' + icon + '</span>' +
+      '<span class="pub-tl-text"><b>' + escapeHtml_(s.order) + '</b> ' + escapeHtml_(s.name) + '</span></div>';
+  }
+
+  return '<div class="pub-tl-mini">' + [lastDone, current, nextUpcoming].map(miniItem).join('') + '</div>';
+}
+
+/**
+ * รวม Mini Timeline (แสดงเสมอ) + Timeline ฉบับเต็ม (พับเก็บด้วย <details> ค่าเริ่มต้นปิด — ตามข้อ 8/19: หน้า
+ * compact ก่อน เปิดดูเพิ่มได้ทีหลัง) แทนที่การเรียก renderPublicTimeline_ ตรงๆ เดิม — ไม่แก้ renderPublicTimeline_
+ * เอง (ยังใช้แสดง timeline ฉบับเต็มเหมือนเดิมทุกประการ แค่ห่อด้วย <details> เพิ่ม)
+ */
+function renderPubTimelineSection_(steps) {
+  if (!steps) return '';
+  return renderPubMiniTimeline_(steps) +
+    '<details class="pub-tl-full-details"><summary>ดู timeline เพิ่มเติม</summary>' + renderPublicTimeline_(steps) + '</details>';
 }
 
 /** หน้าสแกน QR — ยังไม่มี token (เข้าจากเมนู ไม่ใช่จากลิงก์ QR) — กรอกรหัสเองได้กรณีกล้องอ่านไม่ออก */
@@ -1898,43 +1941,48 @@ var PUBLIC_CSS_ = '' +
   // มือถือ (viewport < 800px) ได้ความกว้างเต็มจออัตโนมัติ, เดสก์ท็อปเห็นเนื้อหาไม่ยืดกว้างจนอ่านยาก
   '.public-body .content{width:100%;max-width:860px;padding-left:16px;padding-right:16px;box-sizing:border-box;}' +
   '@media (min-width:768px){.public-body .content{padding-left:24px;padding-right:24px;}}' +
+  // Single Compact Summary Layout (2026-09-24 redesign รอบ compact ตามที่ผู้ใช้ขอ): container เดียว จำกัด
+  // max-width แคบกว่า .content ทั่วไป (760px) จัดกึ่งกลาง — ใช้กับทั้งหน้าสาธารณะ (ซ้อนกับ .public-body .content
+  // 860px เดิม ทำให้แคบลงอีก) และหน้า staff (?page=detail ซึ่งปกติอยู่ใน .content กว้าง 80vw/1600px — นี่คือจุด
+  // แก้ปัญหาจริงที่ผู้ใช้แจ้ง "content ไปกองด้านขวา พื้นที่ซ้ายว่างมาก" เพราะเดิมไม่มี wrapper จำกัดความกว้างเลย)
+  '.pub-compact{max-width:760px;margin:0 auto;}' +
   '.pub-subheader{font-size:.82rem;color:var(--muted);margin:0 2px 14px;}' +
-  // บล็อกชื่อเจ้าของผลงาน+ชื่อผลงาน (2026-09-15) — อยู่บนสุดตามข้อ M แต่ตัวอักษรเล็กกว่า hero สถานะเสมอ (ข้อ O.17)
-  // ลำดับหัวหน้า (2026-09-24): ชื่อเจ้าของผลงานเด่นสุด -> เลขทะเบียน (รอง, muted) -> ชื่อผลงาน
-  '.pub-name-block{margin:0 2px 18px;}' +
-  '.pub-name-owner{font-weight:700;font-size:1.3rem;color:var(--navy);line-height:1.3;word-wrap:break-word;}' +
-  '.pub-name-tracking{font-size:.82rem;font-weight:500;color:var(--muted);margin-top:4px;}' +
-  '.pub-name-title{font-size:.92rem;font-weight:500;color:var(--text);margin-top:5px;line-height:1.4;word-wrap:break-word;}' +
-  // การ์ด "สถานะปัจจุบัน" — เด่นที่สุดในหน้า สีพื้นอ่อนตามกลุ่มสถานะ (เขียวอ่อน=สำเร็จ, ส้ม/เหลืองอ่อน=รอแก้ไข,
-  // แดงอ่อน=ปัญหา/ยุติ, ฟ้าอมเทาอ่อน=กำลังดำเนินการ) ไม่ใช้สีสดจัด ไม่มี shadow/gradient หนัก
-  '.pub-hero{border-radius:16px;padding:22px 22px 18px;margin-bottom:16px;border:1px solid var(--border);background:var(--bg);}' +
+  // บล็อกชื่อเจ้าของผลงาน+ชื่อผลงาน — "Summary Top Bar" กระชับ (2026-09-24 ลด margin/ปรับขนาดตัวอักษรตาม
+  // spec typography ข้อ 12) ลำดับหัวหน้า: ชื่อเจ้าของผลงานเด่นสุด -> เลขทะเบียน (รอง, muted) -> ชื่อผลงาน
+  '.pub-name-block{margin:0 2px 10px;}' +
+  '.pub-name-owner{font-weight:700;font-size:1.2rem;color:var(--navy);line-height:1.25;word-wrap:break-word;}' +
+  '.pub-name-tracking{font-size:.8rem;font-weight:500;color:var(--muted);margin-top:2px;}' +
+  '.pub-name-title{font-size:.82rem;font-weight:500;color:var(--text);margin-top:3px;line-height:1.35;word-wrap:break-word;}' +
+  // "Compact Status Card" — hero เตี้ยลง (2026-09-24) ตัดบรรทัด "ขณะนี้ผลงานอยู่ขั้นตอนนี้" ออก (ซ้ำความหมายกับ
+  // label "สถานะปัจจุบัน" ด้านบนอยู่แล้ว) เหลือ label/ค่าเด่น/คำอธิบายย่อย/อัปเดตล่าสุด ตามตัวอย่างข้อ 5 พอดี
+  '.pub-hero{border-radius:14px;padding:14px 16px 12px;margin-bottom:10px;border:1px solid var(--border);background:var(--bg);}' +
   '.pub-hero-pending{background:#f2f4f6;border-color:#e1e6ea;}' +
   '.pub-hero-active{background:#eaf6f6;border-color:#cdeaea;}' +
   '.pub-hero-revision{background:#fdf6e3;border-color:#f0e0ab;}' +
   '.pub-hero-danger{background:#fbeceb;border-color:#f0cbc8;}' +
   '.pub-hero-done{background:#eaf7ee;border-color:#c9e8d1;}' +
-  '.pub-hero-label{font-size:.76rem;color:var(--muted);margin-bottom:6px;}' +
-  '.pub-hero-main{font-size:1.4rem;font-weight:700;color:var(--navy);line-height:1.35;}' +
-  '.pub-hero-desc{font-size:.86rem;color:var(--muted);margin-top:5px;line-height:1.5;}' +
-  '.pub-hero-updated{font-size:.75rem;color:var(--muted);margin-top:14px;}' +
-  '.pub-hero-current-note{font-size:.78rem;color:var(--navy);font-weight:600;margin-top:10px;}' +
+  '.pub-hero-label{font-size:.72rem;color:var(--muted);margin-bottom:3px;}' +
+  '.pub-hero-main{font-size:1.55rem;font-weight:700;color:var(--navy);line-height:1.25;}' +
+  '.pub-hero-desc{font-size:.82rem;color:var(--muted);margin-top:3px;line-height:1.4;}' +
+  '.pub-hero-updated{font-size:.72rem;color:var(--muted);margin-top:6px;}' +
   // กล่อง "สิ่งที่ต้องดำเนินการ" — เด่นรองจากสถานะ พื้นสีอ่อนโทนเดียวกับ revision กันความสับสน
-  '.pub-action-box{background:#fff8ec;border:1px solid #f0e0ab;border-radius:14px;padding:16px 18px;margin-bottom:16px;}' +
-  '.pub-action-title{font-weight:700;color:var(--revision);font-size:.82rem;margin:0 0 6px;}' +
-  '.pub-action-box p{margin:0;font-size:.9rem;line-height:1.6;color:var(--text);}' +
+  '.pub-action-box{background:#fff8ec;border:1px solid #f0e0ab;border-radius:12px;padding:10px 14px;margin-bottom:10px;}' +
+  '.pub-action-title{font-weight:700;color:var(--revision);font-size:.78rem;margin:0 0 4px;}' +
+  '.pub-action-box p{margin:0;font-size:.84rem;line-height:1.5;color:var(--text);}' +
   // Timeline ละเอียด — เส้นบาง ไอคอนเล็ก สีนุ่ม ✓ ผ่านแล้ว/● ปัจจุบัน (เด่น)/○ ยังไม่ถึง (จาง)
-  // Summary Card "ความคืบหน้าของผลงาน" (Metro Progress) เหนือ Timeline — ผ่านแล้ว/ปัจจุบัน/เหลือ (2026-09-24)
-  '.pub-progress-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:16px;}' +
-  '.pub-progress-title{font-weight:700;color:var(--navy);font-size:.82rem;margin:0 0 10px;}' +
-  '.pub-progress-row{display:flex;flex-wrap:wrap;gap:8px 16px;}' +
-  '.pub-progress-item{font-size:.84rem;font-weight:600;white-space:nowrap;}' +
+  // Summary Card "ความคืบหน้าของผลงาน" (Metro Progress) เหนือ Timeline — ผ่านแล้ว/ปัจจุบัน/เหลือ (2026-09-24
+  // ปรับ compact รอบ 2: padding/margin ลดลง, bar เตี้ยลง — logic/ข้อความเดิมไม่เปลี่ยน)
+  '.pub-progress-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:10px;}' +
+  '.pub-progress-title{font-weight:700;color:var(--navy);font-size:.76rem;margin:0 0 6px;}' +
+  '.pub-progress-row{display:flex;flex-wrap:wrap;gap:6px 14px;}' +
+  '.pub-progress-item{font-size:.8rem;font-weight:600;white-space:nowrap;}' +
   '.pub-progress-done{color:var(--done);}' +
   '.pub-progress-current{color:var(--navy);}' +
   '.pub-progress-remaining{color:var(--muted);font-weight:400;}' +
-  '.pub-progress-finished{color:var(--done);font-weight:700;font-size:.88rem;margin-top:8px;}' +
-  '.pub-progress-bar{background:var(--bg);border-radius:999px;height:8px;margin-top:12px;overflow:hidden;}' +
+  '.pub-progress-finished{color:var(--done);font-weight:700;font-size:.84rem;margin-top:4px;}' +
+  '.pub-progress-bar{background:var(--bg);border-radius:999px;height:6px;margin-top:8px;overflow:hidden;}' +
   '.pub-progress-bar-fill{background:var(--done);height:100%;border-radius:999px;}' +
-  '.pub-progress-bar-label{font-size:.74rem;color:var(--muted);margin-top:6px;}' +
+  '.pub-progress-bar-label{font-size:.7rem;color:var(--muted);margin-top:4px;}' +
   '.pub-timeline{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px 6px;margin-bottom:16px;}' +
   '.pub-tl-item{display:flex;align-items:flex-start;gap:12px;padding-bottom:16px;position:relative;}' +
   '.pub-tl-item::before{content:"";position:absolute;left:10px;top:22px;bottom:0;width:1px;background:var(--border);}' +
@@ -1956,35 +2004,50 @@ var PUBLIC_CSS_ = '' +
   '.pub-tl-group summary::before{content:"›";position:absolute;left:9px;top:0;font-size:1rem;transition:transform .15s;}' +
   '.pub-tl-group[open] summary::before{transform:rotate(90deg);}' +
   '.pub-tl-group .pub-tl-item{padding-left:14px;}' +
-  // การ์ดข้อมูลผลงาน + กล่องหมายเหตุ — พื้นหลังสีอ่อน (soft blue-gray) แยกจาก card สีขาวด้านบน
-  '.pub-owner-card,.pub-note-box{background:var(--bg);border-radius:14px;padding:16px 18px;margin-bottom:16px;}' +
-  '.pub-owner-title,.pub-note-title{font-weight:700;color:var(--navy);font-size:.82rem;margin:0 0 10px;}' +
-  '.pub-owner-row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-top:1px solid var(--border);font-size:.85rem;}' +
+  // Mini Timeline (2026-09-24, ใหม่) — แสดงแค่ 3 จุดหลัก (ล่าสุดที่ผ่าน/ปัจจุบัน/ถัดไป) ไม่มีเส้นเชื่อมแนวตั้ง
+  // ระยะห่างแน่นกว่า .pub-timeline เต็ม, reuse .pub-tl-icon/.pub-tl-text/.pub-tl-current/.pub-tl-done เดิมทั้งหมด
+  '.pub-tl-mini{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:6px;}' +
+  '.pub-tl-mini .pub-tl-item{padding-bottom:8px;gap:8px;}' +
+  '.pub-tl-mini .pub-tl-item::before{display:none;}' +
+  '.pub-tl-mini .pub-tl-item:last-child{padding-bottom:0;}' +
+  '.pub-tl-mini .pub-tl-text{font-size:.82rem;}' +
+  // ลิงก์ "ดู timeline เพิ่มเติม" — <details> เล็กๆ ใต้ mini timeline ค่าเริ่มต้นปิด (compact ก่อนตามข้อ 8/19)
+  '.pub-tl-full-details{margin-bottom:10px;}' +
+  '.pub-tl-full-details summary{cursor:pointer;font-size:.78rem;font-weight:600;color:var(--teal);list-style:none;padding:2px 0;text-align:center;}' +
+  '.pub-tl-full-details summary::-webkit-details-marker{display:none;}' +
+  '.pub-tl-full-details[open] summary{margin-bottom:6px;}' +
+  '.pub-tl-full-details .pub-timeline{margin-bottom:0;}' +
+  // การ์ดข้อมูลผลงาน + กล่องหมายเหตุ — พื้นหลังสีอ่อน (soft blue-gray) แยกจาก card สีขาวด้านบน (compact รอบ 2)
+  '.pub-owner-card,.pub-note-box{background:var(--bg);border-radius:12px;padding:10px 14px;margin-bottom:10px;}' +
+  '.pub-owner-title,.pub-note-title{font-weight:700;color:var(--navy);font-size:.78rem;margin:0 0 6px;}' +
+  '.pub-owner-row{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-top:1px solid var(--border);font-size:.82rem;}' +
   '.pub-owner-row:first-of-type{border-top:none;padding-top:0;}' +
   '.pub-owner-label{color:var(--muted);flex-shrink:0;}' +
   '.pub-owner-value{font-weight:600;color:var(--text);text-align:right;}' +
-  '.pub-note-box p{margin:0;font-size:.88rem;line-height:1.6;color:var(--text);}' +
-  '.pub-back-link{text-align:center;margin-top:4px;min-height:44px;display:flex;align-items:center;justify-content:center;}' +
-  '.pub-back-link a{color:var(--muted);font-size:.83rem;}' +
-  // "วันที่สำคัญ" — grid 2 คอลัมน์บน desktop, 1 คอลัมน์บนมือถือ (mobile-first: 1 คอลัมน์เป็นค่าเริ่มต้น)
-  '.pub-date-section-title{font-weight:700;color:var(--navy);font-size:.82rem;margin:0 0 10px;}' +
-  '.pub-date-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px;}' +
+  '.pub-note-box p{margin:0;font-size:.84rem;line-height:1.5;color:var(--text);}' +
+  '.pub-back-link{text-align:center;margin-top:2px;min-height:36px;display:flex;align-items:center;justify-content:center;}' +
+  '.pub-back-link a{color:var(--muted);font-size:.8rem;}' +
+  // "ข้อมูลสำคัญ" — Mini Important Info Grid 2x2 (2026-09-24) เสมอ 2 คอลัมน์ทั้ง desktop/mobile ผ่าน
+  // .pub-info-grid-4 (specificity สูงกว่า ชนะ media query 1-คอลัมน์เดิมของ .pub-date-grid เปล่าๆ เสมอ)
+  '.pub-date-section-title{font-weight:700;color:var(--navy);font-size:.78rem;margin:0 0 6px;}' +
+  '.pub-date-grid{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:10px;}' +
   '@media (min-width:600px){.pub-date-grid{grid-template-columns:1fr 1fr;}}' +
-  '.pub-date-card{background:var(--bg);border-radius:14px;padding:14px 16px;}' +
-  '.pub-date-label{font-size:.76rem;color:var(--muted);margin-bottom:5px;}' +
-  '.pub-date-value{font-weight:700;color:var(--text);font-size:.92rem;line-height:1.4;word-wrap:break-word;}' +
+  '.pub-date-grid.pub-info-grid-4{grid-template-columns:1fr 1fr;gap:8px;}' +
+  '.pub-date-card{background:var(--bg);border-radius:10px;padding:8px 10px;}' +
+  '.pub-date-label{font-size:.7rem;color:var(--muted);margin-bottom:2px;}' +
+  '.pub-date-value{font-weight:700;color:var(--text);font-size:.84rem;line-height:1.3;word-wrap:break-word;}' +
   // กล่องแจ้งข้อมูลย่อยๆ (เช่น ข้อมูล Legacy) — เล็ก ไม่แย่งความเด่นจากสถานะปัจจุบัน
-  '.pub-info-box{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:16px;' +
-  'font-size:.78rem;color:var(--muted);line-height:1.5;display:flex;gap:8px;align-items:flex-start;}' +
+  '.pub-info-box{background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:8px 12px;margin-bottom:10px;' +
+  'font-size:.76rem;color:var(--muted);line-height:1.4;display:flex;gap:6px;align-items:flex-start;}' +
   '.pub-info-box b{color:var(--navy);flex-shrink:0;}' +
   // section แบบพับ/กางได้ (ข้อมูลภายใน, ประวัติละเอียด) — ใช้ <details> มาตรฐาน รองรับ keyboard/focus โดยธรรมชาติ
-  '.pub-details{margin-bottom:16px;border:1px solid var(--border);border-radius:14px;padding:0 16px;background:var(--card);}' +
-  '.pub-details summary{cursor:pointer;font-weight:600;color:var(--navy);font-size:.85rem;padding:14px 0;list-style:none;min-height:44px;display:flex;align-items:center;}' +
+  '.pub-details{margin-bottom:10px;border:1px solid var(--border);border-radius:12px;padding:0 14px;background:var(--card);}' +
+  '.pub-details summary{cursor:pointer;font-weight:600;color:var(--navy);font-size:.82rem;padding:10px 0;list-style:none;min-height:36px;display:flex;align-items:center;}' +
   '.pub-details summary::-webkit-details-marker{display:none;}' +
   '.pub-details summary::before{content:"▸";margin-right:8px;transition:transform .15s;display:inline-block;}' +
   '.pub-details[open] summary::before{transform:rotate(90deg);}' +
   '.pub-details summary:focus-visible{outline:2px solid var(--teal);outline-offset:2px;}' +
-  '.pub-details-body{padding-bottom:14px;}' +
+  '.pub-details-body{padding-bottom:10px;}' +
   '.pub-audit-item{padding:10px 0;border-top:1px solid var(--border);font-size:.83rem;}' +
   '.pub-audit-item:first-child{border-top:none;}' +
   '.pub-audit-head{display:flex;justify-content:space-between;gap:10px;font-weight:600;color:var(--text);}' +
