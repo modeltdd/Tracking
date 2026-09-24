@@ -1220,6 +1220,14 @@ function renderStubBody_(message, baseUrl) {
  * เดิมว่าไม่ใช่แค่นายแพทย์ที่มีด้าน) REG_DYNAMIC_SCRIPT_ กรอง option ตามตำแหน่ง+ซ่อน/โชว์ฝั่ง client
  * ฝั่ง backend validate ซ้ำเสมอที่ registerNewWork_ (Register.gs) ไม่เชื่อ client อย่างเดียว
  */
+/** รายการคำนำหน้าชื่อ/ยศทางการ (2026-09-24 เปลี่ยนจาก text input เดิมเป็น dropdown ตามที่ผู้ใช้ขอ) —
+ *  free-text เดิม (title_name) ไม่ validate ค่าที่แน่นอนอยู่แล้ว (ดู REGISTER_REQUIRED_FIELDS_/Register.gs
+ *  แค่เช็คไม่ว่าง) จึงใส่ dropdown ได้โดยไม่กระทบ validation/backend เดิม — "อื่น ๆ" คู่กับช่อง custom text
+ *  reuse pattern เดียวกับ work_type/work_type_other ที่มีอยู่แล้ว (values.title_name ถูก override ด้วย
+ *  ค่า custom ตอน submit ใน registerNewWork_) */
+var TITLE_NAME_OPTIONS_ = ['นาย', 'นาง', 'นางสาว', 'ดร.', 'ผศ.', 'รศ.', 'ศ.', 'พญ.', 'นพ.', 'ทพ.', 'ภญ.',
+  'ว่าที่ ร.ต.', 'ว่าที่ ร.อ.', 'ว่าที่ ร.ต.หญิง', 'ว่าที่ ร.อ.หญิง'];
+
 function renderRegisterFormBody_(ss, values, errors, baseUrl) {
   values = values || {};
   var v = function (key) { return escapeHtml_(values[key] || ''); };
@@ -1235,8 +1243,8 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
   var positionRows = getActiveMasterRows_(ss, SHEET.MASTER_POSITIONS);
   var specialtyRows = getActiveMasterRows_(ss, SHEET.MASTER_SPECIALTIES);
 
-  function selectHtml(name, options, current) {
-    return '<select class="input" name="' + name + '">' +
+  function selectHtml(name, options, current, id) {
+    return '<select class="input" name="' + name + '"' + (id ? ' id="' + id + '"' : '') + '>' +
       options.map(function (opt) {
         var sel = opt === current ? ' selected' : '';
         return '<option' + sel + '>' + escapeHtml_(opt) + '</option>';
@@ -1262,25 +1270,51 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
   // registerNewWork_ (resolveCommitteeForRegistration_ ใช้ logic เดียวกันเป๊ะ ไม่มี drift)
   var committeeLookup = buildCommitteeLookupForRegisterForm_(ss);
 
+  // คำนำหน้าชื่อ (2026-09-24 รอบใหม่) — dropdown ยศทางการ + "อื่น ๆ" คู่กับช่อง custom (reuse pattern work_type_other)
+  var isKnownTitle = TITLE_NAME_OPTIONS_.indexOf(values.title_name) !== -1;
+  var showTitleOther = !!values.title_name && !isKnownTitle;
+  var titleOptionsHtml = '<option value="">-- เลือกคำนำหน้าชื่อ --</option>' +
+    TITLE_NAME_OPTIONS_.map(function (opt) {
+      return '<option' + (opt === values.title_name ? ' selected' : '') + '>' + escapeHtml_(opt) + '</option>';
+    }).join('') +
+    '<option value="อื่น ๆ"' + (showTitleOther ? ' selected' : '') + '>อื่น ๆ</option>';
+
+  var showWorkTypeOther = values.work_type === 'อื่น ๆ';
+
   return '' +
     errorHtml +
     '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" id="reg-form">' +
     '<input type="hidden" name="form_action" value="register_work">' +
-    '<div class="field"><label>คำนำหน้าชื่อ</label><input class="input" name="reg_title_name" value="' + v('title_name') + '" placeholder="นาย / นาง / นางสาว"></div>' +
-    '<div class="field-row">' +
-    '<div class="field"><label>ชื่อ</label><input class="input" name="reg_first_name" value="' + v('first_name') + '"></div>' +
-    '<div class="field"><label>นามสกุล</label><input class="input" name="reg_last_name" value="' + v('last_name') + '"></div>' +
+
+    '<div class="reg-section"><div class="reg-section-title">ข้อมูลบุคคล</div>' +
+    '<div class="field-row field-row-name">' +
+    '<div class="field field-title"><label>คำนำหน้าชื่อ</label><select class="input" name="reg_title_name" id="reg-title-name">' + titleOptionsHtml + '</select></div>' +
+    '<div class="field field-first"><label>ชื่อ</label><input class="input" name="reg_first_name" value="' + v('first_name') + '"></div>' +
+    '<div class="field field-last"><label>นามสกุล</label><input class="input" name="reg_last_name" value="' + v('last_name') + '"></div>' +
     '</div>' +
+    '<div class="field" id="reg-title-other-field" style="' + (showTitleOther ? '' : 'display:none') + '">' +
+    '<label>ระบุคำนำหน้าชื่อ</label><input class="input" name="reg_title_name_other" id="reg-title-name-other" value="' + (showTitleOther ? v('title_name') : '') + '" placeholder="ระบุคำนำหน้าชื่อ (ใช้เฉพาะกรณีเลือกอื่น ๆ)"></div>' +
+    '<div class="field-row">' +
     '<div class="field"><label>ตำแหน่ง</label><select class="input" name="reg_position" id="reg-position">' + positionOptionsHtml + '</select>' +
     (positionRows.length ? '' : '<p class="hint" style="margin-top:4px">ยังไม่มีตำแหน่งใน Master Data — เพิ่มได้ที่ Admin &gt; ข้อมูลหลัก</p>') + '</div>' +
+    '<div class="field"><label>เลขตำแหน่งเดิม</label><input class="input" name="reg_position_no" value="' + v('position_no') + '"></div>' +
+    '</div>' +
     '<div class="field" id="reg-specialty-field" style="' + (showSpecialty ? '' : 'display:none') + '">' +
     '<label>ด้าน/สาขา</label><select class="input" name="reg_specialty" id="reg-specialty">' + specialtyOptionsHtml + '</select></div>' +
     '<div class="field" id="reg-committee-field" style="display:none">' +
     '<label>คณะกรรมการที่รับผิดชอบ</label><div id="reg-committee-info"></div></div>' +
-    '<div class="field"><label>เลขตำแหน่งเดิม</label><input class="input" name="reg_position_no" value="' + v('position_no') + '"></div>' +
-    '<div class="field"><label>ประเภทผลงาน</label>' + selectHtml('reg_work_type', typeOptions, values.work_type) + '</div>' +
-    '<div class="field"><label>ถ้าเลือก "อื่น ๆ" ข้างต้น ระบุประเภทผลงาน</label><input class="input" name="reg_work_type_other" placeholder="ระบุประเภทผลงาน (ใช้เฉพาะกรณีเลือกอื่น ๆ)"></div>' +
+    '</div>' +
+
+    '<div class="reg-section"><div class="reg-section-title">ข้อมูลผลงาน</div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>ประเภทผลงาน</label>' + selectHtml('reg_work_type', typeOptions, values.work_type, 'reg-work-type') + '</div>' +
+    '<div class="field" id="reg-worktype-other-field" style="' + (showWorkTypeOther ? '' : 'display:none') + '">' +
+    '<label>ระบุประเภทผลงาน</label><input class="input" name="reg_work_type_other" id="reg-worktype-other" placeholder="ระบุประเภทผลงาน (ใช้เฉพาะกรณีเลือกอื่น ๆ)"></div>' +
+    '</div>' +
     '<div class="field"><label>ชื่อผลงาน</label><textarea class="input" name="reg_work_title" rows="2">' + v('work_title') + '</textarea></div>' +
+    '</div>' +
+
+    '<div class="reg-section"><div class="reg-section-title">ข้อมูลหน่วยงาน</div>' +
     '<div class="field-row">' +
     '<div class="field"><label>หน่วยงานต้นสังกัด</label><input class="input" name="reg_org_from" value="' + v('org_from') + '"></div>' +
     '<div class="field"><label>จังหวัด</label><select class="input" name="reg_province"><option value="">-- เลือกจังหวัด --</option>' +
@@ -1289,15 +1323,21 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
       return '<option' + sel + '>' + escapeHtml_(opt) + '</option>';
     }).join('') + '</select></div>' +
     '</div>' +
+    '</div>' +
+
+    '<div class="reg-section"><div class="reg-section-title">ข้อมูลติดต่อ</div>' +
     '<div class="field-row">' +
     '<div class="field"><label>เบอร์โทร (ถ้ามี)</label><input class="input" name="reg_phone" value="' + v('phone') + '"></div>' +
     '<div class="field"><label>อีเมล (ถ้ามี)</label><input class="input" name="reg_email" value="' + v('email') + '"></div>' +
     '</div>' +
+    '</div>' +
+
     '<button class="btn-primary" type="submit">บันทึกและออกเลขติดตาม</button>' +
     '</form>' +
     '<script>var REG_COMMITTEE_LOOKUP_ = ' + JSON.stringify(committeeLookup) + ';</script>' +
     REG_DYNAMIC_SCRIPT_ +
-    REG_COMMITTEE_SCRIPT_;
+    REG_COMMITTEE_SCRIPT_ +
+    REG_LAYOUT_TOGGLE_SCRIPT_;
 }
 
 /** ซ่อน/โชว์+กรอง option ฟิลด์ "ด้าน/สาขา" ตามตำแหน่งที่เลือก (generic ทุกตำแหน่ง, รอบ 3) — ไม่มี framework
@@ -1362,6 +1402,26 @@ var REG_COMMITTEE_SCRIPT_ = '' +
   'posSel.addEventListener("change", syncCommittee);' +
   'if (specSel) specSel.addEventListener("change", syncCommittee);' +
   'syncCommittee();' +
+  '});' +
+  '</script>';
+
+/** ซ่อน/โชว์ช่อง "ระบุคำนำหน้าชื่อ" และ "ระบุประเภทผลงาน" เฉพาะตอนเลือก "อื่น ๆ" (2026-09-24, ใหม่ — คนละช่อง
+ *  จาก REG_DYNAMIC_SCRIPT_/REG_COMMITTEE_SCRIPT_ เดิม กันกระทบ logic ตำแหน่ง/คณะกรรมการที่มีอยู่แล้ว) */
+var REG_LAYOUT_TOGGLE_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'function bindOtherToggle(selectId, fieldId, inputId) {' +
+  'var sel = document.getElementById(selectId);' +
+  'var field = document.getElementById(fieldId);' +
+  'if (!sel || !field) return;' +
+  'sel.addEventListener("change", function () {' +
+  'var isOther = sel.value === "อื่น ๆ";' +
+  'field.style.display = isOther ? "" : "none";' +
+  'if (!isOther) { var input = document.getElementById(inputId); if (input) input.value = ""; }' +
+  '});' +
+  '}' +
+  'bindOtherToggle("reg-title-name", "reg-title-other-field", "reg-title-name-other");' +
+  'bindOtherToggle("reg-work-type", "reg-worktype-other-field", "reg-worktype-other");' +
   '});' +
   '</script>';
 
@@ -1693,9 +1753,22 @@ var STAFF_CSS_ = '' +
   '.navitem{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 0 8px;color:var(--muted);text-decoration:none;font-size:.72rem;}' +
   '.navitem.active{color:var(--teal);font-weight:700;}' +
   '.navicon{font-size:1.2rem;}' +
-  '.reg-form{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;}' +
+  '.reg-form{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px 22px;}' +
   '.field{margin-bottom:12px;display:flex;flex-direction:column;gap:4px;}' +
   '.field-row{display:flex;gap:10px;}.field-row .field{flex:1;}' +
+  // "รับเอกสารใหม่" — จัดกลุ่มเป็น section (ข้อมูลบุคคล/ผลงาน/หน่วยงาน/ติดต่อ) 2026-09-24 ตามที่ผู้ใช้ขอ
+  // ให้ฟอร์มกระชับขึ้น, คำนำหน้าชื่อ+ชื่อ+นามสกุล อยู่บรรทัดเดียวกัน (สัดส่วน ~20/40/40 บน desktop)
+  '.reg-section{margin-bottom:16px;}.reg-section:last-of-type{margin-bottom:0;}' +
+  '.reg-section-title{font-size:.8rem;font-weight:700;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border);letter-spacing:.2px;}' +
+  '.field-row-name .field-title{flex:1 1 110px;}' +
+  '.field-row-name .field-first,.field-row-name .field-last{flex:2 1 140px;}' +
+  '@media (max-width:640px){' +
+  '.reg-form{padding:16px;}' +
+  '.field-row{flex-wrap:wrap;}' +
+  '.field-row-name{flex-wrap:wrap;}.field-row-name .field-title{flex:1 1 100%;}' +
+  '.field-row-name .field-first,.field-row-name .field-last{flex:1 1 calc(50% - 5px);}' +
+  '.reg-form .btn-primary{width:100%;}' +
+  '}' +
   '.field label{font-size:.78rem;color:var(--muted);}' +
   '.input{font-family:inherit;font-size:.92rem;padding:9px 10px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);}' +
   'textarea.input{resize:vertical;}' +

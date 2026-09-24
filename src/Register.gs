@@ -37,6 +37,11 @@ function registerNewWork_(ss, user, e) {
   if (values.work_type === 'อื่น ๆ' && p.reg_work_type_other) {
     values.work_type = String(p.reg_work_type_other).trim();
   }
+  // 2026-09-24: คำนำหน้าชื่อเปลี่ยนจาก text input เป็น dropdown — เลือก "อื่น ๆ" คู่กับช่อง custom (pattern
+  // เดียวกับ work_type/work_type_other ข้างบน) title_name ยัง free-text ไม่ validate ค่าตายตัวเหมือนเดิม
+  if (values.title_name === 'อื่น ๆ' && p.reg_title_name_other) {
+    values.title_name = String(p.reg_title_name_other).trim();
+  }
 
   var errors = [];
   REGISTER_REQUIRED_FIELDS_.forEach(function (f) {
