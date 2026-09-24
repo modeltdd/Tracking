@@ -549,23 +549,22 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
 
   var handoffHtml = '' +
     '<div class="pub-owner-card">' +
+    '<div class="pub-owner-title">ผู้รับผิดชอบปัจจุบัน</div>' +
     renderPubOwnerRow_('ผู้รับผิดชอบ', work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-')) +
     renderPubOwnerRow_('รับงานเมื่อ', formatDateTh_(work.updated_at)) +
-    renderPubOwnerRow_('รับเรื่องเมื่อ', formatDateTh_(work.received_date)) +
-    renderPubOwnerRow_('ส่งต่อผู้ว่าเมื่อ', data.governorForwardDate ? formatDateTh_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า') +
-    '</div>';
+    '</div>' +
+    renderPubDateGrid_(work.received_date, data.governorForwardDate);
 
   var timelineHtml = data.steps ? renderPublicTimeline_(data.steps) : '';
-  if (data.isLegacyImportOnly) {
-    timelineHtml += '<p class="hint" style="margin:-8px 0 16px">ข้อมูลก่อนเริ่มใช้ระบบออนไลน์ไม่มีรายละเอียด Timeline ครบทุกขั้นตอน แสดงได้เฉพาะสถานะปัจจุบัน</p>';
-  }
+  if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
+  // ข้อมูลภายในสำหรับเจ้าหน้าที่ — พับเก็บด้วย <details> ไม่ให้เด่นเกินสถานะ/Timeline ตามที่ผู้ใช้ขอ 2026-09-24
   var infoHtml = '' +
-    '<div class="pub-owner-card">' +
-    '<div class="pub-owner-title">ข้อมูลเพิ่มเติม (ภายใน)</div>' +
+    '<details class="pub-details"><summary>ข้อมูลเพิ่มเติมสำหรับเจ้าหน้าที่</summary>' +
+    '<div class="pub-details-body">' +
     renderPubOwnerRow_('ตำแหน่ง', work.position) +
     renderPubOwnerRow_('หน่วยงานต้นสังกัด', work.org_from) +
-    '</div>';
+    '</div></details>';
 
   var noteHtml = data.latestNote
     ? '<div class="pub-note-box"><div class="pub-note-title">หมายเหตุจากผู้รับผิดชอบ</div><p>' + escapeHtml_(data.latestNote) + '</p></div>'
@@ -575,30 +574,32 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
     ? '<p><a href="' + escapeHtml_(work.cover_image_url) + '" target="_blank" rel="noopener">ดูภาพหน้าปกที่อัปโหลด</a></p>'
     : '';
 
-  // ประวัติละเอียดทุกแถวจริง (ใครทำอะไรเมื่อไร+หมายเหตุ) — เก็บไว้เป็นข้อมูลเชิงลึกสำหรับเจ้าหน้าที่ แยกจาก
-  // Timeline สรุปด้านบน ไม่ลบของเดิมตามที่ผู้ใช้ขอ (ห้าม rewrite ใหม่ทั้งหมด/ห้ามทำ StatusHistory เดิมเสีย)
+  // ประวัติละเอียดทุกแถวจริง (ใครทำอะไรเมื่อไร+หมายเหตุ) — พับด้วย <details> ไม่ให้ดูเหมือน log ดิบกลางหน้า
+  // + แปล LEGACY_IMPORT_MARKER_ เป็นข้อความอ่านง่าย ไม่โชว์ email ภายในดิบๆ (2026-09-24) ไม่ลบข้อมูลจริง แค่จัดรูปแบบ
   var auditLogHtml = history.length
-    ? '<ul class="timeline">' + history.map(function (h) {
+    ? '<details class="pub-details"><summary>ดูประวัติการดำเนินการทั้งหมด</summary><div class="pub-details-body">' +
+      history.map(function (h) {
         var label = h.action === 'transition'
           ? (stationsMap[h.to_station] ? stationsMap[h.to_station].station_name : h.to_station)
           : (ACTION_LABELS_[h.action] || h.action);
-        return '<li class="tl-item">' +
-          '<div class="tl-head"><b>' + escapeHtml_(label) + '</b><span class="tl-date">' + formatDateTh_(h.action_date) + '</span></div>' +
-          '<div class="tl-meta">' + escapeHtml_(h.action_by_org || '-') + (h.action_by ? ' (' + escapeHtml_(h.action_by) + ')' : '') + '</div>' +
-          (h.note ? '<div class="tl-note">' + escapeHtml_(h.note) + '</div>' : '') +
-          (h.revision_reasons ? '<div class="tl-note">เหตุผล: ' + escapeHtml_(h.revision_reasons) + '</div>' : '') +
-          '</li>';
-      }).join('') + '</ul>'
-    : '<div class="empty">ยังไม่มีประวัติ</div>';
+        var actorText = h.action_by === LEGACY_IMPORT_MARKER_ ? 'นำเข้าข้อมูลจากระบบเดิม'
+          : ((h.action_by_org || '-') + (h.action_by ? ' (' + h.action_by + ')' : ''));
+        return '<div class="pub-audit-item">' +
+          '<div class="pub-audit-head"><span>' + escapeHtml_(label) + '</span><span class="pub-audit-date">' + formatDateTh_(h.action_date) + '</span></div>' +
+          '<div class="pub-audit-meta">' + escapeHtml_(actorText) + '</div>' +
+          (h.note ? '<div class="pub-audit-note">' + escapeHtml_(h.note) + '</div>' : '') +
+          (h.revision_reasons ? '<div class="pub-audit-note">เหตุผล: ' + escapeHtml_(h.revision_reasons) + '</div>' : '') +
+          '</div>';
+      }).join('') + '</div></details>'
+    : '';
 
   return '' +
     '<div class="detail-card">' +
     '<div class="pub-subheader-label">เลขทะเบียน <b>' + escapeHtml_(work.tracking_no) + '</b></div>' +
-    nameBlockHtml + heroHtml + actionHtml + handoffHtml + timelineHtml + infoHtml + coverHtml + noteHtml +
-    '<p style="margin-top:16px"><a target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
+    nameBlockHtml + heroHtml + actionHtml + handoffHtml + timelineHtml + noteHtml + auditLogHtml + infoHtml + coverHtml +
+    '<p style="margin-top:16px"><a class="btn-outline" target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
     '</div>' +
-    '<section class="metric-card"><div class="metric-head"><span class="metric-label">ประวัติการดำเนินการแบบละเอียด (ภายใน)</span></div>' + auditLogHtml + '</section>' +
-    '<p><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>';
+    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>';
 }
 
 /** หน้าพิมพ์ QR ใหม่ — qr_token เดิมไม่เปลี่ยน จึงสร้างภาพ QR เดิมซ้ำได้ทุกเมื่อ (ใช้ตอน QR บนเอกสารเสีย/หาย) */
@@ -748,6 +749,23 @@ var QR_PHOTO_SCAN_SCRIPT_ = '' +
  * เฉพาะฟิลด์ที่เปิดเผยได้ (ชื่อปกปิดบางส่วนตาม A10 เสมอ — ไม่มี audit log/ปุ่มแก้ไข/ข้อมูลคนอื่น)
  * data = { revisionInfo, steps, currentStation, latestNote, governorForwardDate } จาก buildPublicResultData_ (PublicTrack.gs)
  */
+/** "วันที่สำคัญ" — grid 2 คอลัมน์ (รับเรื่องเมื่อ/ส่งให้ผู้ว่า) reuse ทั้งหน้าสาธารณะและหน้า staff (2026-09-24) */
+function renderPubDateGrid_(receivedDate, governorForwardDate) {
+  return '' +
+    '<div class="pub-date-section-title">วันที่สำคัญ</div>' +
+    '<div class="pub-date-grid">' +
+    '<div class="pub-date-card"><div class="pub-date-label">รับเรื่องเมื่อ</div>' +
+    '<div class="pub-date-value">' + escapeHtml_(formatDateTh_(receivedDate) || '-') + '</div></div>' +
+    '<div class="pub-date-card"><div class="pub-date-label">ส่งให้ผู้ว่า</div>' +
+    '<div class="pub-date-value">' + escapeHtml_(governorForwardDate ? formatDateTh_(governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า') + '</div></div>' +
+    '</div>';
+}
+
+/** กล่องแจ้งข้อมูล Legacy เล็กๆ (ไม่แย่งความเด่นจากสถานะปัจจุบัน) แทนข้อความยาวกลางหน้าแบบเดิม (2026-09-24) */
+function renderPubLegacyInfoBox_() {
+  return '<div class="pub-info-box"><b>&#9432; ข้อมูลเดิม</b><span>ข้อมูลก่อนเริ่มใช้ระบบออนไลน์อาจไม่มีรายละเอียด Timeline ครบทุกขั้นตอน</span></div>';
+}
+
 function renderPublicResultBody_(work, data, baseUrl) {
   var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
   var maskedName = maskNameForPublic_(work.title_name, work.first_name, work.last_name);
@@ -773,20 +791,18 @@ function renderPublicResultBody_(work, data, baseUrl) {
     ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
     : '';
 
-  // ข้อ I.9.4-9.6: ผู้รับผิดชอบ+เวลาที่รับ (current_owner_org/updated_at), เขตรับเรื่องเมื่อ (received_date — state 1
-  // เป็นของ "สนง เขต" เสมอ), ส่งต่อผู้ว่าเมื่อ (StatusHistory จริงที่เข้า s10 — ไม่แสดงถ้ายังไม่ถึง ไม่เดา)
+  // ผู้รับผิดชอบปัจจุบัน (current_owner_org/updated_at) แยกการ์ดจาก "วันที่สำคัญ" (received_date/governorForwardDate
+  // — ข้อ I.9.4-9.6) ตามที่ผู้ใช้ขอ 2026-09-24 (เดิมรวมอยู่การ์ดเดียวกันทั้ง 4 แถว)
   var handoffHtml = '' +
     '<div class="pub-owner-card">' +
+    '<div class="pub-owner-title">ผู้รับผิดชอบปัจจุบัน</div>' +
     renderPubOwnerRow_('ผู้รับผิดชอบ', work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-')) +
     renderPubOwnerRow_('รับงานเมื่อ', formatDateTh_(work.updated_at)) +
-    renderPubOwnerRow_('เขตรับเรื่องเมื่อ', formatDateTh_(work.received_date)) +
-    renderPubOwnerRow_('ส่งต่อผู้ว่าเมื่อ', data.governorForwardDate ? formatDateTh_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า') +
-    '</div>';
+    '</div>' +
+    renderPubDateGrid_(work.received_date, data.governorForwardDate);
 
   var timelineHtml = data.steps ? renderPublicTimeline_(data.steps) : '';
-  if (data.isLegacyImportOnly) {
-    timelineHtml += '<p class="hint" style="margin:-8px 0 16px">ข้อมูลก่อนเริ่มใช้ระบบออนไลน์ไม่มีรายละเอียด Timeline ครบทุกขั้นตอน แสดงได้เฉพาะสถานะปัจจุบัน</p>';
-  }
+  if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
   var ownerHtml = '' +
     '<div class="pub-owner-card">' +
@@ -836,9 +852,10 @@ function renderPublicTimeline_(steps) {
         (s.enteredAt ? escapeHtml_(formatDateTh_(s.enteredAt)) : '') +
         '</span>'
       : '';
+    var badge = s.state === 'current' ? '<span class="pub-tl-badge">ปัจจุบัน</span>' : '';
     return '<div class="pub-tl-item pub-tl-' + s.state + '">' +
       '<span class="pub-tl-icon">' + icon + '</span>' +
-      '<span class="pub-tl-text"><b>' + escapeHtml_(s.order) + '</b> ' + escapeHtml_(s.name) + metaHtml + '</span></div>';
+      '<span class="pub-tl-text"><b>' + escapeHtml_(s.order) + '</b> ' + escapeHtml_(s.name) + badge + metaHtml + '</span></div>';
   }
   function flushGroup() {
     if (!group) return;
@@ -1570,7 +1587,8 @@ var PUBLIC_CSS_ = '' +
   '.public-body{padding-bottom:24px;}' +
   // จำกัดความกว้างเฉพาะโซนสาธารณะ (800px, ไม่ใช่ 80vw ของ .content ส่วนกลางที่เผื่อไว้สำหรับตารางฝั่งเจ้าหน้าที่)
   // มือถือ (viewport < 800px) ได้ความกว้างเต็มจออัตโนมัติ, เดสก์ท็อปเห็นเนื้อหาไม่ยืดกว้างจนอ่านยาก
-  '.public-body .content{width:100%;max-width:800px;padding-left:16px;padding-right:16px;box-sizing:border-box;}' +
+  '.public-body .content{width:100%;max-width:860px;padding-left:16px;padding-right:16px;box-sizing:border-box;}' +
+  '@media (min-width:768px){.public-body .content{padding-left:24px;padding-right:24px;}}' +
   '.pub-subheader{font-size:.82rem;color:var(--muted);margin:0 2px 14px;}' +
   // บล็อกชื่อเจ้าของผลงาน+ชื่อผลงาน (2026-09-15) — อยู่บนสุดตามข้อ M แต่ตัวอักษรเล็กกว่า hero สถานะเสมอ (ข้อ O.17)
   '.pub-name-block{margin:0 2px 14px;}' +
@@ -1588,6 +1606,7 @@ var PUBLIC_CSS_ = '' +
   '.pub-hero-main{font-size:1.4rem;font-weight:700;color:var(--navy);line-height:1.35;}' +
   '.pub-hero-desc{font-size:.86rem;color:var(--muted);margin-top:5px;line-height:1.5;}' +
   '.pub-hero-updated{font-size:.75rem;color:var(--muted);margin-top:14px;}' +
+  '.pub-hero-current-note{font-size:.78rem;color:var(--navy);font-weight:600;margin-top:10px;}' +
   // กล่อง "สิ่งที่ต้องดำเนินการ" — เด่นรองจากสถานะ พื้นสีอ่อนโทนเดียวกับ revision กันความสับสน
   '.pub-action-box{background:#fff8ec;border:1px solid #f0e0ab;border-radius:14px;padding:16px 18px;margin-bottom:16px;}' +
   '.pub-action-title{font-weight:700;color:var(--revision);font-size:.82rem;margin:0 0 6px;}' +
@@ -1605,8 +1624,9 @@ var PUBLIC_CSS_ = '' +
   '.pub-tl-done .pub-tl-icon{background:var(--done);border-color:var(--done);color:#fff;}' +
   '.pub-tl-done .pub-tl-text{color:var(--text);}' +
   '.pub-tl-done.pub-tl-item::before{background:var(--done);}' +
-  '.pub-tl-current .pub-tl-icon{background:var(--navy);border-color:var(--navy);color:#fff;}' +
+  '.pub-tl-current .pub-tl-icon{background:var(--navy);border-color:var(--navy);color:#fff;width:24px;height:24px;font-size:.78rem;margin-top:-1px;}' +
   '.pub-tl-current .pub-tl-text{color:var(--navy);font-weight:700;}' +
+  '.pub-tl-badge{display:inline-block;margin-left:6px;font-size:.66rem;font-weight:700;color:#fff;background:var(--navy);padding:2px 8px;border-radius:999px;vertical-align:middle;}' +
   '.pub-tl-group{margin-bottom:4px;}' +
   '.pub-tl-group summary{cursor:pointer;font-size:.78rem;font-weight:600;color:var(--muted);padding:4px 0 12px 33px;list-style:none;position:relative;}' +
   '.pub-tl-group summary::-webkit-details-marker{display:none;}' +
@@ -1621,8 +1641,37 @@ var PUBLIC_CSS_ = '' +
   '.pub-owner-label{color:var(--muted);flex-shrink:0;}' +
   '.pub-owner-value{font-weight:600;color:var(--text);text-align:right;}' +
   '.pub-note-box p{margin:0;font-size:.88rem;line-height:1.6;color:var(--text);}' +
-  '.pub-back-link{text-align:center;margin-top:4px;}' +
+  '.pub-back-link{text-align:center;margin-top:4px;min-height:44px;display:flex;align-items:center;justify-content:center;}' +
   '.pub-back-link a{color:var(--muted);font-size:.83rem;}' +
+  // "วันที่สำคัญ" — grid 2 คอลัมน์บน desktop, 1 คอลัมน์บนมือถือ (mobile-first: 1 คอลัมน์เป็นค่าเริ่มต้น)
+  '.pub-date-section-title{font-weight:700;color:var(--navy);font-size:.82rem;margin:0 0 10px;}' +
+  '.pub-date-grid{display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:16px;}' +
+  '@media (min-width:600px){.pub-date-grid{grid-template-columns:1fr 1fr;}}' +
+  '.pub-date-card{background:var(--bg);border-radius:14px;padding:14px 16px;}' +
+  '.pub-date-label{font-size:.76rem;color:var(--muted);margin-bottom:5px;}' +
+  '.pub-date-value{font-weight:700;color:var(--text);font-size:.92rem;line-height:1.4;word-wrap:break-word;}' +
+  // กล่องแจ้งข้อมูลย่อยๆ (เช่น ข้อมูล Legacy) — เล็ก ไม่แย่งความเด่นจากสถานะปัจจุบัน
+  '.pub-info-box{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin-bottom:16px;' +
+  'font-size:.78rem;color:var(--muted);line-height:1.5;display:flex;gap:8px;align-items:flex-start;}' +
+  '.pub-info-box b{color:var(--navy);flex-shrink:0;}' +
+  // section แบบพับ/กางได้ (ข้อมูลภายใน, ประวัติละเอียด) — ใช้ <details> มาตรฐาน รองรับ keyboard/focus โดยธรรมชาติ
+  '.pub-details{margin-bottom:16px;border:1px solid var(--border);border-radius:14px;padding:0 16px;background:var(--card);}' +
+  '.pub-details summary{cursor:pointer;font-weight:600;color:var(--navy);font-size:.85rem;padding:14px 0;list-style:none;min-height:44px;display:flex;align-items:center;}' +
+  '.pub-details summary::-webkit-details-marker{display:none;}' +
+  '.pub-details summary::before{content:"▸";margin-right:8px;transition:transform .15s;display:inline-block;}' +
+  '.pub-details[open] summary::before{transform:rotate(90deg);}' +
+  '.pub-details summary:focus-visible{outline:2px solid var(--teal);outline-offset:2px;}' +
+  '.pub-details-body{padding-bottom:14px;}' +
+  '.pub-audit-item{padding:10px 0;border-top:1px solid var(--border);font-size:.83rem;}' +
+  '.pub-audit-item:first-child{border-top:none;}' +
+  '.pub-audit-head{display:flex;justify-content:space-between;gap:10px;font-weight:600;color:var(--text);}' +
+  '.pub-audit-date{color:var(--muted);font-weight:400;font-size:.78rem;white-space:nowrap;}' +
+  '.pub-audit-meta{color:var(--muted);font-size:.78rem;margin-top:2px;}' +
+  '.pub-audit-note{color:var(--text);font-size:.82rem;margin-top:4px;line-height:1.5;}' +
+  // ปุ่ม outline — เบากว่า btn-action/btn-primary ปกติ ใช้กับ action รอง เช่น "พิมพ์ QR ใหม่" ไม่ให้แย่งความเด่น
+  '.btn-outline{display:inline-block;padding:11px 18px;border:1.5px solid var(--border);border-radius:10px;color:var(--muted);' +
+  'font-size:.85rem;font-weight:600;text-decoration:none;text-align:center;min-height:44px;box-sizing:border-box;line-height:1.6;}' +
+  '.btn-outline:focus-visible{outline:2px solid var(--teal);outline-offset:2px;}' +
   '.revision-box{background:#fdf6e3;border:1px solid var(--revision);border-radius:14px;padding:16px 18px;margin-bottom:16px;}' +
   '.revision-title{color:var(--revision);font-weight:700;margin:0 0 6px;font-size:.82rem;}' +
   '.qr-scan-divider{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--muted);font-size:.8rem;}' +
