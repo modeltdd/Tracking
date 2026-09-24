@@ -396,3 +396,64 @@ function getSettingValue_(ss, key) {
   }
   return null;
 }
+
+/**
+ * ลบข้อมูลทดสอบค้าง 3 รายการ (2026-09-24 ผู้ใช้ระบุจากหน้าทะเบียนจริง) — เลขทะเบียนรูปแบบเก่า
+ * "อวช11-2569-000XX" (ก่อนเปลี่ยนรูปแบบเป็น "69-XXX" ที่ตกลงกันไปก่อนหน้านี้ในโปรเจกต์) ชื่อผลงาน/หน่วยงาน
+ * เป็นข้อมูลทดสอบชัดเจน ("ทดสอบ"/"โรงพยาบาลทดสอบ") ไม่ใช่ของจริง — ลบตาม tracking_no ตรงเป๊ะเท่านั้น
+ * (Works + StatusHistory ที่ match work_id) รันเองจาก Editor เท่านั้น: รัน auditTestRecordsBeforeDelete()
+ * ดู Log ยืนยันก่อนเสมอ แล้วค่อยรัน deleteTestRecords() ปลอดภัยรันซ้ำได้ (ไม่พบแล้วก็แค่ไม่ลบอะไร)
+ */
+var TEST_RECORDS_TO_DELETE_ = ['อวช11-2569-00012', 'อวช11-2569-00013', 'อวช11-2569-00014'];
+
+function auditTestRecordsBeforeDelete() {
+  var ss = getSpreadsheet_();
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var matched = works.filter(function (w) { return TEST_RECORDS_TO_DELETE_.indexOf(w.tracking_no) !== -1; });
+  if (!matched.length) {
+    Logger.log('ไม่พบรายการที่ตรงกับ tracking_no ที่ระบุเลย (' + TEST_RECORDS_TO_DELETE_.join(', ') + ') — อาจถูกลบไปแล้ว');
+    return;
+  }
+  matched.forEach(function (w) {
+    var hist = getHistoryForWork_(ss, w.work_id);
+    Logger.log('tracking_no=' + w.tracking_no + ' | work_id=' + w.work_id +
+      ' | ชื่อผลงาน="' + w.work_title + '" | หน่วยงาน="' + w.org_from + '"' +
+      ' | เจ้าของ="' + (w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '') + '"' +
+      ' | created_by=' + w.created_by + ' | ประวัติ ' + hist.length + ' แถว (action: ' + hist.map(function (h) { return h.action; }).join(', ') + ')');
+  });
+  Logger.log('=== พบ ' + matched.length + '/' + TEST_RECORDS_TO_DELETE_.length + ' รายการตรงกับที่จะลบ — ' +
+    'ตรวจสอบให้ครบก่อนรัน deleteTestRecords() ===');
+}
+
+function deleteTestRecords() {
+  var ss = getSpreadsheet_();
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
+
+  var works = readSheetAsObjects_(worksSheet);
+  var toDelete = {};
+  works.forEach(function (w) {
+    if (TEST_RECORDS_TO_DELETE_.indexOf(w.tracking_no) !== -1) toDelete[w.work_id] = w.tracking_no;
+  });
+  if (!Object.keys(toDelete).length) {
+    Logger.log('ไม่พบรายการที่ตรงกับ tracking_no ที่ระบุเลย (' + TEST_RECORDS_TO_DELETE_.join(', ') + ') — อาจถูกลบไปแล้ว');
+    return;
+  }
+
+  var worksHeaders = worksSheet.getRange(1, 1, 1, worksSheet.getLastColumn()).getValues()[0];
+  var workIdColW = worksHeaders.indexOf('work_id') + 1;
+  var deletedWorks = 0;
+  for (var r = worksSheet.getLastRow(); r >= 2; r--) {
+    var wid = worksSheet.getRange(r, workIdColW).getValue();
+    if (toDelete[wid]) { Logger.log('ลบ Works แถว ' + r + ' (tracking_no=' + toDelete[wid] + ')'); worksSheet.deleteRow(r); deletedWorks++; }
+  }
+
+  var historyHeaders = historySheet.getRange(1, 1, 1, historySheet.getLastColumn()).getValues()[0];
+  var workIdColH = historyHeaders.indexOf('work_id') + 1;
+  var deletedHistory = 0;
+  for (var r2 = historySheet.getLastRow(); r2 >= 2; r2--) {
+    if (toDelete[historySheet.getRange(r2, workIdColH).getValue()]) { historySheet.deleteRow(r2); deletedHistory++; }
+  }
+
+  Logger.log('=== deleteTestRecords เสร็จ — ลบ Works ' + deletedWorks + ' แถว, StatusHistory ' + deletedHistory + ' แถว ===');
+}
