@@ -531,10 +531,12 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
   var split = data.currentStation ? splitStationNameDesc_(data.currentStation.station_name) : { main: PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public, desc: '' };
   var orderLabel = data.currentStation ? data.currentStation.station_order : '';
 
+  // ลำดับหัวหน้า (2026-09-24 ตามที่ผู้ใช้ขอ): ชื่อเจ้าของผลงาน (เด่นสุด) -> เลขทะเบียน (รอง, muted) -> ชื่อผลงาน
   var nameBlockHtml = '' +
     '<div class="pub-name-block">' +
     '<div class="pub-name-owner">' + escapeHtml_(ownerName || '-') + '</div>' +
-    '<div class="pub-name-title">' + escapeHtml_(work.work_title || '-') + '</div>' +
+    '<div class="pub-name-tracking">เลขทะเบียน ' + escapeHtml_(work.tracking_no) + '</div>' +
+    '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
     '</div>';
 
   var heroHtml = '' +
@@ -599,7 +601,6 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
 
   return '' +
     '<div class="detail-card">' +
-    '<div class="pub-subheader-label">เลขทะเบียน <b>' + escapeHtml_(work.tracking_no) + '</b></div>' +
     nameBlockHtml + heroHtml + actionHtml + handoffHtml + progressHtml + timelineHtml + noteHtml + auditLogHtml + infoHtml + coverHtml +
     '<p style="margin-top:16px"><a class="btn-outline" target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
     '</div>' +
@@ -776,10 +777,12 @@ function renderPublicResultBody_(work, data, baseUrl) {
   var split = data.currentStation ? splitStationNameDesc_(data.currentStation.station_name) : { main: PUBLIC_STATUS_LABELS[work.current_status_public] || work.current_status_public, desc: '' };
   var orderLabel = data.currentStation ? data.currentStation.station_order : '';
 
+  // ลำดับหัวหน้า (2026-09-24 ตามที่ผู้ใช้ขอ): ชื่อเจ้าของผลงาน (เด่นสุด) -> เลขทะเบียน (รอง, muted) -> ชื่อผลงาน
   var nameBlockHtml = '' +
     '<div class="pub-name-block">' +
     '<div class="pub-name-owner">' + escapeHtml_(maskedName) + '</div>' +
-    '<div class="pub-name-title">' + escapeHtml_(work.work_title || '-') + '</div>' +
+    '<div class="pub-name-tracking">เลขทะเบียน ' + escapeHtml_(work.tracking_no) + '</div>' +
+    '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
     '</div>';
 
   var heroHtml = '' +
@@ -831,7 +834,6 @@ function renderPublicResultBody_(work, data, baseUrl) {
   }
 
   return '' +
-    '<div class="pub-subheader"><span class="pub-subheader-label">เลขทะเบียน</span> <b>' + escapeHtml_(work.tracking_no) + '</b></div>' +
     nameBlockHtml + heroHtml + actionHtml + handoffHtml + progressHtml + timelineHtml + ownerHtml + noteHtml +
     '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '">&larr; ตรวจสอบรายการอื่น</a></p>';
 }
@@ -1598,9 +1600,11 @@ var PUBLIC_CSS_ = '' +
   '@media (min-width:768px){.public-body .content{padding-left:24px;padding-right:24px;}}' +
   '.pub-subheader{font-size:.82rem;color:var(--muted);margin:0 2px 14px;}' +
   // บล็อกชื่อเจ้าของผลงาน+ชื่อผลงาน (2026-09-15) — อยู่บนสุดตามข้อ M แต่ตัวอักษรเล็กกว่า hero สถานะเสมอ (ข้อ O.17)
-  '.pub-name-block{margin:0 2px 14px;}' +
-  '.pub-name-owner{font-weight:700;font-size:1.05rem;color:var(--navy);}' +
-  '.pub-name-title{font-size:.88rem;color:var(--muted);margin-top:2px;line-height:1.4;word-wrap:break-word;}' +
+  // ลำดับหัวหน้า (2026-09-24): ชื่อเจ้าของผลงานเด่นสุด -> เลขทะเบียน (รอง, muted) -> ชื่อผลงาน
+  '.pub-name-block{margin:0 2px 18px;}' +
+  '.pub-name-owner{font-weight:700;font-size:1.3rem;color:var(--navy);line-height:1.3;word-wrap:break-word;}' +
+  '.pub-name-tracking{font-size:.82rem;font-weight:500;color:var(--muted);margin-top:4px;}' +
+  '.pub-name-title{font-size:.92rem;font-weight:500;color:var(--text);margin-top:5px;line-height:1.4;word-wrap:break-word;}' +
   // การ์ด "สถานะปัจจุบัน" — เด่นที่สุดในหน้า สีพื้นอ่อนตามกลุ่มสถานะ (เขียวอ่อน=สำเร็จ, ส้ม/เหลืองอ่อน=รอแก้ไข,
   // แดงอ่อน=ปัญหา/ยุติ, ฟ้าอมเทาอ่อน=กำลังดำเนินการ) ไม่ใช้สีสดจัด ไม่มี shadow/gradient หนัก
   '.pub-hero{border-radius:16px;padding:22px 22px 18px;margin-bottom:16px;border:1px solid var(--border);background:var(--bg);}' +
