@@ -157,7 +157,10 @@ function renderStaffPage_(title, bodyHtml, user, activePage, baseUrl) {
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">' +
     '<title>' + escapeHtml_(title) + '</title>' +
-    '<style>' + STAFF_CSS_ + '</style>' +
+    // PUBLIC_CSS_ ต้องรวมด้วยเสมอ — หน้ารายละเอียดงาน (?page=detail) reuse markup .pub-* (pub-hero/pub-timeline/
+    // pub-progress-card ฯลฯ) ทั้งหมดจากหน้าสาธารณะ (2026-09-24) ถ้าไม่รวม CSS พวกนี้ไม่มีผล render เป็น text
+    // เปล่าๆ ไม่มี style เลย (เจอ bug จริงจากภาพที่ผู้ใช้ส่งมา — คลาสไม่ตรงกับ CSS ที่โหลดจริง)
+    '<style>' + STAFF_CSS_ + PUBLIC_CSS_ + '</style>' +
     '</head><body>' +
     '<header class="topbar">' +
     '<div class="topbar-title">' + escapeHtml_(title) + '</div>' +
