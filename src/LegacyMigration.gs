@@ -474,5 +474,58 @@ function auditRegistrationNumbers() {
   if (legacyMismatches.length > 30) Logger.log('... และอีก ' + (legacyMismatches.length - 30) + ' รายการ (ตัดแสดงแค่ 30 แรก)');
 }
 
+/**
+ * วิเคราะห์แผนล้างข้อมูล Legacy ที่เสีย (2026-09-24, read-only ล้วน ไม่แก้อะไรเลย) — auditRegistrationNumbers()
+ * พบว่า Works มีงาน Legacy 349 แถว (ควรมีแค่ 244 ตามไฟล์ Excel จริง) ซ้ำ 310 แถว, legacy_seq เพี้ยนเป็นค่า
+ * "ทีม" แทน "ลำดับ" จำนวนมาก — สาเหตุน่าจะมาจากการรัน migrateLegacyRegistrations() หลายรอบด้วยโค้ดคนละเวอร์ชัน
+ * (คนละที่มา ไม่อยู่ใน git ที่ตรวจสอบได้) ทำให้ import ซ้ำซ้อนและ legacy_seq เพี้ยนในบางรอบ — โค้ดปัจจุบันตรวจแล้ว
+ * ว่า map คอลัมน์ A(ลำดับ)/G(ทีม) ถูกต้อง จึงเสนอ "ลบของเสียแล้ว import ใหม่" แทนพยายามแก้ค่าที่เชื่อถือไม่ได้แล้ว
+ *
+ * แบ่งงาน Legacy ทั้งหมดเป็น 2 กลุ่ม:
+ *  - "untouched" (StatusHistory มีแค่ INITIAL_IMPORT รายการเดียว ยังไม่มีใคร action ต่อ) — ปลอดภัยลบแล้ว
+ *    import ใหม่จากศูนย์ด้วยโค้ดปัจจุบันได้
+ *  - "touched" (มีคน action ต่อไปแล้ว จริง) — ห้ามลบเด็ดขาด ต้องแก้เฉพาะจุดแยกต่างหาก (เสียงานที่ทำไปแล้ว)
+ */
+function auditLegacyCleanupPlan() {
+  var ss = getSpreadsheet_();
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var legacyWorks = works.filter(function (w) { return w.created_by === LEGACY_IMPORT_MARKER_; });
+
+  var untouched = [], touched = [];
+  legacyWorks.forEach(function (w) {
+    var hist = getHistoryForWork_(ss, w.work_id);
+    if (hist.length === 1 && hist[0].action === 'INITIAL_IMPORT') {
+      untouched.push(w);
+    } else {
+      touched.push(w);
+    }
+  });
+
+  var nameCount = {};
+  legacyWorks.forEach(function (w) {
+    var key = (w.title_name + w.first_name + ' ' + w.last_name).trim();
+    nameCount[key] = (nameCount[key] || 0) + 1;
+  });
+  var uniqueNames = Object.keys(nameCount).length;
+  var namesOverTwice = Object.keys(nameCount).filter(function (k) { return nameCount[k] > 2; });
+
+  Logger.log('=== auditLegacyCleanupPlan สรุป === งาน Legacy ทั้งหมด: ' + legacyWorks.length +
+    ' (ไฟล์ Excel จริงมี 244 รายการ) | ยังไม่มีใคร action ต่อ (ปลอดภัยลบ+import ใหม่): ' + untouched.length +
+    ' | มีคน action ต่อแล้ว (ห้ามลบ ต้องแก้เฉพาะจุด): ' + touched.length);
+  Logger.log('ชื่อไม่ซ้ำกัน: ' + uniqueNames + ' คน (ควรใกล้เคียง 244 — บางคนยื่นซ้ำจริงได้ เช่น ยกเลิกแล้วยื่นใหม่ ปกติไม่เกิน 2 ครั้ง/คน)');
+  Logger.log('ชื่อที่ปรากฏมากกว่า 2 ครั้ง (ผิดปกติ น่าจะเป็นข้อมูลซ้ำจากการ import หลายรอบ): ' + namesOverTwice.length);
+  namesOverTwice.slice(0, 20).forEach(function (n) {
+    Logger.log(' - ' + n + ': ' + nameCount[n] + ' รายการ');
+  });
+
+  if (touched.length) {
+    Logger.log('รายชื่องานที่มีคน action ต่อแล้ว (ต้องดูเป็นรายกรณี ห้ามลบอัตโนมัติ):');
+    touched.slice(0, 30).forEach(function (w) {
+      Logger.log(' - ' + (w.title_name + w.first_name + ' ' + w.last_name) + ' (work_id=' + w.work_id +
+        ', tracking_no="' + w.tracking_no + '", legacy_seq="' + w.legacy_seq + '")');
+    });
+  }
+}
+
 /** เครื่องหมายกำกับแถวที่มาจากการ import ข้อมูลเก่า (ใช้ใน created_by/action_by) — ค้นหา/ลบทดสอบภายหลังได้ง่าย */
 var LEGACY_IMPORT_MARKER_ = 'legacy-import@system';
