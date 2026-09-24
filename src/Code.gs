@@ -97,8 +97,11 @@ function routeStaffPage_(e, user) {
         return renderStaffPage_('แดชบอร์ดผู้รับผิดชอบ',
           renderResponsibleDashboardBody_(ss, user, respMetrics, selMonth, selYear, baseUrl), user, 'dashboard', baseUrl);
       }
-      var metrics = computeDashboardMetrics_(ss, user.organization);
-      return renderStaffPage_('แดชบอร์ดเจ้าหน้าที่', renderDashboardBody_(user, metrics, baseUrl), user, 'dashboard', baseUrl);
+      // 2026-09-24: เพิ่ม filter เดือน/ปี/หน่วยงาน/จังหวัด ตามที่ผู้ใช้ขอ — ไม่ส่งมา (ค่าเริ่มต้นเปิดหน้า) = ไม่กรอง
+      // เลย แสดงครบเหมือนพฤติกรรมเดิมทุกประการ (กันเปลี่ยน business logic โดยไม่จำเป็น)
+      var dashFilters = { month: params.month, year: params.year, orgFrom: params.orgfrom, province: params.province };
+      var metrics = computeDashboardMetrics_(ss, user.organization, dashFilters);
+      return renderStaffPage_('แดชบอร์ดเจ้าหน้าที่', renderDashboardBody_(ss, user, metrics, dashFilters, baseUrl), user, 'dashboard', baseUrl);
   }
 }
 

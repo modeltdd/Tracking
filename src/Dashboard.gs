@@ -15,8 +15,27 @@
 
 var TERMINAL_STATUSES_ = ['done', 'terminated'];
 
-function computeDashboardMetrics_(ss, org) {
+/**
+ * filters (2026-09-24 เพิ่มตามที่ผู้ใช้ขอ — หน้า Dashboard เจ้าหน้าที่/Admin เดิมกรองไม่ได้เลย): เดือน/ปี
+ * (received_date, ตาม convention เดียวกับ computeResponsibleDashboardMetrics_), orgFrom (หน่วยงานต้นสังกัด
+ * ผู้ยื่น — org_from), province — ทุกตัวเป็น optional (ไม่ส่งมา = ไม่กรอง แสดงครบเหมือนพฤติกรรมเดิมทุกประการ
+ * กันเปลี่ยน business logic โดยไม่จำเป็น) กรองที่ระดับ `works` ก่อนคำนวณ bucket เดิมทั้งหมด ไม่แตะ logic บัคเก็ต
+ */
+function computeDashboardMetrics_(ss, org, filters) {
+  filters = filters || {};
   var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  if (filters.month || filters.year) {
+    works = works.filter(function (w) {
+      var d = new Date(w.received_date);
+      if (isNaN(d.getTime())) return false;
+      if (filters.year && d.getFullYear() !== Number(filters.year)) return false;
+      if (filters.month && (d.getMonth() + 1) !== Number(filters.month)) return false;
+      return true;
+    });
+  }
+  if (filters.orgFrom) works = works.filter(function (w) { return w.org_from === filters.orgFrom; });
+  if (filters.province) works = works.filter(function (w) { return w.province === filters.province; });
+
   var history = readSheetAsObjects_(ss.getSheetByName(SHEET.STATUS_HISTORY));
   var stations = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_STATES));
 
@@ -82,6 +101,17 @@ function findStationEntryDate_(history, workId, stationKey) {
     entryDate = h.action_date;
   });
   return entryDate;
+}
+
+/** "กำหนดเสร็จ" ของสถานีปัจจุบัน = วันที่เข้าสถานี + standard_days (2026-09-24, ใช้กับส่วน "งานใกล้ครบกำหนด"
+ *  หน้า Dashboard) คืน null ถ้าคำนวณไม่ได้ (ไม่มี standard_days หรือยังไม่มีประวัติเข้าสถานีนี้) — ไม่เดา */
+function computeStationDueDate_(history, work, station) {
+  if (!station || !station.standard_days) return null;
+  var enteredAt = findStationEntryDate_(history, work.work_id, work.current_station_key);
+  if (!enteredAt) return null;
+  var due = new Date(enteredAt);
+  due.setDate(due.getDate() + Number(station.standard_days));
+  return due;
 }
 
 /**
