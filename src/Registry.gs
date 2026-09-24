@@ -68,6 +68,32 @@ function filterRegistryWorks_(works, rp, overdueIds) {
   });
 }
 
+/** คอลัมน์ที่หัวตารางทะเบียนกดเรียงได้ (2026-09-24 ตามที่ผู้ใช้ขอ) — 'owner'/'state' ไม่ใช่ field ตรงๆ ของ Works
+ *  คำนวณ key เปรียบเทียบเองใน sortRegistryWorks_ (owner จาก title_name+first_name+last_name จริง, state จาก
+ *  station_order จริงใน WorkflowStates ไม่ใช่เรียงตามตัวอักษรชื่อ state ซึ่งไม่ตรงลำดับ workflow จริง) */
+var REGISTRY_SORTABLE_COLUMNS_ = ['tracking_no', 'work_title', 'org_from', 'owner', 'state', 'current_owner_org', 'updated_at'];
+
+/** เรียงผลลัพธ์ทะเบียนตาม rp.sort/rp.dir (ไม่มี rp.sort = ไม่เรียง คงลำดับเดิมจาก getAllWorksForRegistry_
+ *  คือ received_date desc) เรียกหลัง filterRegistryWorks_ ก่อนแบ่งหน้าเสมอ */
+function sortRegistryWorks_(list, rp, stationsMap) {
+  if (!rp.sort || REGISTRY_SORTABLE_COLUMNS_.indexOf(rp.sort) === -1) return list;
+  var dir = rp.dir === 'asc' ? 1 : -1;
+  function keyOf(w) {
+    if (rp.sort === 'owner') return ((w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '')).trim();
+    if (rp.sort === 'state') {
+      var st = stationsMap[w.current_station_key];
+      return st ? parseFloat(st.station_order) : 0;
+    }
+    if (rp.sort === 'updated_at') return new Date(w.updated_at).getTime() || 0;
+    return String(w[rp.sort] || '');
+  }
+  return list.slice().sort(function (a, b) {
+    var ka = keyOf(a), kb = keyOf(b);
+    if (typeof ka === 'number' && typeof kb === 'number') return (ka - kb) * dir;
+    return String(ka).localeCompare(String(kb), 'th') * dir;
+  });
+}
+
 /** ตัดหน้า (pagination) แบบทั่วไป — คืน items ของหน้านั้น + สรุปตัวเลขไว้ทำ footer */
 function paginateList_(list, page, perPage) {
   var per = REGISTRY_PER_PAGE_OPTIONS_.indexOf(perPage) !== -1 ? perPage : REGISTRY_PER_PAGE_OPTIONS_[1];
@@ -87,6 +113,8 @@ function parseRegistryParams_(params) {
     org: String(params.org || '').trim(),
     result: String(params.result || '').trim(),
     bucket: String(params.bucket || '').trim(),
+    sort: String(params.sort || '').trim(),
+    dir: params.dir === 'asc' ? 'asc' : 'desc',
     p: parseInt(params.p, 10) || 1,
     per: parseInt(params.per, 10) || REGISTRY_PER_PAGE_OPTIONS_[1],
   };
@@ -102,6 +130,7 @@ function renderRegistryRoute_(ss, user, params, baseUrl, flashMessage) {
   var all = getAllWorksForRegistry_(ss);
   var bucketData = computeRegistryBuckets_(ss, all);
   var filtered = filterRegistryWorks_(all, rp, bucketData.overdueIds);
+  filtered = sortRegistryWorks_(filtered, rp, getStationsMap_(ss));
   var pageResult = paginateList_(filtered, rp.p, rp.per);
   return renderStaffPage_('ทะเบียนผลงานทั้งหมด',
     renderRegistryListBody_(ss, pageResult, rp, all.length, bucketData.counts, baseUrl, flashMessage), user, 'registry', baseUrl);
@@ -109,7 +138,7 @@ function renderRegistryRoute_(ss, user, params, baseUrl, flashMessage) {
 
 /** ต่อ query string จาก parseRegistryParams_() บวก override เฉพาะจุด — ใช้สร้างลิงก์แบ่งหน้า/tile */
 function buildRegistryQuery_(rp, overrides) {
-  var merged = { q: rp.q, state: rp.state, resp: rp.resp, org: rp.org, result: rp.result, bucket: rp.bucket, p: rp.p, per: rp.per };
+  var merged = { q: rp.q, state: rp.state, resp: rp.resp, org: rp.org, result: rp.result, bucket: rp.bucket, sort: rp.sort, dir: rp.dir, p: rp.p, per: rp.per };
   Object.keys(overrides || {}).forEach(function (k) { merged[k] = overrides[k]; });
   var parts = ['page=registry'];
   if (merged.q) parts.push('q=' + encodeURIComponent(merged.q));
@@ -118,6 +147,10 @@ function buildRegistryQuery_(rp, overrides) {
   if (merged.org) parts.push('org=' + encodeURIComponent(merged.org));
   if (merged.result) parts.push('result=' + encodeURIComponent(merged.result));
   if (merged.bucket) parts.push('bucket=' + encodeURIComponent(merged.bucket));
+  if (merged.sort) {
+    parts.push('sort=' + encodeURIComponent(merged.sort));
+    parts.push('dir=' + (merged.dir === 'asc' ? 'asc' : 'desc'));
+  }
   if (merged.p && merged.p !== 1) parts.push('p=' + merged.p);
   if (merged.per && merged.per !== REGISTRY_PER_PAGE_OPTIONS_[1]) parts.push('per=' + merged.per);
   return parts.join('&');

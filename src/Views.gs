@@ -601,11 +601,18 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
       '</tr>';
   }).join('');
 
+  // หัวตารางกดเรียงได้ (2026-09-24 ตามที่ผู้ใช้ขอ) — คลิกครั้งแรกเรียง asc, คลิกซ้ำสลับ desc/asc คอลัมน์เดิม
+  var theadHtml = '<tr>' +
+    registrySortHeaderHtml_('เลขทะเบียน', 'tracking_no', rp, baseUrl) +
+    registrySortHeaderHtml_('ชื่อผลงาน', 'work_title', rp, baseUrl) +
+    registrySortHeaderHtml_('หน่วยงาน', 'org_from', rp, baseUrl) +
+    registrySortHeaderHtml_('เจ้าของผลงาน', 'owner', rp, baseUrl) +
+    registrySortHeaderHtml_('สถานะปัจจุบัน', 'state', rp, baseUrl) +
+    registrySortHeaderHtml_('ผู้รับผิดชอบ', 'current_owner_org', rp, baseUrl) +
+    registrySortHeaderHtml_('วันที่อัปเดตล่าสุด', 'updated_at', rp, baseUrl) +
+    '<th>จัดการ</th></tr>';
   var tableHtml = pageResult.items.length
-    ? '<div class="table-scroll"><table class="admin-table"><thead><tr>' +
-      '<th>เลขทะเบียน</th><th>ชื่อผลงาน</th><th>หน่วยงาน</th><th>เจ้าของผลงาน</th>' +
-      '<th>สถานะปัจจุบัน</th><th>ผู้รับผิดชอบ</th><th>วันที่อัปเดตล่าสุด</th><th>จัดการ</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+    ? '<div class="table-scroll"><table class="admin-table"><thead>' + theadHtml + '</thead><tbody>' + rows + '</tbody></table></div>'
     : '<div class="empty">ไม่พบรายการที่ตรงกับเงื่อนไข</div>';
 
   var pagerHtml = '';
@@ -625,6 +632,17 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
   return flashHtml + tilesHtml + filterFormHtml +
     '<p class="hint" style="margin:0 0 10px">คลิก "ดูรายละเอียด/จัดการ" — เห็นได้ทุกรายการ แก้สถานะได้เฉพาะที่หน่วยงานตนรับผิดชอบ ณ สถานะปัจจุบันเท่านั้น</p>' +
     '<section class="metric-card">' + tableHtml + pagerHtml + '</section>';
+}
+
+/** หัว th กดเรียงได้ของหน้าทะเบียน (2026-09-24 ตามที่ผู้ใช้ขอ) — ลิงก์ GET ธรรมดา ไม่มี JS คลิกครั้งแรกเรียง
+ *  asc, คอลัมน์เดิมคลิกซ้ำสลับ desc/asc, คอลัมน์อื่นกลับไป asc เสมอ (sortRegistryWorks_ ใน Registry.gs) */
+function registrySortHeaderHtml_(label, col, rp, baseUrl) {
+  var isActive = rp.sort === col;
+  var nextDir = isActive && rp.dir === 'asc' ? 'desc' : 'asc';
+  var arrow = isActive ? (rp.dir === 'asc' ? ' &#9650;' : ' &#9660;') : '';
+  return '<th' + (isActive ? ' class="th-sort-active"' : '') + '>' +
+    '<a class="th-sort-link" target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { sort: col, dir: nextDir, p: 1 }) + '">' +
+    escapeHtml_(label) + arrow + '</a></th>';
 }
 
 /** ค่าไม่ซ้ำของฟิลด์หนึ่งจาก list of object (ไม่รวมค่าว่าง) — ใช้ทำตัวเลือก dropdown filter ของหน้าทะเบียน */
@@ -1854,6 +1872,10 @@ var STAFF_CSS_ = '' +
   '.table-scroll{overflow-x:auto;}' +
   '.admin-table{width:100%;border-collapse:collapse;font-size:.82rem;white-space:nowrap;}' +
   '.admin-table th,.admin-table td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--border);}' +
+  // หัวตารางกดเรียงได้ (หน้าทะเบียน 2026-09-24) — ลิงก์เต็มพื้นที่ th กดง่ายบนมือถือ, คอลัมน์ที่เรียงอยู่เน้นสี teal
+  '.th-sort-link{display:block;color:inherit;text-decoration:none;font-weight:600;white-space:nowrap;}' +
+  '.th-sort-link:hover{color:var(--teal);}' +
+  '.th-sort-active,.th-sort-active .th-sort-link{color:var(--teal);}' +
   '.cell-danger{color:var(--danger);font-weight:700;}' +
   // Dashboard ผู้รับผิดชอบ (หน้าแรกใหม่) — KPI grid + กราฟ + งานของฉันแบบย่อ ใช้ token สีเดิมทั้งหมด
   '.dash-filter-form{display:flex;gap:10px;margin-bottom:6px;align-items:flex-end;}' +
