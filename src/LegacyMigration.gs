@@ -333,7 +333,10 @@ function migrateLegacyRegistrations() {
     if (hasBlockingIssue) { skippedBlocked++; Logger.log('ข้ามลำดับ ' + r.legacy_seq + ' (ยังมีปัญหาบล็อก): ' + r.issues.join(' / ')); return; }
 
     var workId = Utilities.getUuid();
-    var trackingNo = nextTrackingNo_(ss);
+    // 2026-09-24: เขียนเลขทะเบียนที่ถูกต้องตั้งแต่ตอน import เลย (ไม่พึ่ง nextTrackingNo_ ซึ่งเป็นตัวนับของงานใหม่
+    // ไม่เกี่ยวกับ legacy_seq เลย) — สาเหตุหลักที่ข้อมูลเสียหลายรอบก่อนหน้าคือเขียนเลขทะเบียนผิดตั้งแต่ต้น แล้วต้อง
+    // พึ่ง migrateFixLegacyTrackingNo() แก้ทีหลัง ซึ่งพลาดไปหลายรอบ (ดู auditLegacyCleanupPlan ผลจริง 2026-09-24)
+    var trackingNo = shortBuddhistYear_(getBuddhistYear_(new Date(r.received_date))) + '-' + padLeft_(r.legacy_seq, 3);
     var qrToken = generateUniqueQrToken_(ss);
 
     appendRowByHeader_(worksSheet, SHEET_HEADERS[SHEET.WORKS], {
@@ -525,6 +528,88 @@ function auditLegacyCleanupPlan() {
         ', tracking_no="' + w.tracking_no + '", legacy_seq="' + w.legacy_seq + '")');
     });
   }
+}
+
+/**
+ * แก้ 1 รายการที่มีคน action ต่อไปแล้วจริง (นางสาวสุดาวัลย์ หมั่นเพียร) ที่ legacy_seq/tracking_no เพี้ยนเป็นค่า
+ * "ทีม" (4.3) แทนลำดับจริง (2026-09-24 auditLegacyCleanupPlan ยืนยันเป็นรายเดียวที่มีคน action ต่อ ในทั้งหมด
+ * 501 แถว) — ยืนยันจากไฟล์ 1อวช140969.xlsx ตรงๆ ว่าลำดับจริงคือ 147 (แถว: "147","นางสาวสุดาวัลย์ หมั่นเพียร",
+ * "พยาบาลวิชาชีพ","การพยาบาล","กระบี่",244490,"4.3",...,"5/69","10") วันที่ลงรับ serial 244490 = พ.ศ.2569
+ * ก่อนแก้ 543 ปี → เลขทะเบียนที่ถูกต้องคือ "69-147"
+ *
+ * งานนี้มีคน action ต่อไปแล้วจริง (ไม่ใช่แค่ INITIAL_IMPORT) จึงแก้เฉพาะจุดนี้แทนลบ+import ใหม่ (จะเสียงานที่ทำไป
+ * แล้ว) — ต้องรันฟังก์ชันนี้ก่อน cleanupDuplicateLegacyImports()/migrateLegacyRegistrations() เสมอ (cleanup
+ * เรียกฟังก์ชันนี้ให้อัตโนมัติอยู่แล้ว กันลืม) ปลอดภัยรันซ้ำได้ (idempotent เช็คค่าก่อนเขียน)
+ */
+function fixSudawanLegacyTrackingNo() {
+  var ss = getSpreadsheet_();
+  var workId = 'c3c20a5d-d909-484a-bf8d-a16bbb1d6d2e';
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var w = findWorkById_(ss, workId);
+  if (!w) { Logger.log('ไม่พบ work_id=' + workId + ' (อาจถูกแก้/ลบไปแล้วก่อนหน้า) — ข้าม'); return; }
+  if (String(w.legacy_seq) === '147' && w.tracking_no === '69-147') {
+    Logger.log('นางสาวสุดาวัลย์ หมั่นเพียร แก้ไปแล้ว (legacy_seq=147, tracking_no=69-147) — ข้าม (idempotent)');
+    return;
+  }
+  updateSheetRowByKey_(worksSheet, 'work_id', workId, { legacy_seq: '147', tracking_no: '69-147' });
+
+  var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
+  var historyHeaders = SHEET_HEADERS[SHEET.STATUS_HISTORY];
+  var workIdCol = historyHeaders.indexOf('work_id') + 1;
+  var trackingCol = historyHeaders.indexOf('tracking_no') + 1;
+  var lastRow = historySheet.getLastRow();
+  var historyUpdated = 0;
+  if (lastRow >= 2) {
+    var data = historySheet.getRange(2, 1, lastRow - 1, historySheet.getLastColumn()).getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (data[i][workIdCol - 1] === workId) { historySheet.getRange(i + 2, trackingCol).setValue('69-147'); historyUpdated++; }
+    }
+  }
+  Logger.log('แก้นางสาวสุดาวัลย์ หมั่นเพียร (work_id=' + workId + ') เรียบร้อย: legacy_seq -> "147", tracking_no -> "69-147" (StatusHistory ' + historyUpdated + ' แถว)');
+}
+
+/**
+ * ลบงาน Legacy ที่ซ้ำ/เสีย (ยังไม่มีใคร action ต่อเลย) ทิ้งทั้งหมด เตรียมให้ migrateLegacyRegistrations() import
+ * ใหม่สะอาดจากศูนย์ (2026-09-24) — auditLegacyCleanupPlan() ยืนยันแล้วว่า 500/501 แถว Legacy ยังไม่มีใคร action
+ * ต่อเลย (มีแค่ INITIAL_IMPORT รายการเดียว) ปลอดภัยลบได้ — เกิดจากการรัน migrateLegacyRegistrations() หลายรอบ
+ * ด้วยโค้ดคนละเวอร์ชัน (ไม่อยู่ใน git ที่ตรวจสอบได้) ทำให้ import ซ้ำซ้อนและ legacy_seq เพี้ยน
+ *
+ * เรียก fixSudawanLegacyTrackingNo() ให้อัตโนมัติก่อนเสมอ (กันลืม) — ไม่งั้นแถวเดียวที่มีคน action ต่อแล้วจะไม่ถูก
+ * ลบ (ถูกต้อง) แต่ legacy_seq ที่ยังเพี้ยนอยู่จะทำให้รอบ import ใหม่สร้างแถวซ้ำสำหรับคนนั้นอีก
+ *
+ * รันเองเท่านั้น ห้าม auto-run — หลังรันแล้วให้รัน migrateLegacyRegistrations() ต่อทันทีเพื่อ import 244 รายการ
+ * ใหม่สะอาด (เลขทะเบียนถูกต้องตั้งแต่ตอน import เลย ไม่ต้องพึ่ง migrateFixLegacyTrackingNo() อีกแล้ว)
+ */
+function cleanupDuplicateLegacyImports() {
+  fixSudawanLegacyTrackingNo();
+
+  var ss = getSpreadsheet_();
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
+  var legacyWorks = readSheetAsObjects_(worksSheet).filter(function (w) { return w.created_by === LEGACY_IMPORT_MARKER_; });
+
+  var toDelete = {};
+  legacyWorks.forEach(function (w) {
+    var hist = getHistoryForWork_(ss, w.work_id);
+    if (hist.length === 1 && hist[0].action === 'INITIAL_IMPORT') toDelete[w.work_id] = true;
+  });
+
+  var worksHeaders = worksSheet.getRange(1, 1, 1, worksSheet.getLastColumn()).getValues()[0];
+  var workIdColW = worksHeaders.indexOf('work_id') + 1;
+  var deletedWorks = 0;
+  for (var r = worksSheet.getLastRow(); r >= 2; r--) {
+    if (toDelete[worksSheet.getRange(r, workIdColW).getValue()]) { worksSheet.deleteRow(r); deletedWorks++; }
+  }
+
+  var historyHeaders = historySheet.getRange(1, 1, 1, historySheet.getLastColumn()).getValues()[0];
+  var workIdColH = historyHeaders.indexOf('work_id') + 1;
+  var deletedHistory = 0;
+  for (var r2 = historySheet.getLastRow(); r2 >= 2; r2--) {
+    if (toDelete[historySheet.getRange(r2, workIdColH).getValue()]) { historySheet.deleteRow(r2); deletedHistory++; }
+  }
+
+  Logger.log('=== cleanupDuplicateLegacyImports เสร็จ — ลบ Works ' + deletedWorks + ' แถว, StatusHistory ' +
+    deletedHistory + ' แถว (เฉพาะงาน Legacy ที่ยังไม่มีใคร action ต่อเลย) — รัน migrateLegacyRegistrations() ต่อได้เลย ===');
 }
 
 /** เครื่องหมายกำกับแถวที่มาจากการ import ข้อมูลเก่า (ใช้ใน created_by/action_by) — ค้นหา/ลบทดสอบภายหลังได้ง่าย */
