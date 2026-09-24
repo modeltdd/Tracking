@@ -367,8 +367,8 @@ function migrateLegacyRegistrations() {
 }
 
 /**
- * แก้เลขทะเบียนของงาน Legacy (import จาก Excel 244 ราย) ย้อนหลังให้เป็นรูปแบบ "<ปี พ.ศ. 2 หลัก>-<legacy_seq>"
- * เช่น "69-131" ให้ตรงกับเลขลำดับในไฟล์ Excel เดิม (2026-09-23 ตามที่ผู้ใช้ขอ) — migrateLegacyRegistrations()
+ * แก้เลขทะเบียนของงาน Legacy (import จาก Excel 244 ราย) ย้อนหลังให้เป็นรูปแบบ "<ปี พ.ศ. 2 หลัก>-<legacy_seq pad 3 หลัก>"
+ * เช่น "68-004" ให้ตรงกับเลขลำดับในไฟล์ Excel เดิม (2026-09-23/24 ตามที่ผู้ใช้ขอ) — migrateLegacyRegistrations()
  * เดิมใช้ nextTrackingNo_() ตัวเดียวกับงานใหม่ ทำให้เลขทะเบียนไม่ตรงกับ Excel เลย
  *
  * ปีที่ใช้ = ปี พ.ศ. ของ received_date จริง (แก้ 543 ปีแล้ว) ของแต่ละแถว ไม่ใช่ปีปัจจุบัน — ยืนยันจากข้อมูลจริงว่า
@@ -393,7 +393,7 @@ function migrateFixLegacyTrackingNo() {
 
   legacyWorks.forEach(function (w) {
     var year = getBuddhistYear_(new Date(w.received_date));
-    var newTrackingNo = shortBuddhistYear_(year) + '-' + w.legacy_seq;
+    var newTrackingNo = shortBuddhistYear_(year) + '-' + padLeft_(w.legacy_seq, 3);
     if (String(w.tracking_no) !== newTrackingNo) {
       updateSheetRowByKey_(worksSheet, 'work_id', w.work_id, { tracking_no: newTrackingNo });
       fixed++;
@@ -454,7 +454,7 @@ function auditRegistrationNumbers() {
 
     if (w.created_by === LEGACY_IMPORT_MARKER_ && w.legacy_seq) {
       var year = getBuddhistYear_(new Date(w.received_date));
-      var expected = shortBuddhistYear_(year) + '-' + w.legacy_seq;
+      var expected = shortBuddhistYear_(year) + '-' + padLeft_(w.legacy_seq, 3);
       if (no !== expected) {
         legacyMismatches.push({
           name: (w.title_name + w.first_name + ' ' + w.last_name), current: no, expected: expected,

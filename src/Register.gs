@@ -170,12 +170,11 @@ function getFirstActiveStation_(ss) {
   return stations[0];
 }
 
-/** เลขทะเบียน: <ปี พ.ศ. 2 หลัก>-<เลขลำดับ> (เช่น "69-131") รันแยกตามปี, กันชนกันด้วย LockService (docs/DESIGN.md A3)
- *  2026-09-23: เปลี่ยนจากรูปแบบเดิม "<prefix>-<ปี>-<เลขลำดับ 5 หลัก>" (เช่น "อวช11-2568-00131") ตามที่ผู้ใช้ขอ —
- *  ตัด prefix ออก + ไม่ pad เลข 0 นำหน้า + ใช้ปี พ.ศ. 2 หลักท้ายแทนปีเต็ม 4 หลัก ให้หน้าตาตรงกับเลขทะเบียนที่คน
- *  คุ้นเคยจากเดิม (เช่น "69-169") — Settings key last_seq_<ปี> ภายในยังใช้ปีเต็ม 4 หลักเหมือนเดิม (กันชนข้าม
- *  ศตวรรษ) แค่ตอน "แสดง" ตัดเหลือ 2 หลักท้ายด้วย shortBuddhistYear_ (tracking_no_prefix ใน Settings ไม่ได้ใช้
- *  ต่อแล้ว แต่ไม่ลบทิ้ง เผื่อย้อนดู) */
+/** เลขทะเบียน: <ปี พ.ศ. 2 หลัก>-<เลขลำดับ 3 หลัก> (เช่น "69-001") รันแยกตามปี, กันชนกันด้วย LockService
+ *  (docs/DESIGN.md A3) — 2026-09-24: เพิ่ม pad เลข 0 ให้ครบ 3 หลักตามที่ผู้ใช้ยืนยัน (ตัวอย่าง "69-001" ถึง
+ *  "69-244") ถ้าเกิน 999 ต่อปีจะไม่ตัดทอน แค่ยาวกว่า 3 หลัก (padLeft_ ไม่ตัดของเดิม) — Settings key last_seq_<ปี>
+ *  ภายในยังใช้ปีเต็ม 4 หลักเหมือนเดิม (กันชนข้ามศตวรรษ) แค่ตอน "แสดง" ตัดเหลือ 2 หลักท้ายด้วย shortBuddhistYear_
+ *  (tracking_no_prefix ใน Settings ไม่ได้ใช้ต่อแล้ว แต่ไม่ลบทิ้ง เผื่อย้อนดู) */
 function nextTrackingNo_(ss) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -184,7 +183,7 @@ function nextTrackingNo_(ss) {
     var seqKey = 'last_seq_' + year;
     var seq = Number(getSetting_(ss, seqKey, '0')) + 1;
     setSetting_(ss, seqKey, String(seq), 'เลขลำดับล่าสุดของปี ' + year + ' (ระบบเพิ่มอัตโนมัติ ห้ามแก้มือขณะมีคนใช้งาน)');
-    return shortBuddhistYear_(year) + '-' + seq;
+    return shortBuddhistYear_(year) + '-' + padLeft_(seq, 3);
   } finally {
     lock.releaseLock();
   }
