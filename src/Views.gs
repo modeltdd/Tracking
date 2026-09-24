@@ -718,7 +718,7 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
   ]);
 
   var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
-  var timelineHtml = renderPubTimelineSection_(data.steps);
+  var timelineHtml = renderPubTimelineSection_(data.fixedTimeline);
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
   // ข้อมูลภายในสำหรับเจ้าหน้าที่ — พับเก็บด้วย <details> ไม่ให้เด่นเกินสถานะ/Timeline ตามที่ผู้ใช้ขอ 2026-09-24
@@ -1003,7 +1003,7 @@ function renderPublicResultBody_(work, data, baseUrl) {
   ]);
 
   var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
-  var timelineHtml = renderPubTimelineSection_(data.steps);
+  var timelineHtml = renderPubTimelineSection_(data.fixedTimeline);
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
   var ownerHtml = '' +
@@ -1040,91 +1040,54 @@ function renderPubOwnerRow_(label, value) {
 }
 
 /**
- * Timeline แนวตั้งละเอียด — ✓ ผ่านแล้ว / ● ปัจจุบัน / ○ ยังไม่ถึง จัดกลุ่ม state ทศนิยมไว้ใน <details> พับเก็บได้
- * (ไม่ต้องใช้ JS — <details>/<summary> มาตรฐาน HTML) เปิดค้างไว้อัตโนมัติถ้ากลุ่มนั้นมีขั้นที่ผ่านแล้ว/ปัจจุบันอยู่
- * 2 กลไกกลุ่ม:
- *  (1) 2026-09-24 ใหม่ — state ทศนิยมที่มี "สถานะหลัก" จริงอยู่ใน steps ด้วย (เช่น 7 -> 7.1/7.2/7.3/7.4) รวม
- *      สถานะหลัก+ย่อยทั้งหมดไว้กลุ่มเดียว หัวข้อ = "ขั้นตอนที่ N ชื่อสถานะหลัก" จากข้อมูลจริง (ไม่ hardcode)
- *      แต่ละสถานะย่อยในกลุ่มนี้ใช้สีตามคำในชื่อจริง (ผ่าน=เขียว/แก้ไข=เหลือง/ไม่ผ่าน=แดง) แทนสีเขียว-done เดิม
- *  (2) เดิม — state ทศนิยมที่ไม่มีสถานะหลักจริงในระบบ (8.x/9.x ไม่มี state "8"/"9" ตรงๆ) ยังคงกลุ่มแบบเดิมด้วย
- *      label คงที่ที่ตั้งไว้ก่อนหน้า (ไม่แก้ กันกระทบพฤติกรรมเดิม)
- * 2026-09-24 รอบ 2 (เพิ่ม): step แรกที่เป็น "upcoming" ทั้งไทม์ไลน์ได้ badge "ขั้นตอนถัดไป" สีเทา (แยกจาก badge
- * "ปัจจุบัน" เดิม) — วันที่ใน meta เปลี่ยนเป็นรูปแบบไทยย่อ (formatDateThShort_) ตามที่ผู้ใช้ขอ
+ * Timeline หลัก 10 ขั้นตอนคงที่ (2026-09-24 ตามที่ผู้ใช้ขอรอบใหม่) — แสดงขั้นตอนที่ 1-10 เสมอ ไม่หยุดที่จุดแตกสาย
+ * แบบเดิมอีกต่อไป ✓ เขียว = ผ่านแล้ว / ● กรมท่า = ปัจจุบัน (badge "สถานะปัจจุบัน") / ○ เทา = ยังไม่ถึง (ข้อความ
+ * "รอดำเนินการ" เท่านั้น ไม่มีผู้รับผิดชอบ/วันที่ปลอม) ขั้นตอนที่ 10 มี badge เพิ่ม "ขั้นตอนสุดท้าย" เสมอ
+ * ขั้นตอนปัจจุบันที่เป็น state ทศนิยม (เช่น 7.1) แสดงบรรทัด "└ ผลการพิจารณา: 7.1 ผ่าน" ซ้อนอยู่ใต้ชื่อขั้นตอน
+ * หลัก สีตามคำในชื่อจริง (ผ่าน=เขียว/แก้ไข=เหลือง/ไม่ผ่าน=แดง) — ไม่ใช่ขั้นตอนหลักแยกต่างหาก
  */
-function renderPublicTimeline_(steps) {
-  var GROUP_LABELS = { s8: '8 กรณีมีการแก้ไขผลงาน', s9: '9 ประชุมพิจารณา ครั้งที่ 2' };
-  var html = '';
-  var group = null;
-  var firstUpcoming = steps.filter(function (s) { return s.state === 'upcoming'; })[0] || null;
-  var firstUpcomingKey = firstUpcoming ? firstUpcoming.key : null;
+function renderPubFixedTimelineItem_(entry) {
+  var icon = entry.state === 'current' ? '●' : (entry.state === 'done' ? '✓' : '○');
+  var badges = '';
+  if (entry.state === 'current') badges += '<span class="pub-tl-badge">สถานะปัจจุบัน</span>';
+  if (entry.isLastStep) badges += '<span class="pub-tl-badge pub-tl-badge-last">ขั้นตอนสุดท้าย</span>';
 
-  function itemHtml(s, tone) {
-    // s10 คือปลายทางจริงของทุกเส้นทาง (ยืนยันแล้วก่อนหน้านี้ในโปรเจกต์) ใช้สัญลักษณ์ ◎ เฉพาะ ยกเว้นเป็น current
-    // ก็ยังเน้น ● ตามปกติ (ข้อ 2/12 ของ requirement)
-    var icon = s.state === 'current' ? '●' : (s.key === 's10' ? '◎' : (s.state === 'done' ? '✓' : '○'));
-    var metaHtml = (s.org || s.enteredAt)
+  var metaHtml;
+  if (entry.state === 'upcoming') {
+    metaHtml = '<span class="pub-tl-meta pub-tl-meta-pending">รอดำเนินการ</span>';
+  } else {
+    metaHtml = (entry.org || entry.enteredAt)
       ? '<span class="pub-tl-meta">' +
-        (s.org ? 'ผู้รับผิดชอบ: ' + escapeHtml_(s.org) : '') +
-        (s.org && s.enteredAt ? ' — ' : '') +
-        (s.enteredAt ? escapeHtml_(formatDateThShort_(s.enteredAt)) : '') +
+        (entry.org ? 'ผู้รับผิดชอบ: ' + escapeHtml_(entry.org) : '') +
+        (entry.org && entry.enteredAt ? ' — ' : '') +
+        (entry.enteredAt ? escapeHtml_(formatDateThShort_(entry.enteredAt)) : '') +
         '</span>'
       : '';
-    var badge = s.state === 'current' ? '<span class="pub-tl-badge">ปัจจุบัน</span>' :
-      (s.key === firstUpcomingKey ? '<span class="pub-tl-badge pub-tl-badge-next">ขั้นตอนถัดไป</span>' : '');
-    var toneCls = tone ? ' pub-tl-tone-' + tone : '';
-    return '<div class="pub-tl-item pub-tl-' + s.state + toneCls + '">' +
-      '<span class="pub-tl-icon">' + icon + '</span>' +
-      '<span class="pub-tl-text"><b>' + escapeHtml_(s.order) + '</b> ' + escapeHtml_(s.name) + badge + metaHtml + '</span></div>';
-  }
-  function flushGroup() {
-    if (!group) return;
-    html += '<details class="pub-tl-group"' + (group.open ? ' open' : '') + '><summary>' + escapeHtml_(group.label) + '</summary>' + group.items + '</details>';
-    group = null;
   }
 
-  var i = 0;
-  while (i < steps.length) {
-    var s = steps[i];
-    // (1) สถานะหลักจริงที่มีสถานะย่อยตามมาติดกัน (order ถัดไปขึ้นต้นด้วย "<order นี้>.") — รวมเป็นกลุ่มเดียว
-    var hasRealChildren = s.order.indexOf('.') === -1 &&
-      i + 1 < steps.length && steps[i + 1].order.indexOf(s.order + '.') === 0;
-    if (hasRealChildren) {
-      flushGroup();
-      var children = [];
-      var j = i + 1;
-      while (j < steps.length && steps[j].order.indexOf(s.order + '.') === 0) { children.push(steps[j]); j++; }
-      var anyActive = s.state !== 'upcoming' || children.some(function (c) { return c.state !== 'upcoming'; });
-      html += '<details class="pub-tl-group"' + (anyActive ? ' open' : '') + '><summary>' +
-        escapeHtml_('ขั้นตอนที่ ' + s.order + ' ' + s.name) + '</summary>' +
-        itemHtml(s) + children.map(function (c) { return itemHtml(c, subStatusToneClass_(c.name)); }).join('') + '</details>';
-      i = j;
-      continue;
-    }
-    // (2) เดิม — กลุ่ม virtual 8.x/9.x (ไม่มีสถานะหลักจริง)
-    var prefix = s.key.indexOf('s8_') === 0 ? 's8' : (s.key.indexOf('s9_') === 0 ? 's9' : null);
-    if (prefix) {
-      if (!group || group.prefix !== prefix) {
-        flushGroup();
-        group = { prefix: prefix, label: GROUP_LABELS[prefix], items: '', open: false };
-      }
-      group.items += itemHtml(s);
-      if (s.state !== 'upcoming') group.open = true;
-    } else {
-      flushGroup();
-      html += itemHtml(s);
-    }
-    i++;
-  }
-  flushGroup();
+  var subHtml = entry.sub
+    ? '<span class="pub-tl-sub-row">&#9492; <span class="pub-tl-sub-label">ผลการพิจารณา:</span> ' +
+      '<span class="pub-tl-sub-badge pub-hero-sub-' + entry.sub.tone + '">' +
+      escapeHtml_(entry.sub.order) + ' ' + escapeHtml_(entry.sub.split.main) + '</span></span>'
+    : '';
 
-  return '<div class="pub-timeline">' + html + '</div>';
+  return '<div class="pub-tl-item pub-tl-' + entry.state + '">' +
+    '<span class="pub-tl-icon">' + icon + '</span>' +
+    '<span class="pub-tl-text"><b>ขั้นตอนที่ ' + escapeHtml_(entry.order) + '</b> ' + escapeHtml_(entry.split.main) +
+    badges + metaHtml + subHtml + '</span></div>';
 }
 
-/** ห่อ Timeline ฉบับเต็มไว้ใน <details> ปิดโดยดีฟอลต์ (ข้อ 1/8: การ์ด Timeline แบบย่อที่เคยแสดงคู่กันถูกตัดออก
- *  แล้ว เพราะข้อมูลซ้ำกับที่การ์ด "สถานะปัจจุบัน" แสดงอยู่แล้ว — ปุ่มเปิด/ปิดใช้ <details>/<summary> ล้วนไม่มี JS) */
-function renderPubTimelineSection_(steps) {
-  if (!steps) return '';
-  return '<details class="pub-tl-full-details"><summary>ดู timeline เพิ่มเติม</summary>' + renderPublicTimeline_(steps) + '</details>';
+function renderPubFixedTimeline_(fixedSteps) {
+  return '<div class="pub-timeline">' + fixedSteps.map(renderPubFixedTimelineItem_).join('') + '</div>';
+}
+
+/** ห่อ Timeline 10 ขั้นตอนไว้ใน <details open> — เปิดแสดงครบทุกขั้นตอนตามค่าเริ่มต้น (ข้อ 11: Desktop ต้องเห็น
+ *  ครบ 10 ขั้นตอนแนวตั้ง) ปุ่ม/ป้าย "ดู Timeline ทั้งหมด 10 ขั้นตอน" ใช้ <details>/<summary> มาตรฐานไม่มี JS
+ *  พับเก็บได้เองทั้ง desktop/mobile (ข้อ 12/13) — เหลือ Timeline ชุดเดียว ไม่มีของย่อซ้ำอีกแล้ว (ข้อ 10) */
+function renderPubTimelineSection_(fixedSteps) {
+  if (!fixedSteps) return '';
+  return '<details class="pub-tl-full-details" open><summary>ดู Timeline ทั้งหมด 10 ขั้นตอน</summary>' +
+    renderPubFixedTimeline_(fixedSteps) + '</details>';
 }
 
 /** หน้าสแกน QR — ยังไม่มี token (เข้าจากเมนู ไม่ใช่จากลิงก์ QR) — กรอกรหัสเองได้กรณีกล้องอ่านไม่ออก */
@@ -2042,22 +2005,15 @@ var PUBLIC_CSS_ = '' +
   '.pub-tl-current .pub-tl-icon{background:var(--navy);border-color:var(--navy);color:#fff;width:24px;height:24px;font-size:.78rem;margin-top:-1px;}' +
   '.pub-tl-current .pub-tl-text{color:var(--navy);font-weight:700;}' +
   '.pub-tl-badge{display:inline-block;margin-left:6px;font-size:.66rem;font-weight:700;color:#fff;background:var(--navy);padding:2px 8px;border-radius:999px;vertical-align:middle;}' +
-  '.pub-tl-badge-next{background:var(--muted);}' +
-  // สีสถานะย่อยใน Timeline (2026-09-24 รอบ 2) — เฉพาะ item ที่เป็นลูกในกลุ่มสถานะหลักจริง (7.1/7.2/7.3/7.4)
-  // ใช้สีตามคำในชื่อจริงแทนสีเขียว-done เดิม (ผ่าน=เขียวเดิมอยู่แล้วไม่ต้อง override, แก้ไข=เหลือง, ไม่ผ่าน=แดง)
-  // เฉพาะตอน done (ผ่านไปแล้วจริง) — ตอน current ยังคงสีกรมท่าเดิมเสมอ (สีปัจจุบันสำคัญกว่าสีผลลัพธ์)
-  '.pub-tl-done.pub-tl-tone-revision .pub-tl-icon{background:var(--revision);border-color:var(--revision);}' +
-  '.pub-tl-done.pub-tl-tone-revision.pub-tl-item::before{background:var(--revision);}' +
-  '.pub-tl-done.pub-tl-tone-danger .pub-tl-icon{background:var(--danger);border-color:var(--danger);}' +
-  '.pub-tl-done.pub-tl-tone-danger.pub-tl-item::before{background:var(--danger);}' +
-  '.pub-tl-group{margin-bottom:4px;}' +
-  '.pub-tl-group summary{cursor:pointer;font-size:.78rem;font-weight:600;color:var(--muted);padding:4px 0 12px 33px;list-style:none;position:relative;}' +
-  '.pub-tl-group summary::-webkit-details-marker{display:none;}' +
-  '.pub-tl-group summary::before{content:"›";position:absolute;left:9px;top:0;font-size:1rem;transition:transform .15s;}' +
-  '.pub-tl-group[open] summary::before{transform:rotate(90deg);}' +
-  '.pub-tl-group .pub-tl-item{padding-left:14px;}' +
-  // ลิงก์ "ดู timeline เพิ่มเติม" — <details> เล็กๆ ค่าเริ่มต้นปิด (2026-09-24 รอบ 2: ตัด Mini Timeline ที่เคย
-  // แสดงคู่กันออกแล้ว เพราะข้อมูลซ้ำกับการ์ด "สถานะปัจจุบัน" ที่ขยายเนื้อหาครอบคลุมแล้ว)
+  '.pub-tl-badge-last{background:var(--done);}' +
+  // ขั้นตอนอนาคต (upcoming) — "รอดำเนินการ" สีเทา ไม่มีผู้รับผิดชอบ/วันที่ (ข้อ 9 ห้ามแสดงข้อมูลปลอม)
+  '.pub-tl-meta-pending{color:var(--muted);font-style:italic;}' +
+  // "└ ผลการพิจารณา: 7.1 ผ่าน" ซ้อนใต้ขั้นตอนหลักปัจจุบัน (2026-09-24) — reuse .pub-hero-sub-* tone เดิม
+  '.pub-tl-sub-row{display:block;margin-top:4px;font-size:.8rem;color:var(--muted);}' +
+  '.pub-tl-sub-label{color:var(--muted);}' +
+  '.pub-tl-sub-badge{display:inline-block;font-weight:700;padding:2px 8px;border-radius:999px;font-size:.78rem;margin-left:2px;}' +
+  // ปุ่ม "ดู Timeline ทั้งหมด 10 ขั้นตอน" — <details open> ค่าเริ่มต้นเปิดแสดงครบ (ข้อ 11: Desktop ต้องเห็น
+  // ครบ 10 ขั้นตอน) พับเก็บได้เองทั้ง desktop/mobile ด้วย <summary> มาตรฐานไม่มี JS (ข้อ 12/13)
   '.pub-tl-full-details{margin-bottom:10px;margin-top:10px;}' +
   '.pub-tl-full-details summary{cursor:pointer;font-size:.78rem;font-weight:600;color:var(--teal);list-style:none;padding:2px 0;text-align:center;}' +
   '.pub-tl-full-details summary::-webkit-details-marker{display:none;}' +

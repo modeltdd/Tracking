@@ -157,69 +157,55 @@ function parentStepOrder_(order) {
 }
 
 /**
- * สรุปความคืบหน้า (ผ่านแล้ว/ปัจจุบัน/เหลือ) สำหรับการ์ด "ความคืบหน้าของผลงาน" (2026-09-24 แก้บั๊กนับซ้ำตามที่
- * ผู้ใช้ขอ): นับ "ขั้นตอนหลัก" (เลขหน้าจุด) แบบไม่ซ้ำ — state ทศนิยมในขั้นตอนหลักเดียวกัน (เช่น 7 ที่ done จริง
- * และ 7.2 ที่ done จริงเช่นกันตอนงานเดินหน้าไปแล้ว) ถูกนับเป็น "ขั้นตอนที่ 7" ครั้งเดียว ไม่ใช่ 2 ขั้นตอน — เดิม
- * นับทุกแถวใน steps ตรงๆ ทำให้ตัวเลขเฟ้อเกินจริงเมื่อ workflow ผ่าน state ทศนิยมหลายตัวในขั้นตอนหลักเดียวกัน
- * completed จาก step ที่ state==='done' จริง (มาจาก StatusHistory เท่านั้น ไม่เดา) remaining นับได้แน่นอนเฉพาะ
- * กรณี steps.reachedTerminal===true (เดินเส้นทางจริงจากปัจจุบันไปจนสุดไม่เจอจุดแตกสายเลย) — ถ้ายังมีจุดแตกสาย
- * ข้างหน้าที่ยังไม่รู้ผล remainingKnown จะเป็น false ห้ามแสดงตัวเลขเดา (ข้อ 5/8/18 ของ requirement เดิม)
+ * สรุปความคืบหน้าสำหรับการ์ด "ความคืบหน้าของผลงาน" (2026-09-24 รอบใหม่ — ตามสูตรที่ผู้ใช้ระบุตรงๆ): backbone
+ * คงที่ 10 ขั้นตอนหลักเสมอ (ดู buildFixedMainTimeline_) currentMainStep = เลขหน้าจุดของ state ปัจจุบัน (เช่น
+ * "7.1" -> 7) completedCount = currentMainStep-1, remainingCount = 10-currentMainStep เสมอ (ไม่ใช้ reachedTerminal/
+ * แตกสายแบบเดิมอีกต่อไป — ผู้ใช้ยืนยันแล้วว่า backbone คงที่ 10 ขั้นตอนรู้จำนวนที่เหลือแน่นอนทุกกรณี)
+ * currentStep.order ผ่าน toStep() มาแล้วเสมอเป็น string (กัน error จาก split เหมือนที่เจอบั๊กจริงมาก่อนหน้านี้)
  */
 function buildProgressSummary_(work, steps) {
   if (!steps) return null; // terminated — ไม่มี timeline ให้สรุป
   var currentStep = steps.filter(function (s) { return s.state === 'current'; })[0] || null;
-  var currentParent = currentStep ? parentStepOrder_(currentStep.order) : null;
-
-  var doneParents = {};
-  steps.forEach(function (s) { if (s.state === 'done') doneParents[parentStepOrder_(s.order)] = true; });
-  var completedCount = Object.keys(doneParents).length;
-
-  var upcomingParents = {};
-  steps.forEach(function (s) {
-    if (s.state !== 'upcoming') return;
-    var p = parentStepOrder_(s.order);
-    if (doneParents[p] || p === currentParent) return; // กันนับซ้ำขั้นตอนหลักเดียวกับที่ done/current ไปแล้ว
-    upcomingParents[p] = true;
-  });
-  var remainingCount = Object.keys(upcomingParents).length;
+  var orderText = currentStep ? String(currentStep.order).trim() : '';
+  var currentMainStep = parseInt(orderText.split('.')[0], 10) || 0;
+  var totalMainSteps = 10;
+  var completedCount = Math.max(currentMainStep - 1, 0);
+  var remainingCount = Math.max(totalMainSteps - currentMainStep, 0);
+  var progressPercent = totalMainSteps > 0 ? Math.round((currentMainStep / totalMainSteps) * 100) : 0;
 
   return {
     completedCount: completedCount,
     currentStep: currentStep,
-    remainingKnown: !!steps.reachedTerminal,
+    currentMainStep: currentMainStep,
+    totalMainSteps: totalMainSteps,
     remainingCount: remainingCount,
+    progressPercent: progressPercent,
     isFinished: work.current_status_public === 'done',
   };
 }
 
-/** สร้าง HTML การ์ด "Metro Progress" เหนือ Timeline (2026-09-24) — ตัดสินใจว่าจะโชว์ตัวเลขหรือข้อความ
- *  "รอผลการพิจารณา" (escapeHtml_ ประกาศใน Views.gs แต่ทุกไฟล์ .gs อยู่ global scope เดียวกัน เรียกข้ามไฟล์ได้ปกติ) */
+/** สร้าง HTML การ์ด "ความคืบหน้าของผลงาน" (2026-09-24 รอบใหม่ ตามตัวอย่างที่ผู้ใช้ระบุตรงๆ: "ดำเนินการเสร็จแล้ว
+ *  N ขั้นตอน / ปัจจุบันอยู่ขั้นตอนที่ N จาก 10 / เหลืออีก N ขั้นตอน / ความคืบหน้า N%") escapeHtml_ ประกาศใน
+ *  Views.gs แต่ทุกไฟล์ .gs อยู่ global scope เดียวกัน เรียกข้ามไฟล์ได้ปกติ */
 function renderPubProgressSummary_(summary) {
   if (!summary) return '';
   if (summary.isFinished) {
     return '' +
       '<div class="pub-progress-card">' +
       '<div class="pub-progress-title">ความคืบหน้าของผลงาน</div>' +
-      '<div class="pub-progress-row"><span class="pub-progress-item pub-progress-done">&#10003; ผ่านแล้ว ' + summary.completedCount + ' ขั้นตอน</span></div>' +
+      '<div class="pub-progress-row"><span class="pub-progress-item pub-progress-done">&#10003; ดำเนินการเสร็จแล้ว ' + summary.completedCount + ' ขั้นตอน</span></div>' +
       '<div class="pub-progress-finished">&#9678; ดำเนินการเสร็จสิ้นแล้ว</div>' +
       '</div>';
   }
-  var remainingText = summary.remainingKnown ? 'เหลือ ' + summary.remainingCount + ' ขั้นตอน' : 'ขั้นตอนที่เหลือขึ้นอยู่กับผลการพิจารณา';
-  var currentLabel = summary.currentStep ? (escapeHtml_(summary.currentStep.order) + ' ' + escapeHtml_(summary.currentStep.name)) : '-';
-  var barHtml = '';
-  if (summary.remainingKnown) {
-    var total = summary.completedCount + 1 + summary.remainingCount;
-    var pct = total > 0 ? Math.round(((summary.completedCount + 1) / total) * 100) : 0;
-    barHtml = '<div class="pub-progress-bar"><div class="pub-progress-bar-fill" style="width:' + pct + '%"></div></div>' +
-      '<div class="pub-progress-bar-label">ผ่านแล้ว ' + (summary.completedCount + 1) + ' จาก ' + total + ' ขั้นตอน</div>';
-  }
+  var barHtml = '<div class="pub-progress-bar"><div class="pub-progress-bar-fill" style="width:' + summary.progressPercent + '%"></div></div>' +
+    '<div class="pub-progress-bar-label">ความคืบหน้า ' + summary.progressPercent + '%</div>';
   return '' +
     '<div class="pub-progress-card">' +
     '<div class="pub-progress-title">ความคืบหน้าของผลงาน</div>' +
     '<div class="pub-progress-row">' +
-    '<span class="pub-progress-item pub-progress-done">&#10003; ผ่านแล้ว ' + summary.completedCount + ' ขั้น</span>' +
-    '<span class="pub-progress-item pub-progress-current">&#9679; ปัจจุบัน ' + currentLabel + '</span>' +
-    '<span class="pub-progress-item pub-progress-remaining">&#9675; ' + escapeHtml_(remainingText) + '</span>' +
+    '<span class="pub-progress-item pub-progress-done">&#10003; ดำเนินการเสร็จแล้ว ' + summary.completedCount + ' ขั้นตอน</span>' +
+    '<span class="pub-progress-item pub-progress-current">&#9679; ปัจจุบันอยู่ขั้นตอนที่ ' + summary.currentMainStep + ' จาก ' + summary.totalMainSteps + '</span>' +
+    '<span class="pub-progress-item pub-progress-remaining">&#9675; เหลืออีก ' + summary.remainingCount + ' ขั้นตอน</span>' +
     '</div>' +
     barHtml +
     '</div>';
@@ -285,6 +271,66 @@ function findNextStepDisplay_(steps, stationsMap) {
   return { order: next.order, split: { main: next.name, desc: '' } };
 }
 
+/**
+ * ชื่อ "ขั้นตอนหลัก" ของเลขขั้นตอน n (1-10) — ถ้ามีสถานะที่ station_order ตรงเลขเต็ม n ในระบบจริงใช้ชื่อนั้นตรงๆ
+ * (state 1,2,4,5,6,7,10) ถ้าไม่มี (state 3,8,9 — ไม่มีสถานะหลักจริงในระบบ ยืนยันกับผู้ใช้แล้ว 2026-09-24) ใช้ชื่อ
+ * จากสถานะย่อยแรกของกลุ่มนั้นแทน (เรียงตามเลขทศนิยมน้อยไปมาก เช่น n=3 ใช้ชื่อของ 3.1) ตามที่ผู้ใช้เลือกไว้
+ * — ห้ามสร้างชื่อสถานะใหม่ขึ้นเองตามที่ผู้ใช้กำชับ ใช้ชื่อจริงจาก Master WorkflowStates เท่านั้นทุกกรณี
+ */
+function mainStepNameFor_(n, stationsMap) {
+  var bare = null;
+  for (var key in stationsMap) {
+    if (String(stationsMap[key].station_order) === String(n)) { bare = stationsMap[key]; break; }
+  }
+  if (bare) return splitStationNameDesc_(bare.station_name);
+  var children = [];
+  for (var k2 in stationsMap) {
+    if (String(stationsMap[k2].station_order).indexOf(n + '.') === 0) children.push(stationsMap[k2]);
+  }
+  children.sort(function (a, b) { return parseFloat(a.station_order) - parseFloat(b.station_order); });
+  return children.length ? splitStationNameDesc_(children[0].station_name) : { main: 'ขั้นตอนที่ ' + n, desc: '' };
+}
+
+/**
+ * Timeline หลัก 10 ขั้นตอนคงที่ (2026-09-24 ตามที่ผู้ใช้ขอรอบใหม่) — แสดงขั้นตอนที่ 1-10 เสมอไม่ว่าจะไปถึงจริง
+ * หรือยัง ต่างจากเดิมที่หยุดแสดงตรงจุดแตกสาย ("ห้ามเดา" ยังคงอยู่ แต่ตอนนี้ scope แค่ "อย่าเดาว่าจะไปแตกสายไหน"
+ * ไม่ใช่ "ห้ามโชว์ขั้นตอนที่ยังไปไม่ถึง" — ขั้นตอนอนาคตแสดงแค่ชื่อ+"รอดำเนินการ" ไม่มีผู้รับผิดชอบ/วันที่ปลอม)
+ * ใช้ `steps` จาก buildPublicDetailedSteps_ เป็นแหล่งข้อมูลจริงเดียว (org/enteredAt ที่ถูกต้องอยู่แล้ว รองรับ
+ * วนกลับ) มาจัดกลุ่มตาม parentStepOrder_ แทนการอ่านชีตซ้ำ — steps ที่ null (terminated) คืน null เหมือนเดิม
+ * entry: { order, split:{main,desc}, state:'done'|'current'|'upcoming', org, enteredAt, isLastStep, sub? }
+ */
+function buildFixedMainTimeline_(steps, stationsMap, work) {
+  if (!steps) return null;
+  var currentStep = steps.filter(function (s) { return s.state === 'current'; })[0] || null;
+  var currentMainStep = currentStep ? parseInt(String(currentStep.order).trim().split('.')[0], 10) || 0 : 0;
+  var currentStation = stationsMap[work.current_station_key] || null;
+
+  var result = [];
+  for (var n = 1; n <= 10; n++) {
+    var group = steps.filter(function (s) { return parentStepOrder_(s.order) === String(n) && s.state !== 'upcoming'; });
+    var entry = { order: String(n), split: mainStepNameFor_(n, stationsMap), isLastStep: n === 10 };
+    if (n === currentMainStep) {
+      var currentReal = group.filter(function (s) { return s.state === 'current'; })[0] || group[group.length - 1] || null;
+      entry.state = 'current';
+      entry.org = currentReal ? currentReal.org : (currentStation ? currentStation.org : '');
+      entry.enteredAt = currentReal ? currentReal.enteredAt : null;
+      var heroInfo = buildHeroDisplayInfo_(currentStation, stationsMap);
+      if (heroInfo.isSub) entry.sub = { order: heroInfo.subOrder, split: heroInfo.subSplit, tone: heroInfo.subTone };
+    } else if (n < currentMainStep) {
+      var lastDone = group.length ? group[group.length - 1] : null;
+      entry.state = 'done';
+      entry.org = lastDone ? lastDone.org : '';
+      entry.enteredAt = lastDone ? lastDone.enteredAt : null;
+    } else {
+      entry.state = 'upcoming';
+      entry.org = '';
+      entry.enteredAt = null;
+    }
+    result.push(entry);
+  }
+  return result;
+}
+
 /** สีของ "สถานะย่อย/ผลการดำเนินงาน" ตามคำในชื่อ state จริง (2026-09-24 ตามที่ผู้ใช้ขอ) — เช็ค "ไม่ผ่าน" ก่อน
  *  "ผ่าน" เสมอ (ไม่งั้น "ไม่ผ่าน" จะแมตช์ "ผ่าน" ก่อนผิดความหมาย) ใช้หลักการเดียวกันกับทุก state ทศนิยม */
 function subStatusToneClass_(stationName) {
@@ -313,7 +359,9 @@ function buildPublicResultData_(ss, work) {
   return {
     revisionInfo: revisionInfo,
     steps: steps,
-    progressSummary: buildProgressSummary_(work, steps), // 2026-09-24 "Metro Progress" เหนือ Timeline
+    progressSummary: buildProgressSummary_(work, steps), // การ์ด "ความคืบหน้าของผลงาน"
+    // Timeline หลัก 10 ขั้นตอนคงที่ (2026-09-24) — แทน timeline แบบหยุดที่จุดแตกสายเดิม
+    fixedTimeline: buildFixedMainTimeline_(steps, stationsMap, work),
     currentStation: stationsMap[work.current_station_key] || null,
     // 2026-09-24 (redesign แยกสถานะหลัก/ย่อย): ให้ renderPublicResultBody_ (Views.gs) หา "สถานะหลัก" ของ state
     // ทศนิยม (เช่น 7.1 -> หา state order='7') ได้โดยไม่ต้องอ่านชีตซ้ำ — renderWorkDetailBody_ (staff) มี
