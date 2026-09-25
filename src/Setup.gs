@@ -478,3 +478,76 @@ function logSampleQrTokens() {
   });
   Logger.log('=== เอา qr_token ตัวไหนก็ได้ข้างบน ไปต่อท้าย URL: ' + getWebAppUrl_() + '?page=scan&t=<qr_token> ===');
 }
+
+/**
+ * เพิ่มขั้นตอนย่อยใหม่ 3.3 "ไม่ครบถ้วน-รอเจ้าของผลงานแก้ไข" (2026-09-25 ผู้ใช้ขอ — ยืนยันตำแหน่งแล้ว: แทรกหลัง
+ * 3.2 เดิม) เดิม 3.2 "ไม่ครบถ้วน-ส่งคืนหน่วยงาน" กด "ส่งเอกสารกลับมาแล้ว (ตรวจสอบใหม่)" ครั้งเดียวกลับเข้า 2
+ * ตรงๆ ตอนนี้แยกเป็น 2 ขั้น (pattern เดียวกับ 8.2->8.3->8.4 ที่มีอยู่แล้วในระบบ):
+ *   3.2 (ส่งคืนหน่วยงาน, org=ORG_FROM เดิม ไม่แตะ)
+ *   -> ปุ่มใหม่ "แจ้งเจ้าของผลงานแล้ว"
+ *   -> 3.3 (รอเจ้าของผลงานแก้ไข, org=ORG_FROM ใหม่, standard_days=7 เท่า 3.2 เดิม — ยังไม่มีข้อมูลจริงมากำหนด
+ *      เป็นอย่างอื่น ปรับได้ทีหลังผ่านหน้า Admin > จัดการ Workflow)
+ *   -> ปุ่ม "ส่งเอกสารกลับมาแล้ว (ตรวจสอบใหม่)" (label เดิมทุกตัวอักษร ย้ายจุดเริ่มมาเป็น 3.3 แทน)
+ *   -> กลับเข้า 2 เหมือนเดิม
+ *
+ * ไม่ลบ transition เดิม (s3_2_s2) ทิ้ง แค่ตั้ง active=false (ประวัติเก่าใน StatusHistory ที่เคยใช้เส้นทางนี้
+ * เป็น append-only อยู่แล้ว ไม่กระทบ) ปลอดภัยรันซ้ำได้ (idempotent — เช็คมี 's3_3'/transition ใหม่แล้วข้าม)
+ * รันเองจาก Apps Script Editor เท่านั้น หลังรันแล้วตรวจสอบผลที่หน้า Admin > จัดการ Workflow
+ */
+function migrateAddState33() {
+  var ss = getSpreadsheet_();
+  var statesSheet = ss.getSheetByName(SHEET.WORKFLOW_STATES);
+  var transSheet = ss.getSheetByName(SHEET.WORKFLOW_TRANSITIONS);
+  if (!statesSheet || !transSheet) {
+    Logger.log('ไม่พบชีต WorkflowStates/WorkflowTransitions — ยังไม่เคยรัน migrateToWorkflowStates() มาก่อน ต้องรันนั้นก่อน');
+    return;
+  }
+
+  var states = readSheetAsObjects_(statesSheet);
+  if (states.some(function (s) { return s.station_key === 's3_3'; })) {
+    Logger.log('มีขั้นตอน 3.3 อยู่แล้ว — ข้าม (idempotent)');
+  } else {
+    var stateHeaders = SHEET_HEADERS[SHEET.WORKFLOW_STATES];
+    appendRowByHeader_(statesSheet, stateHeaders, {
+      station_key: 's3_3', station_order: '3.3', station_name: 'ไม่ครบถ้วน-รอเจ้าของผลงานแก้ไข',
+      org: 'ORG_FROM', standard_days: 7, public_status: 'need_revision', receive_role: '', approve_role: '',
+      notify_method: '', active: true,
+      public_hint: 'เอกสารไม่ครบถ้วน อยู่ระหว่างรอเจ้าของผลงานจัดเตรียมเอกสารเพิ่มเติมให้ครบถ้วน กรุณาส่งเอกสารที่จัดเตรียมเสร็จแล้วกลับผ่านหน่วยงานต้นสังกัดโดยเร็ว',
+    });
+    // station_order เป็นสตริงตัวเลขล้วน ("3.3") — บังคับ setNumberFormat('@') กันถูก Sheets auto-detect เป็น
+    // Number ตอน appendRow (บั๊กคลาสเดียวกับ team_no/tracking_no/station_order ที่เจอมาแล้วหลายรอบในโปรเจกต์นี้)
+    var orderCol = stateHeaders.indexOf('station_order') + 1;
+    statesSheet.getRange(statesSheet.getLastRow(), orderCol).setNumberFormat('@').setValue('3.3');
+    Logger.log('เพิ่มขั้นตอน 3.3 "ไม่ครบถ้วน-รอเจ้าของผลงานแก้ไข" (org=ORG_FROM, standard_days=7) เรียบร้อย');
+  }
+
+  var transitions = readSheetAsObjects_(transSheet);
+  var transHeaders = SHEET_HEADERS[SHEET.WORKFLOW_TRANSITIONS];
+  var byId = {};
+  transitions.forEach(function (t) { byId[t.transition_id] = t; });
+
+  if (byId['s3_2_s2'] && byId['s3_2_s2'].active !== false && String(byId['s3_2_s2'].active) !== 'false') {
+    updateSheetRowByKey_(transSheet, 'transition_id', 's3_2_s2', { active: false });
+    Logger.log('ปิดเส้นทางเดิม s3_2_s2 (active=false, ไม่ลบทิ้ง) — แทนที่ด้วย s3_2 -> s3_3 -> s2 ใหม่');
+  } else if (!byId['s3_2_s2']) {
+    Logger.log('ไม่พบ transition s3_2_s2 เดิม (อาจเคยปิดไปแล้ว) — ข้าม');
+  }
+
+  if (!byId['s3_2_s3_3']) {
+    appendRowByHeader_(transSheet, transHeaders, {
+      transition_id: 's3_2_s3_3', from_state: 's3_2', to_state: 's3_3',
+      button_label: 'แจ้งเจ้าของผลงานแล้ว', requires_note: false, result_value: '', active: true,
+    });
+    Logger.log('เพิ่มเส้นทาง s3_2 -> s3_3 ("แจ้งเจ้าของผลงานแล้ว") เรียบร้อย');
+  }
+
+  if (!byId['s3_3_s2']) {
+    appendRowByHeader_(transSheet, transHeaders, {
+      transition_id: 's3_3_s2', from_state: 's3_3', to_state: 's2',
+      button_label: 'ส่งเอกสารกลับมาแล้ว (ตรวจสอบใหม่)', requires_note: false, result_value: '', active: true,
+    });
+    Logger.log('เพิ่มเส้นทาง s3_3 -> s2 ("ส่งเอกสารกลับมาแล้ว (ตรวจสอบใหม่)") เรียบร้อย');
+  }
+
+  Logger.log('=== migrateAddState33 เสร็จ — ตรวจสอบผลที่หน้า Admin > จัดการ Workflow ===');
+}
