@@ -551,3 +551,77 @@ function migrateAddState33() {
 
   Logger.log('=== migrateAddState33 เสร็จ — ตรวจสอบผลที่หน้า Admin > จัดการ Workflow ===');
 }
+
+/**
+ * ลบงานทดสอบที่ลงทะเบียนต่อจากของจริง 244 รายการสุดท้าย (2026-09-25 ผู้ใช้ขอ — ยืนยันแล้วว่าข้อมูลจริงมี
+ * exactly 244 รายการ ของปีปัจจุบัน) หา Works ที่เลขทะเบียนปีปัจจุบันมีเลขลำดับ > 244 (เช่น "69-245" เป็นต้นไป)
+ * ถือว่าเป็นข้อมูลทดสอบที่เกินมา ลบทั้ง Works + StatusHistory ที่ match แล้วปรับ Settings last_seq_<ปีเต็ม>
+ * กลับเป็น 244 พอดี ให้การลงทะเบียนจริงครั้งถัดไปได้เลขทะเบียนต่อที่ 245 ตามที่ผู้ใช้ขอ
+ *
+ * รันเองจาก Editor เท่านั้น: รัน auditRecordsAfter244() ดู Log ยืนยันก่อนเสมอ แล้วค่อยรัน
+ * deleteRecordsAfter244AndResetCounter() — รันซ้ำติดกันทันที (ไม่มีอะไรใหม่ค้าง) ปลอดภัย ไม่ลบซ้ำ/ไม่พังอะไร
+ * แต่ "ไม่ idempotent ตลอดไป": ถ้ามีการลงทะเบียนงานจริงใหม่ (ได้เลข 245 เป็นต้นไป) เกิดขึ้น *หลัง* รันรอบแรกไปแล้ว
+ * ห้ามรันฟังก์ชันนี้ซ้ำอีก เพราะเงื่อนไข ">244" จะไปจับงานจริงตัวใหม่นั้นด้วย (ทำครั้งเดียวตอนเคลียร์ของทดสอบเท่านั้น)
+ */
+function auditRecordsAfter244() {
+  var ss = getSpreadsheet_();
+  var year = String(getSetting_(ss, 'fiscal_year_current', String(getBuddhistYear_(now_()))));
+  var shortYear = shortBuddhistYear_(year);
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var matched = works.filter(function (w) {
+    var m = String(w.tracking_no || '').match(new RegExp('^' + shortYear + '-(\\d+)$'));
+    return m && Number(m[1]) > 244;
+  });
+  var currentSeq = getSetting_(ss, 'last_seq_' + year, '0');
+  Logger.log('Settings last_seq_' + year + ' ปัจจุบัน = ' + currentSeq);
+  if (!matched.length) {
+    Logger.log('ไม่พบงานที่เลขทะเบียนเกิน ' + shortYear + '-244 เลย — ไม่มีอะไรต้องลบ');
+    return;
+  }
+  matched.forEach(function (w) {
+    var hist = getHistoryForWork_(ss, w.work_id);
+    Logger.log('tracking_no=' + w.tracking_no + ' | work_id=' + w.work_id +
+      ' | ชื่อผลงาน="' + w.work_title + '" | หน่วยงาน="' + w.org_from + '"' +
+      ' | เจ้าของ="' + (w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '') + '"' +
+      ' | created_by=' + w.created_by + ' | ประวัติ ' + hist.length + ' แถว (action: ' + hist.map(function (h) { return h.action; }).join(', ') + ')');
+  });
+  Logger.log('=== พบ ' + matched.length + ' รายการเกินเลข 244 — ตรวจสอบให้ครบก่อนรัน deleteRecordsAfter244AndResetCounter() ===');
+}
+
+function deleteRecordsAfter244AndResetCounter() {
+  var ss = getSpreadsheet_();
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
+  var year = String(getSetting_(ss, 'fiscal_year_current', String(getBuddhistYear_(now_()))));
+  var shortYear = shortBuddhistYear_(year);
+
+  var works = readSheetAsObjects_(worksSheet);
+  var toDelete = {};
+  works.forEach(function (w) {
+    var m = String(w.tracking_no || '').match(new RegExp('^' + shortYear + '-(\\d+)$'));
+    if (m && Number(m[1]) > 244) toDelete[w.work_id] = w.tracking_no;
+  });
+
+  if (Object.keys(toDelete).length) {
+    var worksHeaders = worksSheet.getRange(1, 1, 1, worksSheet.getLastColumn()).getValues()[0];
+    var workIdColW = worksHeaders.indexOf('work_id') + 1;
+    var deletedWorks = 0;
+    for (var r = worksSheet.getLastRow(); r >= 2; r--) {
+      var wid = worksSheet.getRange(r, workIdColW).getValue();
+      if (toDelete[wid]) { Logger.log('ลบ Works แถว ' + r + ' (tracking_no=' + toDelete[wid] + ')'); worksSheet.deleteRow(r); deletedWorks++; }
+    }
+
+    var historyHeaders = historySheet.getRange(1, 1, 1, historySheet.getLastColumn()).getValues()[0];
+    var workIdColH = historyHeaders.indexOf('work_id') + 1;
+    var deletedHistory = 0;
+    for (var r2 = historySheet.getLastRow(); r2 >= 2; r2--) {
+      if (toDelete[historySheet.getRange(r2, workIdColH).getValue()]) { historySheet.deleteRow(r2); deletedHistory++; }
+    }
+    Logger.log('ลบ Works ' + deletedWorks + ' แถว, StatusHistory ' + deletedHistory + ' แถว (เลขทะเบียนเกิน ' + shortYear + '-244)');
+  } else {
+    Logger.log('ไม่พบงานที่เลขทะเบียนเกิน ' + shortYear + '-244 เลย — ไม่มีอะไรต้องลบ');
+  }
+
+  setSetting_(ss, 'last_seq_' + year, '244', 'เลขลำดับล่าสุดของปี ' + year + ' (ระบบเพิ่มอัตโนมัติ ห้ามแก้มือขณะมีคนใช้งาน)');
+  Logger.log('=== ปรับ Settings last_seq_' + year + ' = 244 เรียบร้อย — งานถัดไปจะได้เลขทะเบียน ' + shortYear + '-245 ===');
+}
