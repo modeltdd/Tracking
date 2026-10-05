@@ -518,6 +518,7 @@ function renderForwardListBody_(org, works, stationsMap, baseUrl) {
 /** หน้าทะเบียนผลงานทั้งหมด (เฉพาะ ผู้รับผิดชอบ/Admin) — ช่องค้นหา + ตัวกรองสถานะ + ตาราง + pagination */
 function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts, baseUrl, flashMessage) {
   var flashHtml = flashMessage ? '<div class="success-banner">' + escapeHtml_(flashMessage) + '</div>' : '';
+  var viewToggleHtml = renderRegistryViewToggle_(rp, baseUrl);
 
   var tileDefs = [
     { key: '', label: 'ทั้งหมด', count: bucketCounts.all },
@@ -629,9 +630,186 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
       (hasFilter ? ' จาก ' + totalAllCount : '') + ')</span>' + nextLink + '</div>';
   }
 
-  return flashHtml + tilesHtml + filterFormHtml +
+  return flashHtml + viewToggleHtml + tilesHtml + filterFormHtml +
     '<p class="hint" style="margin:0 0 10px">คลิก "ดูรายละเอียด/จัดการ" — เห็นได้ทุกรายการ แก้สถานะได้เฉพาะที่หน่วยงานตนรับผิดชอบ ณ สถานะปัจจุบันเท่านั้น</p>' +
     '<section class="metric-card">' + tableHtml + pagerHtml + '</section>';
+}
+
+/** ปุ่มสลับ [มุมมองการ์ด] [มุมมอง Excel] (2026-09-25 ตามที่ผู้ใช้ขอข้อ 10) — ข้อมูล/filter/permission ชุดเดียวกัน
+ *  ต่างแค่การแสดงผล ใช้ร่วมกันทั้ง 2 ฟังก์ชัน render */
+function renderRegistryViewToggle_(rp, baseUrl) {
+  var isExcel = rp.view === 'excel';
+  return '<div class="registry-view-toggle">' +
+    '<a class="registry-view-btn' + (isExcel ? '' : ' active') + '" target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { view: 'card', p: 1 }) + '">มุมมองการ์ด</a>' +
+    '<a class="registry-view-btn' + (isExcel ? ' active' : '') + '" target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { view: 'excel', p: 1 }) + '">มุมมอง Excel</a>' +
+    '</div>';
+}
+
+/**
+ * มุมมอง Excel ของหน้าทะเบียน (2026-09-25 ตามที่ผู้ใช้ขอ) — ตารางกว้าง คอลัมน์ใกล้เคียง Excel เดิม ข้อมูล/
+ * filter/sort/permission ชุดเดียวกับมุมมองการ์ด (renderRegistryListBody_) ทุกประการ ไม่มีฐานข้อมูล/schema ใหม่
+ * (ตามที่ผู้ใช้กำชับ) Header ติดด้านบน (sticky) + freeze คอลัมน์แรก 3 คอลัมน์ด้วย CSS ล้วน ไม่ใช้ JS
+ * Monthly Snapshot (monthlySnapshot, optional — คำนวณจาก StatusHistory จริงใน buildMonthlyStateSnapshot_)
+ * แสดงเฉพาะตอน rp.monthly==='1' (ปิดเป็นค่าเริ่มต้น กันคำนวณหนักเกินจำเป็นทุกครั้งที่เปิดหน้า)
+ */
+function renderRegistryExcelViewBody_(ss, pageResult, rp, totalAllCount, bucketCounts, baseUrl, flashMessage, stationsMap, monthlySnapshot, fyOptions) {
+  var flashHtml = flashMessage ? '<div class="success-banner">' + escapeHtml_(flashMessage) + '</div>' : '';
+  var viewToggleHtml = renderRegistryViewToggle_(rp, baseUrl);
+
+  var allWorks = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var allStates = listStationsSorted_(ss);
+  var stateOptions = '<option value="">ทุกสถานะ</option>' + allStates.map(function (s) {
+    var sel = rp.state === s.station_key ? ' selected' : '';
+    return '<option value="' + escapeHtml_(s.station_key) + '"' + sel + '>' + escapeHtml_(s.station_order) + ' ' + escapeHtml_(s.station_name) + '</option>';
+  }).join('');
+  var respOptions = '<option value="">ทุกผู้รับผิดชอบ</option>' + distinctValues_(allWorks, 'current_owner_org').map(function (o) {
+    return '<option value="' + escapeHtml_(o) + '"' + (rp.resp === o ? ' selected' : '') + '>' + escapeHtml_(o) + '</option>';
+  }).join('');
+  var orgOptions = '<option value="">ทุกหน่วยงาน</option>' + distinctValues_(allWorks, 'org_from').map(function (o) {
+    return '<option value="' + escapeHtml_(o) + '"' + (rp.org === o ? ' selected' : '') + '>' + escapeHtml_(o) + '</option>';
+  }).join('');
+  var positionOptions = '<option value="">ทุกตำแหน่ง</option>' + distinctValues_(allWorks, 'position').map(function (o) {
+    return '<option value="' + escapeHtml_(o) + '"' + (rp.position === o ? ' selected' : '') + '>' + escapeHtml_(o) + '</option>';
+  }).join('');
+  var specialtyOptions = '<option value="">ทุกด้าน</option>' + distinctValues_(allWorks, 'specialty').map(function (o) {
+    return '<option value="' + escapeHtml_(o) + '"' + (rp.specialty === o ? ' selected' : '') + '>' + escapeHtml_(o) + '</option>';
+  }).join('');
+  var provinceList = getSettingList_(ss, 'district11_provinces', ['นครศรีธรรมราช', 'กระบี่', 'พังงา', 'ภูเก็ต', 'สุราษฎร์ธานี', 'ระนอง', 'ชุมพร']);
+  var provinceOptions = '<option value="">ทุกจังหวัด</option>' + provinceList.map(function (p) {
+    return '<option value="' + escapeHtml_(p) + '"' + (rp.province === p ? ' selected' : '') + '>' + escapeHtml_(p) + '</option>';
+  }).join('');
+  var fyOptions_ = '<option value="">ทุกปีงบประมาณ</option>' + (fyOptions || []).map(function (fy) {
+    return '<option value="' + escapeHtml_(fy) + '"' + (rp.fy === fy ? ' selected' : '') + '>' + escapeHtml_(fy) + '</option>';
+  }).join('');
+  var monthOptions = '<option value="">ทุกเดือน</option>' + THAI_MONTHS_.map(function (name, i) {
+    var val = String(i + 1);
+    return '<option value="' + val + '"' + (rp.month === val ? ' selected' : '') + '>' + escapeHtml_(name) + '</option>';
+  }).join('');
+  var perOptions = REGISTRY_PER_PAGE_OPTIONS_.map(function (n) {
+    return '<option value="' + n + '"' + (rp.per === n ? ' selected' : '') + '>' + n + ' รายการ/หน้า</option>';
+  }).join('');
+
+  var filterFormHtml = '' +
+    '<form method="get" target="_top" action="' + baseUrl + '" class="reg-form" style="margin-bottom:12px;">' +
+    '<input type="hidden" name="page" value="registry"><input type="hidden" name="view" value="excel">' +
+    '<div class="field-row">' +
+    '<div class="field"><label>ค้นหา</label><input class="input" type="text" name="q" value="' + escapeHtml_(rp.q) +
+    '" placeholder="เลขทะเบียน / ชื่อเจ้าของผลงาน / ชื่อผลงาน / หน่วยงาน"></div>' +
+    '</div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>สถานะ</label><select class="input" name="state">' + stateOptions + '</select></div>' +
+    '<div class="field"><label>ผู้รับผิดชอบ</label><select class="input" name="resp">' + respOptions + '</select></div>' +
+    '</div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>หน่วยงาน</label><select class="input" name="org">' + orgOptions + '</select></div>' +
+    '<div class="field"><label>ตำแหน่ง</label><select class="input" name="position">' + positionOptions + '</select></div>' +
+    '</div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>ด้าน</label><select class="input" name="specialty">' + specialtyOptions + '</select></div>' +
+    '<div class="field"><label>จังหวัด</label><select class="input" name="province">' + provinceOptions + '</select></div>' +
+    '</div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>ปีงบประมาณ</label><select class="input" name="fy">' + fyOptions_ + '</select></div>' +
+    '<div class="field"><label>เดือนที่รับเรื่อง</label><select class="input" name="month">' + monthOptions + '</select></div>' +
+    '</div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>แสดง</label><select class="input" name="per">' + perOptions + '</select></div>' +
+    '</div>' +
+    '<div class="checkbox-row"><label><input type="checkbox" name="monthly" value="1"' + (rp.monthly === '1' ? ' checked' : '') +
+    '> แสดง State รายเดือน (คำนวณจากประวัติจริง — โหลดช้าลงถ้าเปิด)</label></div>' +
+    '<button class="btn-primary" type="submit">ค้นหา/กรอง</button>' +
+    '</form>';
+
+  var exportQuery = buildRegistryQuery_(rp, { p: 1 }) + '&export=csv';
+  var exportHtml = '<p class="registry-export-row">' +
+    '<a class="btn-outline" target="_top" href="' + baseUrl + '?' + exportQuery + '">ดาวน์โหลด CSV</a>' +
+    '<span class="hint" style="margin-left:8px">Export ตามเงื่อนไขค้นหา/กรองปัจจุบัน (ทุกรายการที่ตรง ไม่ใช่แค่หน้านี้)</span></p>';
+
+  // ทำดัชนี order -> station ไว้ล่วงหน้า ใช้ทั้งคอลัมน์ State ปัจจุบัน และคอลัมน์รายเดือน (ไม่ query ซ้ำต่อแถว)
+  var orderToStation = {};
+  Object.keys(stationsMap).forEach(function (key) { orderToStation[String(stationsMap[key].station_order)] = stationsMap[key]; });
+  function stateCellHtml(orderText) {
+    if (!orderText) return '<span class="excel-state-empty">-</span>';
+    var st = orderToStation[String(orderText)];
+    if (!st) return escapeHtml_(orderText);
+    var tone = subStatusToneClass_(st.station_name);
+    return '<span class="excel-state-badge pub-hero-sub-' + tone + '">' + escapeHtml_(orderText) + '</span>';
+  }
+
+  var monthlyHeadHtml = monthlySnapshot ? monthlySnapshot.months.map(function (m) { return '<th class="excel-col-month">' + escapeHtml_(m) + '</th>'; }).join('') : '';
+  var theadHtml = '<tr>' +
+    '<th class="excel-col-no excel-freeze excel-freeze-1">ลำดับ</th>' +
+    '<th class="excel-freeze excel-freeze-2">' + registrySortHeaderInnerHtml_('เลขทะเบียน', 'tracking_no', rp, baseUrl) + '</th>' +
+    '<th class="excel-col-wide excel-freeze excel-freeze-3">' + registrySortHeaderInnerHtml_('ชื่อ-สกุล', 'owner', rp, baseUrl) + '</th>' +
+    '<th>ตำแหน่ง</th><th>ด้าน</th><th>จังหวัด</th>' +
+    '<th>' + registrySortHeaderInnerHtml_('วันที่ลงรับ', 'received_date', rp, baseUrl) + '</th>' +
+    '<th>ทีม</th><th>เลขา</th>' +
+    '<th class="excel-col-wide">' + registrySortHeaderInnerHtml_('หน่วยงาน', 'org_from', rp, baseUrl) + '</th>' +
+    '<th>' + registrySortHeaderInnerHtml_('State ปัจจุบัน', 'state', rp, baseUrl) + '</th>' +
+    '<th class="excel-col-wide">' + registrySortHeaderInnerHtml_('ผู้รับผิดชอบปัจจุบัน', 'current_owner_org', rp, baseUrl) + '</th>' +
+    '<th>' + registrySortHeaderInnerHtml_('วันที่อัปเดตล่าสุด', 'updated_at', rp, baseUrl) + '</th>' +
+    monthlyHeadHtml +
+    '<th>จัดการ</th></tr>';
+
+  var startIndex = (pageResult.page - 1) * pageResult.perPage;
+  var rows = pageResult.items.map(function (w, i) {
+    var ownerName = (w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '');
+    var station = stationsMap[w.current_station_key];
+    var stateText = station ? station.station_order : w.current_station_key;
+    var monthlyCellsHtml = monthlySnapshot
+      ? (monthlySnapshot.rows[w.work_id] || []).map(function (orderText) { return '<td class="excel-col-month">' + stateCellHtml(orderText) + '</td>'; }).join('')
+      : '';
+    return '<tr>' +
+      '<td class="excel-col-no excel-freeze excel-freeze-1">' + (startIndex + i + 1) + '</td>' +
+      '<td class="excel-freeze excel-freeze-2">' + escapeHtml_(w.tracking_no) + '</td>' +
+      '<td class="excel-col-wide excel-freeze excel-freeze-3">' + escapeHtml_(ownerName) + '</td>' +
+      '<td>' + escapeHtml_(w.position || '-') + '</td>' +
+      '<td>' + escapeHtml_(w.specialty || '-') + '</td>' +
+      '<td>' + escapeHtml_(w.province || '-') + '</td>' +
+      '<td>' + escapeHtml_(formatDateTh_(w.received_date)) + '</td>' +
+      '<td>' + escapeHtml_(w.legacy_team || '-') + '</td>' +
+      '<td>' + escapeHtml_(w.secretary || '-') + '</td>' +
+      '<td class="excel-col-wide">' + escapeHtml_(w.org_from || '-') + '</td>' +
+      '<td>' + stateCellHtml(stateText) + '</td>' +
+      '<td class="excel-col-wide">' + escapeHtml_(w.current_owner_org || '-') + '</td>' +
+      '<td>' + escapeHtml_(formatDateTh_(w.updated_at)) + '</td>' +
+      monthlyCellsHtml +
+      '<td><a class="btn-action btn-action-primary btn-action-sm" target="_top" href="' + baseUrl +
+      '?page=detail&id=' + encodeURIComponent(w.work_id) + '">ดูรายละเอียด</a></td>' +
+      '</tr>';
+  }).join('');
+
+  var tableHtml = pageResult.items.length
+    ? '<div class="excel-table-scroll"><table class="excel-table"><thead>' + theadHtml + '</thead><tbody>' + rows + '</tbody></table></div>'
+    : '<div class="empty">ไม่พบรายการที่ตรงกับเงื่อนไข</div>';
+
+  var pagerHtml = '';
+  if (pageResult.totalItems > 0) {
+    var hasFilter = rp.q || rp.state || rp.resp || rp.org || rp.result || rp.bucket || rp.position || rp.specialty || rp.province || rp.fy || rp.month;
+    var prevLink = pageResult.page > 1
+      ? '<a target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { p: pageResult.page - 1 }) + '">&larr; ก่อนหน้า</a>'
+      : '<span class="muted-link">&larr; ก่อนหน้า</span>';
+    var nextLink = pageResult.page < pageResult.totalPages
+      ? '<a target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { p: pageResult.page + 1 }) + '">ถัดไป &rarr;</a>'
+      : '<span class="muted-link">ถัดไป &rarr;</span>';
+    pagerHtml = '<div class="pager">' + prevLink +
+      '<span>หน้า ' + pageResult.page + ' / ' + pageResult.totalPages + ' (ทั้งหมด ' + pageResult.totalItems + ' รายการ' +
+      (hasFilter ? ' จาก ' + totalAllCount : '') + ')</span>' + nextLink + '</div>';
+  }
+
+  return flashHtml + viewToggleHtml + filterFormHtml + exportHtml +
+    '<p class="hint" style="margin:0 0 10px">คลิก "ดูรายละเอียด" เพื่อดู Timeline/ประวัติ/ผู้รับผิดชอบเต็มรูปแบบของรายการนั้น</p>' +
+    tableHtml + pagerHtml;
+}
+
+/** ลิงก์เรียง (ไม่มี &lt;th&gt; ครอบ) — reuse ร่วมกับ registrySortHeaderHtml_ เดิมที่คืน &lt;th&gt; เต็ม ใช้ตอนต้องคุม
+ *  class ของ &lt;th&gt; เอง (เช่น excel-freeze) ที่มุมมอง Excel */
+function registrySortHeaderInnerHtml_(label, col, rp, baseUrl) {
+  var isActive = rp.sort === col;
+  var nextDir = isActive && rp.dir === 'asc' ? 'desc' : 'asc';
+  var arrow = isActive ? (rp.dir === 'asc' ? ' &#9650;' : ' &#9660;') : '';
+  return '<a class="th-sort-link' + (isActive ? ' th-sort-active-link' : '') + '" target="_top" href="' + baseUrl + '?' +
+    buildRegistryQuery_(rp, { sort: col, dir: nextDir, p: 1 }) + '">' + escapeHtml_(label) + arrow + '</a>';
 }
 
 /** หัว th กดเรียงได้ของหน้าทะเบียน (2026-09-24 ตามที่ผู้ใช้ขอ) — ลิงก์ GET ธรรมดา ไม่มี JS คลิกครั้งแรกเรียง
@@ -1907,7 +2085,38 @@ var STAFF_CSS_ = '' +
   '.th-sort-link{display:block;color:inherit;text-decoration:none;font-weight:600;white-space:nowrap;}' +
   '.th-sort-link:hover{color:var(--teal);}' +
   '.th-sort-active,.th-sort-active .th-sort-link{color:var(--teal);}' +
+  '.th-sort-active-link{color:var(--teal);}' +
   '.cell-danger{color:var(--danger);font-weight:700;}' +
+  // มุมมอง Excel ของหน้าทะเบียน (2026-09-25 ตามที่ผู้ใช้ขอ) — ตารางกว้าง header ติดด้านบน + freeze 3 คอลัมน์แรก
+  // ด้วย CSS ล้วน (position:sticky) ไม่มี JS แถวสลับสีอ่อนอ่านง่ายแบบ spreadsheet
+  '.registry-view-toggle{display:flex;gap:8px;margin-bottom:12px;}' +
+  '.registry-view-btn{padding:7px 16px;border-radius:999px;border:1px solid var(--border);background:#fff;color:var(--muted);text-decoration:none;font-size:.82rem;font-weight:600;}' +
+  '.registry-view-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}' +
+  '.registry-export-row{margin:0 0 12px;}' +
+  '.excel-table-scroll{overflow:auto;max-height:72vh;border:1px solid var(--border);border-radius:10px;}' +
+  '.excel-table{width:100%;border-collapse:separate;border-spacing:0;font-size:.78rem;white-space:nowrap;}' +
+  '.excel-table th,.excel-table td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);}' +
+  '.excel-table thead th{position:sticky;top:0;background:var(--navy);color:#fff;z-index:3;white-space:nowrap;}' +
+  '.excel-table thead th .th-sort-link{color:#fff;}' +
+  '.excel-table thead th .th-sort-active-link{color:#bfe3e3;}' +
+  '.excel-table tbody tr:nth-child(even){background:var(--bg);}' +
+  '.excel-table tbody tr:hover{background:#eaf6f6;}' +
+  '.excel-freeze{position:sticky;background:inherit;z-index:1;}' +
+  '.excel-table thead .excel-freeze{z-index:4;background:var(--navy);}' +
+  '.excel-freeze-1{left:0;width:44px;}' +
+  '.excel-freeze-2{left:44px;min-width:90px;}' +
+  '.excel-freeze-3{left:134px;min-width:160px;}' +
+  '.excel-col-no{text-align:center;color:var(--muted);}' +
+  '.excel-col-wide{white-space:normal;min-width:160px;}' +
+  '.excel-col-month{text-align:center;min-width:56px;}' +
+  '.excel-state-empty{color:var(--muted);}' +
+  '.excel-state-badge{display:inline-block;padding:2px 7px;border-radius:999px;font-weight:700;font-size:.74rem;}' +
+  // ผลการพิจารณา — reuse .pub-hero-sub-* tone เดิมเป๊ะ (ผ่าน=เขียว/แก้ไข=เหลือง/ไม่ผ่าน=แดง/อื่นๆ=เทา ข้อ 13)
+  '@media (max-width:768px){' +
+  '.excel-table{font-size:.72rem;}' +
+  '.excel-table th,.excel-table td{padding:5px 7px;}' +
+  '.excel-col-wide{min-width:120px;}' +
+  '}' +
   // Dashboard ผู้รับผิดชอบ (หน้าแรกใหม่) — KPI grid + กราฟ + งานของฉันแบบย่อ ใช้ token สีเดิมทั้งหมด
   '.dash-filter-form{display:flex;gap:10px;margin-bottom:6px;align-items:flex-end;}' +
   '.dash-filter-form .field{flex:1;margin-bottom:0;}' +

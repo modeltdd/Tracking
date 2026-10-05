@@ -60,6 +60,14 @@ function routeStaffPage_(e, user) {
       var forwardWorks = getForwardableWorks_(ss, user.organization);
       return renderStaffPage_('ส่งต่อ', renderForwardListBody_(user.organization, forwardWorks, getStationsMap_(ss), baseUrl), user, 'forward', baseUrl);
     case 'registry':
+      // 2026-09-25: Export CSV ของมุมมอง Excel — ต้องเช็ค canAccessRegistry_ เองตรงนี้ (ไม่ผ่าน
+      // renderRegistryRoute_ ที่คืน HtmlOutput เสมอ เพราะ CSV ต้องคืน ContentService ตรงๆ ไม่ห่อหน้า HTML)
+      if (params.export === 'csv') {
+        if (!canAccessRegistry_(user)) {
+          return renderStaffPage_('ไม่มีสิทธิ์เข้าถึง', renderStubBody_('เฉพาะบัญชีผู้รับผิดชอบ/ผู้ดูแลระบบเท่านั้นที่เข้าหน้านี้ได้', baseUrl), user, 'dashboard', baseUrl);
+        }
+        return exportRegistryCsv_(ss, user, params);
+      }
       return renderRegistryRoute_(ss, user, params, baseUrl, '');
     case 'search':
       var query = params.q || '';
