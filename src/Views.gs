@@ -124,7 +124,9 @@ var GIS_AUTH_SCRIPT_ = '' +
   'if (!url || url.indexOf("auth=") !== -1) return url;' +
   'return url + (url.indexOf("?") === -1 ? "?" : "&") + "auth=" + encodeURIComponent(authToken);' +
   '}' +
-  'document.querySelectorAll(\'a[target="_top"]\').forEach(function (a) {' +
+  // 2026-10-06: เพิ่ม a.export-download (ลิงก์ดาวน์โหลด CSV ที่เปิด target="_blank" แทน "_top" กันบั๊กจริง
+  // "Google ไดรฟ์ ไม่สามารถเปิดไฟล์ได้" — เดิม selector จับแค่ a[target="_top"] ลิงก์ _blank จะไม่ได้ auth token)
+  'document.querySelectorAll(\'a[target="_top"], a.export-download\').forEach(function (a) {' +
   'a.addEventListener("click", function () { a.setAttribute("href", withAuth(a.getAttribute("href"))); });' +
   '});' +
   'document.querySelectorAll("form").forEach(function (f) {' +
@@ -738,7 +740,12 @@ function renderRegistryExcelViewBody_(ss, pageResult, rp, totalAllCount, bucketC
   var toolbarMetaHtml = '<div class="excel-toolbar-meta">' +
     '<span class="excel-toolbar-count">ทั้งหมด ' + pageResult.totalItems + ' รายการ' + (pageResult.totalItems !== totalAllCount ? ' (จาก ' + totalAllCount + ')' : '') + '</span>' +
     '<span class="excel-toolbar-sort">' + escapeHtml_(sortSummaryText) + '</span>' +
-    '<a class="btn-outline" target="_top" href="' + baseUrl + '?' + exportQuery + '">ดาวน์โหลด CSV</a>' +
+    // 2026-10-06 แก้บั๊กจริง: กด "ดาวน์โหลด CSV" แล้วเจอหน้า Google ไดรฟ์ "ไม่สามารถเปิดไฟล์ได้" — เกิดจาก
+    // target="_top" นำทาง top-level browsing context ไปที่ URL ที่ตอบกลับเป็น ContentService (ไฟล์ ไม่ใช่หน้า
+    // HTML) ผ่าน iframe sandbox ของ HtmlService ทำให้ Google เข้าใจผิดว่าต้องพรีวิวไฟล์ผ่าน Google ไดรฟ์ แก้โดย
+    // เปลี่ยนเป็น target="_blank" (เปิดแท็บใหม่แยกออกไปดาวน์โหลดไฟล์ตรงๆ ไม่ผ่าน sandbox เดิม) — ต้องเพิ่ม class
+    // "export-download" ให้ GIS_AUTH_SCRIPT_ แนบ auth token ให้ด้วย (เดิมมันจับเฉพาะ a[target="_top"])
+    '<a class="btn-outline export-download" target="_blank" href="' + baseUrl + '?' + exportQuery + '">ดาวน์โหลด CSV</a>' +
     '</div>';
 
   // ทำดัชนี order -> station ไว้ล่วงหน้า ใช้ทั้งคอลัมน์ State ปัจจุบัน และคอลัมน์รายเดือน (ไม่ query ซ้ำต่อแถว)
@@ -1993,13 +2000,18 @@ function renderAdminAuditBody_(logs, baseUrl) {
     '<section class="metric-card">' + rows + '</section>';
 }
 
-/** หน้ารายงาน CSV — ลิงก์ดาวน์โหลดตรง (GET, Admin เท่านั้น ตรวจซ้ำที่ renderAdminRoute_) */
+/**
+ * หน้ารายงาน CSV — ลิงก์ดาวน์โหลดตรง (GET, Admin เท่านั้น ตรวจซ้ำที่ renderAdminRoute_)
+ * 2026-10-06 แก้บั๊กจริง (เจอจากมุมมอง Excel ของหน้าทะเบียน บั๊กเดียวกัน): target="_top" กับลิงก์ที่ตอบกลับเป็น
+ * ContentService (ไฟล์ ไม่ใช่หน้า HTML) ผ่าน iframe sandbox ทำให้เจอหน้า Google ไดรฟ์ "ไม่สามารถเปิดไฟล์ได้"
+ * แก้เป็น target="_blank" + class "export-download" (GIS_AUTH_SCRIPT_ แนบ auth token ให้เหมือนเดิม)
+ */
 function renderAdminReportBody_(baseUrl) {
   return '' + renderAdminTabs_('report', baseUrl) +
     '<div class="detail-card">' +
     '<p>ดาวน์โหลดข้อมูลเป็นไฟล์ CSV (เปิดด้วย Excel/Google Sheets)</p>' +
-    '<p><a target="_top" class="btn-action btn-action-secondary" href="' + baseUrl + '?page=admin&tab=report&format=csv&type=works">ดาวน์โหลดรายการงานทั้งหมด (CSV)</a></p>' +
-    '<p><a target="_top" class="btn-action btn-action-secondary" href="' + baseUrl + '?page=admin&tab=report&format=csv&type=audit">ดาวน์โหลด Audit Log (CSV)</a></p>' +
+    '<p><a target="_blank" class="btn-action btn-action-secondary export-download" href="' + baseUrl + '?page=admin&tab=report&format=csv&type=works">ดาวน์โหลดรายการงานทั้งหมด (CSV)</a></p>' +
+    '<p><a target="_blank" class="btn-action btn-action-secondary export-download" href="' + baseUrl + '?page=admin&tab=report&format=csv&type=audit">ดาวน์โหลด Audit Log (CSV)</a></p>' +
     '</div>';
 }
 
