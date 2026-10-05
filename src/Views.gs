@@ -658,23 +658,28 @@ function renderRegistryExcelViewBody_(ss, pageResult, rp, totalAllCount, bucketC
 
   var allWorks = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
   var allStates = listStationsSorted_(ss);
+  var distinctResp = distinctValues_(allWorks, 'current_owner_org');
+  var distinctOrg = distinctValues_(allWorks, 'org_from');
+  var distinctPosition = distinctValues_(allWorks, 'position');
+  var distinctSpecialty = distinctValues_(allWorks, 'specialty');
+  var provinceList = getSettingList_(ss, 'district11_provinces', ['นครศรีธรรมราช', 'กระบี่', 'พังงา', 'ภูเก็ต', 'สุราษฎร์ธานี', 'ระนอง', 'ชุมพร']);
+
   var stateOptions = '<option value="">ทุกสถานะ</option>' + allStates.map(function (s) {
     var sel = rp.state === s.station_key ? ' selected' : '';
     return '<option value="' + escapeHtml_(s.station_key) + '"' + sel + '>' + escapeHtml_(s.station_order) + ' ' + escapeHtml_(s.station_name) + '</option>';
   }).join('');
-  var respOptions = '<option value="">ทุกผู้รับผิดชอบ</option>' + distinctValues_(allWorks, 'current_owner_org').map(function (o) {
+  var respOptions = '<option value="">ทุกผู้รับผิดชอบ</option>' + distinctResp.map(function (o) {
     return '<option value="' + escapeHtml_(o) + '"' + (rp.resp === o ? ' selected' : '') + '>' + escapeHtml_(o) + '</option>';
   }).join('');
-  var orgOptions = '<option value="">ทุกหน่วยงาน</option>' + distinctValues_(allWorks, 'org_from').map(function (o) {
+  var orgOptions = '<option value="">ทุกหน่วยงาน</option>' + distinctOrg.map(function (o) {
     return '<option value="' + escapeHtml_(o) + '"' + (rp.org === o ? ' selected' : '') + '>' + escapeHtml_(o) + '</option>';
   }).join('');
-  var positionOptions = '<option value="">ทุกตำแหน่ง</option>' + distinctValues_(allWorks, 'position').map(function (o) {
+  var positionOptions = '<option value="">ทุกตำแหน่ง</option>' + distinctPosition.map(function (o) {
     return '<option value="' + escapeHtml_(o) + '"' + (rp.position === o ? ' selected' : '') + '>' + escapeHtml_(o) + '</option>';
   }).join('');
-  var specialtyOptions = '<option value="">ทุกด้าน</option>' + distinctValues_(allWorks, 'specialty').map(function (o) {
+  var specialtyOptions = '<option value="">ทุกด้าน</option>' + distinctSpecialty.map(function (o) {
     return '<option value="' + escapeHtml_(o) + '"' + (rp.specialty === o ? ' selected' : '') + '>' + escapeHtml_(o) + '</option>';
   }).join('');
-  var provinceList = getSettingList_(ss, 'district11_provinces', ['นครศรีธรรมราช', 'กระบี่', 'พังงา', 'ภูเก็ต', 'สุราษฎร์ธานี', 'ระนอง', 'ชุมพร']);
   var provinceOptions = '<option value="">ทุกจังหวัด</option>' + provinceList.map(function (p) {
     return '<option value="' + escapeHtml_(p) + '"' + (rp.province === p ? ' selected' : '') + '>' + escapeHtml_(p) + '</option>';
   }).join('');
@@ -690,11 +695,11 @@ function renderRegistryExcelViewBody_(ss, pageResult, rp, totalAllCount, bucketC
   }).join('');
 
   var filterFormHtml = '' +
-    '<form method="get" target="_top" action="' + baseUrl + '" class="reg-form" style="margin-bottom:12px;">' +
+    '<form method="get" target="_top" action="' + baseUrl + '" class="excel-toolbar-form">' +
     '<input type="hidden" name="page" value="registry"><input type="hidden" name="view" value="excel">' +
     '<div class="field-row">' +
     '<div class="field"><label>ค้นหา</label><input class="input" type="text" name="q" value="' + escapeHtml_(rp.q) +
-    '" placeholder="เลขทะเบียน / ชื่อเจ้าของผลงาน / ชื่อผลงาน / หน่วยงาน"></div>' +
+    '" placeholder="เลขทะเบียน / ชื่อ / นามสกุล / หน่วยงาน / จังหวัด / เลขา / ทีม"></div>' +
     '</div>' +
     '<div class="field-row">' +
     '<div class="field"><label>สถานะ</label><select class="input" name="state">' + stateOptions + '</select></div>' +
@@ -717,13 +722,24 @@ function renderRegistryExcelViewBody_(ss, pageResult, rp, totalAllCount, bucketC
     '</div>' +
     '<div class="checkbox-row"><label><input type="checkbox" name="monthly" value="1"' + (rp.monthly === '1' ? ' checked' : '') +
     '> แสดง State รายเดือน (คำนวณจากประวัติจริง — โหลดช้าลงถ้าเปิด)</label></div>' +
+    '<div class="excel-toolbar-buttons">' +
     '<button class="btn-primary" type="submit">ค้นหา/กรอง</button>' +
+    '<a class="btn-outline" target="_top" href="' + baseUrl + '?page=registry&view=excel">ล้างตัวกรอง</a>' +
+    '</div>' +
     '</form>';
 
+  // สรุปแถบเครื่องมือ (2026-10-06 ตามที่ผู้ใช้ขอ: จำนวนรายการ + สรุปการเรียง + ปุ่ม Export) — แยกจากฟอร์ม filter
+  var sortLabelMap = { tracking_no: 'เลขทะเบียน', owner: 'ชื่อ-สกุล', state: 'State ปัจจุบัน', current_owner_org: 'ผู้รับผิดชอบปัจจุบัน',
+    updated_at: 'วันที่อัปเดตล่าสุด', received_date: 'วันที่ลงรับ', org_from: 'หน่วยงาน', work_title: 'ชื่อผลงาน' };
+  var sortSummaryText = rp.sort && sortLabelMap[rp.sort]
+    ? 'เรียงตาม ' + sortLabelMap[rp.sort] + ' (' + (rp.dir === 'asc' ? 'น้อย→มาก' : 'มาก→น้อย') + ')'
+    : 'ไม่ได้เรียง (ลำดับล่าสุดก่อน)';
   var exportQuery = buildRegistryQuery_(rp, { p: 1 }) + '&export=csv';
-  var exportHtml = '<p class="registry-export-row">' +
+  var toolbarMetaHtml = '<div class="excel-toolbar-meta">' +
+    '<span class="excel-toolbar-count">ทั้งหมด ' + pageResult.totalItems + ' รายการ' + (pageResult.totalItems !== totalAllCount ? ' (จาก ' + totalAllCount + ')' : '') + '</span>' +
+    '<span class="excel-toolbar-sort">' + escapeHtml_(sortSummaryText) + '</span>' +
     '<a class="btn-outline" target="_top" href="' + baseUrl + '?' + exportQuery + '">ดาวน์โหลด CSV</a>' +
-    '<span class="hint" style="margin-left:8px">Export ตามเงื่อนไขค้นหา/กรองปัจจุบัน (ทุกรายการที่ตรง ไม่ใช่แค่หน้านี้)</span></p>';
+    '</div>';
 
   // ทำดัชนี order -> station ไว้ล่วงหน้า ใช้ทั้งคอลัมน์ State ปัจจุบัน และคอลัมน์รายเดือน (ไม่ query ซ้ำต่อแถว)
   var orderToStation = {};
@@ -736,17 +752,31 @@ function renderRegistryExcelViewBody_(ss, pageResult, rp, totalAllCount, bucketC
     return '<span class="excel-state-badge pub-hero-sub-' + tone + '">' + escapeHtml_(orderText) + '</span>';
   }
 
+  // Filter ที่หัวคอลัมน์แบบ Excel AutoFilter (2026-10-06 ตามที่ผู้ใช้ขอข้อ 5 ระดับ 2) — <details> ล้วน ไม่มี JS
+  // เลือกค่าเดียวต่อครั้ง (ไม่ใช่ checkbox หลายค่าแบบ Excel จริง — ข้อจำกัดของระบบที่ไม่ใช้ JS/AJAX ทั้งระบบ)
+  function thFilterPopupHtml(field, currentValue, values) {
+    var items = '<a target="_top" class="th-filter-item' + (!currentValue ? ' active' : '') +
+      '" href="' + baseUrl + '?' + buildRegistryQuery_(rp, (function () { var o = { p: 1 }; o[field] = ''; return o; })()) + '">(ทั้งหมด)</a>';
+    items += values.map(function (v) {
+      var o = { p: 1 }; o[field] = v;
+      return '<a target="_top" class="th-filter-item' + (currentValue === v ? ' active' : '') + '" href="' + baseUrl + '?' + buildRegistryQuery_(rp, o) + '">' + escapeHtml_(v) + '</a>';
+    }).join('');
+    return '<details class="th-filter"><summary title="กรองคอลัมน์นี้">&#9662;</summary><div class="th-filter-list">' + items + '</div></details>';
+  }
+
   var monthlyHeadHtml = monthlySnapshot ? monthlySnapshot.months.map(function (m) { return '<th class="excel-col-month">' + escapeHtml_(m) + '</th>'; }).join('') : '';
   var theadHtml = '<tr>' +
     '<th class="excel-col-no excel-freeze excel-freeze-1">ลำดับ</th>' +
     '<th class="excel-freeze excel-freeze-2">' + registrySortHeaderInnerHtml_('เลขทะเบียน', 'tracking_no', rp, baseUrl) + '</th>' +
     '<th class="excel-col-wide excel-freeze excel-freeze-3">' + registrySortHeaderInnerHtml_('ชื่อ-สกุล', 'owner', rp, baseUrl) + '</th>' +
-    '<th>ตำแหน่ง</th><th>ด้าน</th><th>จังหวัด</th>' +
+    '<th>ตำแหน่ง' + thFilterPopupHtml('position', rp.position, distinctPosition) + '</th>' +
+    '<th>ด้าน' + thFilterPopupHtml('specialty', rp.specialty, distinctSpecialty) + '</th>' +
+    '<th>จังหวัด' + thFilterPopupHtml('province', rp.province, provinceList) + '</th>' +
     '<th>' + registrySortHeaderInnerHtml_('วันที่ลงรับ', 'received_date', rp, baseUrl) + '</th>' +
     '<th>ทีม</th><th>เลขา</th>' +
-    '<th class="excel-col-wide">' + registrySortHeaderInnerHtml_('หน่วยงาน', 'org_from', rp, baseUrl) + '</th>' +
+    '<th class="excel-col-wide">' + registrySortHeaderInnerHtml_('หน่วยงาน', 'org_from', rp, baseUrl) + thFilterPopupHtml('org', rp.org, distinctOrg) + '</th>' +
     '<th>' + registrySortHeaderInnerHtml_('State ปัจจุบัน', 'state', rp, baseUrl) + '</th>' +
-    '<th class="excel-col-wide">' + registrySortHeaderInnerHtml_('ผู้รับผิดชอบปัจจุบัน', 'current_owner_org', rp, baseUrl) + '</th>' +
+    '<th class="excel-col-wide">' + registrySortHeaderInnerHtml_('ผู้รับผิดชอบปัจจุบัน', 'current_owner_org', rp, baseUrl) + thFilterPopupHtml('resp', rp.resp, distinctResp) + '</th>' +
     '<th>' + registrySortHeaderInnerHtml_('วันที่อัปเดตล่าสุด', 'updated_at', rp, baseUrl) + '</th>' +
     monthlyHeadHtml +
     '<th>จัดการ</th></tr>';
@@ -797,29 +827,38 @@ function renderRegistryExcelViewBody_(ss, pageResult, rp, totalAllCount, bucketC
       (hasFilter ? ' จาก ' + totalAllCount : '') + ')</span>' + nextLink + '</div>';
   }
 
-  return flashHtml + viewToggleHtml + filterFormHtml + exportHtml +
-    '<p class="hint" style="margin:0 0 10px">คลิก "ดูรายละเอียด" เพื่อดู Timeline/ประวัติ/ผู้รับผิดชอบเต็มรูปแบบของรายการนั้น</p>' +
-    tableHtml + pagerHtml;
+  return flashHtml + viewToggleHtml +
+    '<div class="excel-toolbar">' + filterFormHtml + toolbarMetaHtml + '</div>' +
+    '<div class="excel-sheet">' + tableHtml + '</div>' +
+    pagerHtml;
+}
+
+/** สถานะ sort ครั้งถัดไปของคอลัมน์ (2026-10-06 ตามที่ผู้ใช้ขอ — เพิ่ม "คลิกครั้งที่ 3 = reset/ไม่เรียง" จาก
+ *  เดิมที่สลับแค่ asc/desc วนไปเรื่อยๆ): ไม่ได้เรียงอยู่ -> asc, เรียง asc อยู่ -> desc, เรียง desc อยู่ -> reset
+ *  (sort='' ทำให้ buildRegistryQuery_ ไม่ใส่ sort/dir ใน query เลย กลับไปลำดับเริ่มต้นทันที) */
+function registrySortNextState_(col, rp) {
+  var isActive = rp.sort === col;
+  if (!isActive) return { sort: col, dir: 'asc', isActive: false };
+  if (rp.dir === 'asc') return { sort: col, dir: 'desc', isActive: true };
+  return { sort: '', dir: 'asc', isActive: true };
 }
 
 /** ลิงก์เรียง (ไม่มี &lt;th&gt; ครอบ) — reuse ร่วมกับ registrySortHeaderHtml_ เดิมที่คืน &lt;th&gt; เต็ม ใช้ตอนต้องคุม
  *  class ของ &lt;th&gt; เอง (เช่น excel-freeze) ที่มุมมอง Excel */
 function registrySortHeaderInnerHtml_(label, col, rp, baseUrl) {
-  var isActive = rp.sort === col;
-  var nextDir = isActive && rp.dir === 'asc' ? 'desc' : 'asc';
-  var arrow = isActive ? (rp.dir === 'asc' ? ' &#9650;' : ' &#9660;') : '';
-  return '<a class="th-sort-link' + (isActive ? ' th-sort-active-link' : '') + '" target="_top" href="' + baseUrl + '?' +
-    buildRegistryQuery_(rp, { sort: col, dir: nextDir, p: 1 }) + '">' + escapeHtml_(label) + arrow + '</a>';
+  var next = registrySortNextState_(col, rp);
+  var arrow = next.isActive ? (rp.dir === 'asc' ? ' &#9650;' : ' &#9660;') : '';
+  return '<a class="th-sort-link' + (next.isActive ? ' th-sort-active-link' : '') + '" target="_top" href="' + baseUrl + '?' +
+    buildRegistryQuery_(rp, { sort: next.sort, dir: next.dir, p: 1 }) + '">' + escapeHtml_(label) + arrow + '</a>';
 }
 
-/** หัว th กดเรียงได้ของหน้าทะเบียน (2026-09-24 ตามที่ผู้ใช้ขอ) — ลิงก์ GET ธรรมดา ไม่มี JS คลิกครั้งแรกเรียง
- *  asc, คอลัมน์เดิมคลิกซ้ำสลับ desc/asc, คอลัมน์อื่นกลับไป asc เสมอ (sortRegistryWorks_ ใน Registry.gs) */
+/** หัว th กดเรียงได้ของหน้าทะเบียน (2026-09-24 ตามที่ผู้ใช้ขอ, 2026-10-06 เพิ่ม reset คลิกที่ 3) — ลิงก์ GET
+ *  ธรรมดา ไม่มี JS คลิกครั้งแรกเรียง asc, คลิกซ้ำสลับ desc, คลิกที่ 3 กลับไปไม่เรียง (sortRegistryWorks_ เดิม) */
 function registrySortHeaderHtml_(label, col, rp, baseUrl) {
-  var isActive = rp.sort === col;
-  var nextDir = isActive && rp.dir === 'asc' ? 'desc' : 'asc';
-  var arrow = isActive ? (rp.dir === 'asc' ? ' &#9650;' : ' &#9660;') : '';
-  return '<th' + (isActive ? ' class="th-sort-active"' : '') + '>' +
-    '<a class="th-sort-link" target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { sort: col, dir: nextDir, p: 1 }) + '">' +
+  var next = registrySortNextState_(col, rp);
+  var arrow = next.isActive ? (rp.dir === 'asc' ? ' &#9650;' : ' &#9660;') : '';
+  return '<th' + (next.isActive ? ' class="th-sort-active"' : '') + '>' +
+    '<a class="th-sort-link" target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { sort: next.sort, dir: next.dir, p: 1 }) + '">' +
     escapeHtml_(label) + arrow + '</a></th>';
 }
 
@@ -2087,22 +2126,37 @@ var STAFF_CSS_ = '' +
   '.th-sort-active,.th-sort-active .th-sort-link{color:var(--teal);}' +
   '.th-sort-active-link{color:var(--teal);}' +
   '.cell-danger{color:var(--danger);font-weight:700;}' +
-  // มุมมอง Excel ของหน้าทะเบียน (2026-09-25 ตามที่ผู้ใช้ขอ) — ตารางกว้าง header ติดด้านบน + freeze 3 คอลัมน์แรก
-  // ด้วย CSS ล้วน (position:sticky) ไม่มี JS แถวสลับสีอ่อนอ่านง่ายแบบ spreadsheet
+  // มุมมอง Excel ของหน้าทะเบียน (2026-09-25 เพิ่มครั้งแรก, 2026-10-06 ปรับรอบ 2 ตามที่ผู้ใช้ขอ — เน้น "หน้าตา/
+  // อารมณ์แบบ Excel จริงๆ" พื้นขาว เส้น grid ชัด ลดความรู้สึก dashboard/card ลง) header ติดด้านบน + freeze 3
+  // คอลัมน์แรก ด้วย CSS ล้วน (position:sticky) ไม่มี JS แถวสลับสีอ่อนมากอ่านง่ายแบบ spreadsheet จริง
   '.registry-view-toggle{display:flex;gap:8px;margin-bottom:12px;}' +
   '.registry-view-btn{padding:7px 16px;border-radius:999px;border:1px solid var(--border);background:#fff;color:var(--muted);text-decoration:none;font-size:.82rem;font-weight:600;}' +
   '.registry-view-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}' +
-  '.registry-export-row{margin:0 0 12px;}' +
-  '.excel-table-scroll{overflow:auto;max-height:72vh;border:1px solid var(--border);border-radius:10px;}' +
-  '.excel-table{width:100%;border-collapse:separate;border-spacing:0;font-size:.78rem;white-space:nowrap;}' +
-  '.excel-table th,.excel-table td{text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);}' +
-  '.excel-table thead th{position:sticky;top:0;background:var(--navy);color:#fff;z-index:3;white-space:nowrap;}' +
-  '.excel-table thead th .th-sort-link{color:#fff;}' +
-  '.excel-table thead th .th-sort-active-link{color:#bfe3e3;}' +
-  '.excel-table tbody tr:nth-child(even){background:var(--bg);}' +
-  '.excel-table tbody tr:hover{background:#eaf6f6;}' +
-  '.excel-freeze{position:sticky;background:inherit;z-index:1;}' +
-  '.excel-table thead .excel-freeze{z-index:4;background:var(--navy);}' +
+  // Toolbar (ข้อ 2/10) — พื้นอ่อนบางๆ แยกจากตัวตารางที่ต้องขาวล้วน ไม่ใช้การ์ดหนา/เงา
+  '.excel-toolbar{background:#f7f8f9;border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;}' +
+  '.excel-toolbar-form{background:transparent;border:none;padding:0;}' +
+  '.excel-toolbar-buttons{display:flex;gap:8px;align-items:center;margin-top:4px;}' +
+  '.excel-toolbar-buttons .btn-primary{width:auto;flex-shrink:0;padding:9px 20px;margin-top:0;}' +
+  '.excel-toolbar-meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);font-size:.8rem;}' +
+  '.excel-toolbar-count{font-weight:700;color:var(--navy);}' +
+  '.excel-toolbar-sort{color:var(--muted);}' +
+  // ตัวตารางเอง — พื้นขาวสนิท กรอบเทาบาง ไม่มีมุมโค้ง/เงาแบบการ์ด ให้ความรู้สึก "เปิดไฟล์ Excel" มากที่สุด
+  '.excel-sheet{background:#fff;border:1px solid #c9ced3;border-radius:2px;}' +
+  '.excel-table-scroll{overflow:auto;max-height:74vh;}' +
+  '.excel-table{width:100%;border-collapse:collapse;background:#fff;font-size:.8rem;white-space:nowrap;}' +
+  '.excel-table th,.excel-table td{text-align:left;padding:5px 9px;border:1px solid #d7dbe0;background:#fff;}' +
+  '.excel-table td{color:var(--text);}' +
+  '.excel-table thead th{position:sticky;top:0;background:#eef2f5;color:var(--navy);z-index:3;white-space:nowrap;font-weight:700;border-color:#c9ced3;}' +
+  '.excel-table thead th .th-sort-link{color:var(--navy);}' +
+  '.excel-table thead th .th-sort-active-link,.excel-table thead th .th-sort-active{color:var(--teal);}' +
+  '.excel-table tbody tr:nth-child(even) td{background:#fafbfc;}' +
+  '.excel-table tbody tr:hover td{background:#eaf6f6;}' +
+  '.excel-freeze{position:sticky;z-index:1;}' +
+  '.excel-table tbody .excel-freeze{background:inherit;}' +
+  '.excel-table tbody tr:nth-child(odd) .excel-freeze{background:#fff;}' +
+  '.excel-table tbody tr:nth-child(even) .excel-freeze{background:#fafbfc;}' +
+  '.excel-table tbody tr:hover .excel-freeze{background:#eaf6f6;}' +
+  '.excel-table thead .excel-freeze{z-index:4;background:#eef2f5;}' +
   '.excel-freeze-1{left:0;width:44px;}' +
   '.excel-freeze-2{left:44px;min-width:90px;}' +
   '.excel-freeze-3{left:134px;min-width:160px;}' +
@@ -2110,12 +2164,23 @@ var STAFF_CSS_ = '' +
   '.excel-col-wide{white-space:normal;min-width:160px;}' +
   '.excel-col-month{text-align:center;min-width:56px;}' +
   '.excel-state-empty{color:var(--muted);}' +
-  '.excel-state-badge{display:inline-block;padding:2px 7px;border-radius:999px;font-weight:700;font-size:.74rem;}' +
-  // ผลการพิจารณา — reuse .pub-hero-sub-* tone เดิมเป๊ะ (ผ่าน=เขียว/แก้ไข=เหลือง/ไม่ผ่าน=แดง/อื่นๆ=เทา ข้อ 13)
+  // State — ใช้แค่ text color/badge เล็กๆ (ข้อ 9 "อย่าให้ทั้งแถวมีสีจัด") reuse .pub-hero-sub-* tone เดิมเป๊ะ
+  '.excel-state-badge{display:inline-block;padding:1px 7px;border-radius:999px;font-weight:700;font-size:.72rem;}' +
+  // Filter หัวคอลัมน์แบบ Excel AutoFilter (ข้อ 5 ระดับ 2) — <details> ล้วน ไม่มี JS เลือกได้ทีละค่า
+  '.th-filter{display:inline-block;margin-left:4px;position:relative;}' +
+  '.th-filter summary{cursor:pointer;list-style:none;color:var(--muted);font-size:.72rem;padding:0 2px;}' +
+  '.th-filter summary::-webkit-details-marker{display:none;}' +
+  '.th-filter[open] summary{color:var(--teal);}' +
+  '.th-filter-list{position:absolute;margin-top:4px;background:#fff;border:1px solid var(--border);border-radius:6px;' +
+  'box-shadow:0 4px 14px rgba(20,40,55,.15);max-height:220px;overflow-y:auto;min-width:140px;z-index:10;white-space:nowrap;}' +
+  '.th-filter-item{display:block;padding:6px 12px;font-size:.76rem;font-weight:400;color:var(--text);text-decoration:none;}' +
+  '.th-filter-item:hover{background:var(--bg);}' +
+  '.th-filter-item.active{background:#eaf6f6;color:var(--teal);font-weight:700;}' +
   '@media (max-width:768px){' +
   '.excel-table{font-size:.72rem;}' +
   '.excel-table th,.excel-table td{padding:5px 7px;}' +
   '.excel-col-wide{min-width:120px;}' +
+  '.excel-toolbar-meta{gap:8px;}' +
   '}' +
   // Dashboard ผู้รับผิดชอบ (หน้าแรกใหม่) — KPI grid + กราฟ + งานของฉันแบบย่อ ใช้ token สีเดิมทั้งหมด
   '.dash-filter-form{display:flex;gap:10px;margin-bottom:6px;align-items:flex-end;}' +

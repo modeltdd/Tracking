@@ -74,11 +74,16 @@ function filterRegistryWorks_(works, rp, overdueIds) {
     if (rp.bucket === 'overdue' && !(overdueIds && overdueIds[w.work_id])) return false;
     if (!needle) return true;
     var ownerName = ((w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '')).toLowerCase();
+    // 2026-10-06 (มุมมอง Excel รอบ 2 ตามที่ผู้ใช้ขอ): เพิ่มจังหวัด/เลขา/ทีม เข้าช่องค้นหาด้วย — ใช้ร่วมกับ
+    // มุมมองการ์ดเดิมด้วย (ฟังก์ชันเดียวกัน ไม่มีผลเสีย แค่ค้นเจอกว้างขึ้น)
     return String(w.tracking_no || '').toLowerCase().indexOf(needle) !== -1 ||
       ownerName.indexOf(needle) !== -1 ||
       String(w.work_title || '').toLowerCase().indexOf(needle) !== -1 ||
       String(w.current_owner_org || '').toLowerCase().indexOf(needle) !== -1 ||
-      String(w.org_from || '').toLowerCase().indexOf(needle) !== -1;
+      String(w.org_from || '').toLowerCase().indexOf(needle) !== -1 ||
+      String(w.province || '').toLowerCase().indexOf(needle) !== -1 ||
+      String(w.secretary || '').toLowerCase().indexOf(needle) !== -1 ||
+      String(w.legacy_team || '').toLowerCase().indexOf(needle) !== -1;
   });
 }
 
