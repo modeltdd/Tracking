@@ -625,3 +625,72 @@ function deleteRecordsAfter244AndResetCounter() {
   setSetting_(ss, 'last_seq_' + year, '244', 'เลขลำดับล่าสุดของปี ' + year + ' (ระบบเพิ่มอัตโนมัติ ห้ามแก้มือขณะมีคนใช้งาน)');
   Logger.log('=== ปรับ Settings last_seq_' + year + ' = 244 เรียบร้อย — งานถัดไปจะได้เลขทะเบียน ' + shortYear + '-245 ===');
 }
+
+/**
+ * ลบงานทดสอบเลขทะเบียนลำดับที่ 245 พอดี (2026-10-06 ผู้ใช้ขอ — เกิดใหม่หลังรอบลบ >244 ไปแล้ว) ต่างจาก
+ * deleteRecordsAfter244AndResetCounter() ตรงที่จับเฉพาะ "=245" เท่านั้น ไม่แตะ 246 เป็นต้นไป (เผื่อมีงานจริงใหม่
+ * ไปแล้ว) รันเองจาก Editor: auditRecordSeq245() ดู Log ยืนยันก่อนเสมอ แล้วค่อยรัน deleteRecordSeq245()
+ */
+function auditRecordSeq245() {
+  var ss = getSpreadsheet_();
+  var year = String(getSetting_(ss, 'fiscal_year_current', String(getBuddhistYear_(now_()))));
+  var shortYear = shortBuddhistYear_(year);
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var matched = works.filter(function (w) { return String(w.tracking_no || '') === shortYear + '-245'; });
+  var currentSeq = getSetting_(ss, 'last_seq_' + year, '0');
+  Logger.log('Settings last_seq_' + year + ' ปัจจุบัน = ' + currentSeq);
+  if (!matched.length) {
+    Logger.log('ไม่พบงานเลขทะเบียน ' + shortYear + '-245 — ไม่มีอะไรต้องลบ');
+    return;
+  }
+  matched.forEach(function (w) {
+    var hist = getHistoryForWork_(ss, w.work_id);
+    Logger.log('tracking_no=' + w.tracking_no + ' | work_id=' + w.work_id +
+      ' | ชื่อผลงาน="' + w.work_title + '" | หน่วยงาน="' + w.org_from + '"' +
+      ' | เจ้าของ="' + (w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '') + '"' +
+      ' | created_by=' + w.created_by + ' | ประวัติ ' + hist.length + ' แถว (action: ' + hist.map(function (h) { return h.action; }).join(', ') + ')');
+  });
+  Logger.log('=== พบ ' + matched.length + ' รายการเลขทะเบียน ' + shortYear + '-245 — ตรวจสอบให้ครบก่อนรัน deleteRecordSeq245() ===');
+}
+
+function deleteRecordSeq245() {
+  var ss = getSpreadsheet_();
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
+  var year = String(getSetting_(ss, 'fiscal_year_current', String(getBuddhistYear_(now_()))));
+  var shortYear = shortBuddhistYear_(year);
+  var targetTrackingNo = shortYear + '-245';
+
+  var works = readSheetAsObjects_(worksSheet);
+  var toDelete = {};
+  works.forEach(function (w) { if (String(w.tracking_no || '') === targetTrackingNo) toDelete[w.work_id] = w.tracking_no; });
+
+  if (!Object.keys(toDelete).length) {
+    Logger.log('ไม่พบงานเลขทะเบียน ' + targetTrackingNo + ' — ไม่มีอะไรต้องลบ');
+    return;
+  }
+
+  var worksHeaders = worksSheet.getRange(1, 1, 1, worksSheet.getLastColumn()).getValues()[0];
+  var workIdColW = worksHeaders.indexOf('work_id') + 1;
+  var deletedWorks = 0;
+  for (var r = worksSheet.getLastRow(); r >= 2; r--) {
+    var wid = worksSheet.getRange(r, workIdColW).getValue();
+    if (toDelete[wid]) { Logger.log('ลบ Works แถว ' + r + ' (tracking_no=' + toDelete[wid] + ')'); worksSheet.deleteRow(r); deletedWorks++; }
+  }
+
+  var historyHeaders = historySheet.getRange(1, 1, 1, historySheet.getLastColumn()).getValues()[0];
+  var workIdColH = historyHeaders.indexOf('work_id') + 1;
+  var deletedHistory = 0;
+  for (var r2 = historySheet.getLastRow(); r2 >= 2; r2--) {
+    if (toDelete[historySheet.getRange(r2, workIdColH).getValue()]) { historySheet.deleteRow(r2); deletedHistory++; }
+  }
+  Logger.log('ลบ Works ' + deletedWorks + ' แถว, StatusHistory ' + deletedHistory + ' แถว (tracking_no=' + targetTrackingNo + ')');
+
+  var currentSeq = Number(getSetting_(ss, 'last_seq_' + year, '0'));
+  if (currentSeq === 245) {
+    setSetting_(ss, 'last_seq_' + year, '244', 'เลขลำดับล่าสุดของปี ' + year + ' (ระบบเพิ่มอัตโนมัติ ห้ามแก้มือขณะมีคนใช้งาน)');
+    Logger.log('=== ปรับ Settings last_seq_' + year + ' กลับเป็น 244 เรียบร้อย (245 คือลำดับล่าสุด) — งานถัดไปจะได้เลขทะเบียน ' + shortYear + '-245 ===');
+  } else {
+    Logger.log('=== ไม่ปรับ Settings last_seq_' + year + ' (ปัจจุบัน=' + currentSeq + ' มีงานเลขสูงกว่า 245 อยู่แล้ว ปรับกลับจะทำให้เลขทะเบียนซ้ำ) ===');
+  }
+}
