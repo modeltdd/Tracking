@@ -19,6 +19,16 @@ function doGet(e) {
   var email = getCurrentUserEmail_() || verifyAuthToken_(ss, params.auth);
 
   if (!email) {
+    // Login สำหรับเจ้าของผลงาน (2026-10-06, OwnerAuth.gs) — คนละระบบกับ Login เจ้าหน้าที่ (ไม่ใช้ Google
+    // Sign-In) ต้องเช็คก่อนเงื่อนไขอื่นทั้งหมดในบล็อกนี้ ไม่งั้นจะหลุดไปเข้า Google auth bootstrap หรือหน้า
+    // ค้นหาสาธารณะผิดหน้าแทน
+    if (params.page === 'owner-dashboard') {
+      return renderOwnerDashboardRoute_(ss, params, getWebAppUrl_());
+    }
+    if (params.page === 'owner-login') {
+      if (params.logout === '1') return handleOwnerLogoutGet_(ss, params, getWebAppUrl_());
+      return handleOwnerLoginGet_(getWebAppUrl_());
+    }
     // เครื่องมือ debug ชั่วคราว (?debug=1) — เก็บไว้เผื่อวิเคราะห์ปัญหา login เพิ่มเติมในอนาคต
     if (params.debug === '1') {
       return renderPage_('Debug: สถานะ Login', '' +
@@ -93,7 +103,7 @@ function routeStaffPage_(e, user) {
         return renderStaffPage_('ไม่มีสิทธิ์เข้าถึง', renderStubBody_('งานนี้ไม่เกี่ยวข้องกับหน่วยงานของท่าน จึงไม่สามารถดูรายละเอียดได้', baseUrl), user, 'search', baseUrl);
       }
       var stationsMap = getStationsMap_(ss);
-      return renderStaffPage_('รายละเอียดผลงาน', renderWorkDetailBody_(ss, work, workHistory, stationsMap, baseUrl), user, 'search', baseUrl);
+      return renderStaffPage_('รายละเอียดผลงาน', renderWorkDetailBody_(ss, work, workHistory, stationsMap, baseUrl, user), user, 'search', baseUrl);
     case 'qrprint':
       var qrWork = findWorkById_(ss, params.id);
       if (!qrWork) {
@@ -133,6 +143,14 @@ function doPost(e) {
     // (ไม่ยืนยันตัวตน — ดูแชท requirement ส่วน F-H) handlePublicTrackPost_/trackPublicStatus_ เดิมไม่ลบทิ้ง
     // (ไม่มีจุดไหนเรียกแล้ว เผื่อย้อนดู/ใช้ภายหลัง)
     return handlePublicSearchPost_(ss, e);
+  }
+
+  if (formAction === 'owner_login_search' || formAction === 'owner_login_submit') {
+    // Login สำหรับเจ้าของผลงาน (OwnerAuth.gs) — ไม่ต้อง Login เจ้าหน้าที่เช่นกัน (คนละระบบกับ Google Sign-In)
+    var ownerBaseUrl = getWebAppUrl_();
+    return formAction === 'owner_login_search'
+      ? handleOwnerLoginSearchPost_(ss, e, ownerBaseUrl)
+      : handleOwnerLoginSubmitPost_(ss, e, ownerBaseUrl);
   }
 
   // เหมือน doGet — Session.getActiveUser() ใช้ไม่ได้กับ Gmail ส่วนตัว fallback ไป Google ID token
@@ -195,6 +213,35 @@ function doPost(e) {
         renderTransitionFormBody_(transWork, reTransition, baseUrl, transToken, transResult.errors, e.parameter), user, 'scan', baseUrl);
     }
     return renderStaffPage_('บันทึกสำเร็จ', renderActionSuccessBody_(transResult, baseUrl), user, 'scan', baseUrl);
+  }
+
+  if (formAction === 'admin_set_owner_code' || formAction === 'admin_reset_owner_code') {
+    // ตั้ง/รีเซ็ตรหัสผ่านเจ้าของผลงาน (Login สำหรับเจ้าของผลงาน, OwnerAuth.gs) — Admin เท่านั้น เรียกจากหน้า
+    // รายละเอียดผลงาน (renderWorkDetailBody_) ไม่ใช่หน้า Admin tab เพราะเป็น action ต่อรายการ ไม่ใช่ master data
+    if (user.role !== 'Admin') {
+      return renderStaffPage_('ไม่มีสิทธิ์', renderStubBody_('เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น', baseUrl), user, 'admin', baseUrl);
+    }
+    var codeWorkId = e.parameter.work_id;
+    var codeWork = findWorkById_(ss, codeWorkId);
+    if (!codeWork) {
+      return renderStaffPage_('ไม่พบรายการ', renderStubBody_('ไม่พบงานที่ระบุ (work_id: ' + codeWorkId + ')', baseUrl), user, 'search', baseUrl);
+    }
+    var codeErrors = [];
+    if (formAction === 'admin_reset_owner_code') {
+      updateWorkRow_(ss, codeWorkId, { owner_login_code_hash: '', updated_at: codeWork.updated_at });
+    } else {
+      var newOwnerCode = String(e.parameter.owner_login_code || '').trim();
+      if (!validateOwnerLoginCodeFormat_(newOwnerCode)) {
+        codeErrors.push('กรุณากรอกรหัสในรูปแบบ 12-345');
+      } else {
+        updateWorkRow_(ss, codeWorkId, { owner_login_code_hash: hashOwnerLoginCode_(newOwnerCode), updated_at: codeWork.updated_at });
+      }
+    }
+    var refreshedWork = findWorkById_(ss, codeWorkId);
+    var refreshedHistory = getHistoryForWork_(ss, codeWorkId);
+    var refreshedStationsMap = getStationsMap_(ss);
+    return renderStaffPage_('รายละเอียดผลงาน',
+      renderWorkDetailBody_(ss, refreshedWork, refreshedHistory, refreshedStationsMap, baseUrl, user, codeErrors), user, 'search', baseUrl);
   }
 
   if (formAction === 'admin_station_save' || formAction === 'admin_user_save' || formAction === 'admin_master_save') {

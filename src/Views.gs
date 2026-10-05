@@ -955,7 +955,7 @@ function renderSearchResultList_(works, stationsMap, baseUrl) {
  * ด้านล่าง (ใครทำอะไรเมื่อไร+หมายเหตุ) ไม่ลบทิ้ง — ตัดออกจากหน้านี้เฉพาะการแสดงผล: เลขบัตรประชาชน/เบอร์โทร/
  * อีเมล/ระดับ/ผู้ดำเนินการล่าสุด (คอลัมน์เดิมในชีตยังอยู่ครบ ไม่ได้ลบข้อมูลจริง)
  */
-function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
+function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, errors) {
   var ownerName = ((work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')).trim();
   var data = buildPublicResultData_(ss, work);
 
@@ -1002,6 +1002,32 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
     ? '<p><a href="' + escapeHtml_(work.cover_image_url) + '" target="_blank" rel="noopener">ดูภาพหน้าปกที่อัปโหลด</a></p>'
     : '';
 
+  // ตั้ง/รีเซ็ตรหัสผ่านเจ้าของผลงาน (Login สำหรับเจ้าของผลงาน, 2026-10-06) — Admin เท่านั้น ค่าเริ่มต้นคือ
+  // tracking_no ของงานนี้เอง (ไม่มี field รหัสลับจริงเดิมในระบบ ยืนยันกับผู้ใช้แล้ว) ไม่แสดงรหัสที่ตั้งไว้จริง
+  // ในหน้า UI เลย (ข้อ 20 — เก็บแค่ hash ย้อนกลับไม่ได้อยู่แล้วด้วย)
+  var ownerCodeErrorHtml = (errors && errors.length)
+    ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+  var ownerCodeHtml = (user && user.role === 'Admin') ? '' +
+    '<details class="pub-details"><summary>ตั้ง/รีเซ็ตรหัสผ่านเจ้าของผลงาน (Admin)</summary>' +
+    '<div class="pub-details-body">' + ownerCodeErrorHtml +
+    '<p class="hint">ค่าเริ่มต้นคือเลขทะเบียนของงานนี้เอง (' + escapeHtml_(work.tracking_no) + ') ถ้าต้องการเปลี่ยนให้กรอกรหัสใหม่รูปแบบ 12-345' +
+    (work.owner_login_code_hash ? ' — ตอนนี้ตั้งรหัสเฉพาะไว้แล้ว' : '') + '</p>' +
+    '<form method="post" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;">' +
+    '<input type="hidden" name="form_action" value="admin_set_owner_code">' +
+    '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
+    '<div class="field"><label>รหัสใหม่</label>' +
+    '<input class="input" name="owner_login_code" placeholder="12-345" maxlength="6" pattern="\\d{2}-\\d{3}"></div>' +
+    '<button type="submit" class="btn-outline">บันทึกรหัสใหม่</button>' +
+    '</form>' +
+    (work.owner_login_code_hash ? '' +
+      '<form method="post" action="' + baseUrl + '" class="reg-form" style="border:none;padding:8px 0 0;">' +
+      '<input type="hidden" name="form_action" value="admin_reset_owner_code">' +
+      '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
+      '<button type="submit" class="btn-outline">รีเซ็ตกลับเป็นค่าเริ่มต้น (เลขทะเบียน)</button>' +
+      '</form>' : '') +
+    '</div></details>' : '';
+
   // ประวัติละเอียดทุกแถวจริง (ใครทำอะไรเมื่อไร+หมายเหตุ) — พับด้วย <details> ไม่ให้ดูเหมือน log ดิบกลางหน้า
   // + แปล LEGACY_IMPORT_MARKER_ เป็นข้อความอ่านง่าย ไม่โชว์ email ภายในดิบๆ (2026-09-24) ไม่ลบข้อมูลจริง แค่จัดรูปแบบ
   var auditLogHtml = history.length
@@ -1024,7 +1050,7 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl) {
   return '' +
     '<div class="pub-compact">' +
     '<div class="detail-card">' +
-    nameBlockHtml + heroHtml + actionHtml + infoGridHtml + progressHtml + timelineHtml + noteHtml + auditLogHtml + infoHtml + coverHtml +
+    nameBlockHtml + heroHtml + actionHtml + infoGridHtml + progressHtml + timelineHtml + noteHtml + auditLogHtml + infoHtml + coverHtml + ownerCodeHtml +
     '<p style="margin-top:12px"><a class="btn-outline" target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
     '</div>' +
     '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>' +
@@ -1083,6 +1109,7 @@ function renderPublicTrackFormBody_(baseUrl, errors, prevValues) {
     '<input class="input" name="owner_name" value="' + escapeHtml_(prevValues.owner_name || '') + '" placeholder="กรอกอย่างน้อย 1 ช่อง"></div>' +
     '<button class="btn-primary" type="submit">ค้นหา</button>' +
     '</form>' +
+    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=owner-login">เป็นเจ้าของผลงาน? เข้าสู่ระบบเพื่อดูต่อเนื่อง &rarr;</a></p>' +
     '<div class="qr-scan-divider"><span>หรือ</span></div>' +
     '<input type="file" accept="image/*" capture="environment" id="qr-photo-input" data-base-url="' + escapeHtml_(baseUrl) + '" style="display:none">' +
     '<button type="button" id="qr-photo-btn" class="btn-action btn-action-secondary" style="display:none">' +

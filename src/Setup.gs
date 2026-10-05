@@ -694,3 +694,100 @@ function deleteRecordSeq245() {
     Logger.log('=== ไม่ปรับ Settings last_seq_' + year + ' (ปัจจุบัน=' + currentSeq + ' มีงานเลขสูงกว่า 245 อยู่แล้ว ปรับกลับจะทำให้เลขทะเบียนซ้ำ) ===');
   }
 }
+
+/**
+ * ลบงานทดสอบเลขทะเบียน "69-517" ตัวเดียว แล้วบังคับ Settings last_seq_<ปี> กลับเป็น 244 ให้งานถัดไปวิ่งต่อที่
+ * 245 ตามที่ผู้ใช้ขอ (2026-10-06) — ก่อนบังคับ reset จะ audit หาว่ามีงานอื่นเลขเกิน 244 ค้างอยู่อีกหรือไม่
+ * (กันเคสมีงานจริงใช้เลข 245+ ไปแล้ว ถ้า reset กลับ 244 จะทำให้ครั้งต่อไปออกเลขซ้ำ) ถ้าพบงานอื่นค้าง จะไม่ reset
+ * ให้อัตโนมัติ แค่ log เตือนให้ตรวจเอง รันเองจาก Editor: auditRecordTrackingNo517() ดูก่อน แล้วค่อยรัน
+ * deleteRecordTrackingNo517AndResetCounter()
+ */
+function auditRecordTrackingNo517() {
+  var ss = getSpreadsheet_();
+  var year = String(getSetting_(ss, 'fiscal_year_current', String(getBuddhistYear_(now_()))));
+  var shortYear = shortBuddhistYear_(year);
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var matched = works.filter(function (w) { return String(w.tracking_no || '') === '69-517'; });
+  var currentSeq = getSetting_(ss, 'last_seq_' + year, '0');
+  Logger.log('Settings last_seq_' + year + ' ปัจจุบัน = ' + currentSeq);
+  if (!matched.length) {
+    Logger.log('ไม่พบงานเลขทะเบียน 69-517 — ไม่มีอะไรต้องลบ');
+  } else {
+    matched.forEach(function (w) {
+      var hist = getHistoryForWork_(ss, w.work_id);
+      Logger.log('tracking_no=' + w.tracking_no + ' | work_id=' + w.work_id +
+        ' | ชื่อผลงาน="' + w.work_title + '" | หน่วยงาน="' + w.org_from + '"' +
+        ' | เจ้าของ="' + (w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '') + '"' +
+        ' | created_by=' + w.created_by + ' | ประวัติ ' + hist.length + ' แถว (action: ' + hist.map(function (h) { return h.action; }).join(', ') + ')');
+    });
+  }
+  var others = works.filter(function (w) {
+    var m = String(w.tracking_no || '').match(new RegExp('^' + shortYear + '-(\\d+)$'));
+    return m && Number(m[1]) > 244 && String(w.tracking_no || '') !== '69-517';
+  });
+  if (others.length) {
+    Logger.log('=== คำเตือน: พบงานอื่นที่เลขทะเบียนเกิน ' + shortYear + '-244 อยู่ด้วย ' + others.length + ' รายการ: ' +
+      others.map(function (w) { return w.tracking_no; }).join(', ') + ' — ถ้ายังมีงานพวกนี้ ห้าม reset counter กลับ 244 (จะออกเลขซ้ำ) ===');
+  } else {
+    Logger.log('=== ไม่มีงานอื่นเกิน ' + shortYear + '-244 ค้างอยู่ — reset counter กลับ 244 ได้ปลอดภัย ===');
+  }
+}
+
+function deleteRecordTrackingNo517AndResetCounter() {
+  var ss = getSpreadsheet_();
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
+  var year = String(getSetting_(ss, 'fiscal_year_current', String(getBuddhistYear_(now_()))));
+  var shortYear = shortBuddhistYear_(year);
+
+  var works = readSheetAsObjects_(worksSheet);
+  var toDelete = {};
+  works.forEach(function (w) { if (String(w.tracking_no || '') === '69-517') toDelete[w.work_id] = w.tracking_no; });
+
+  if (Object.keys(toDelete).length) {
+    var worksHeaders = worksSheet.getRange(1, 1, 1, worksSheet.getLastColumn()).getValues()[0];
+    var workIdColW = worksHeaders.indexOf('work_id') + 1;
+    var deletedWorks = 0;
+    for (var r = worksSheet.getLastRow(); r >= 2; r--) {
+      var wid = worksSheet.getRange(r, workIdColW).getValue();
+      if (toDelete[wid]) { Logger.log('ลบ Works แถว ' + r + ' (tracking_no=' + toDelete[wid] + ')'); worksSheet.deleteRow(r); deletedWorks++; }
+    }
+
+    var historyHeaders = historySheet.getRange(1, 1, 1, historySheet.getLastColumn()).getValues()[0];
+    var workIdColH = historyHeaders.indexOf('work_id') + 1;
+    var deletedHistory = 0;
+    for (var r2 = historySheet.getLastRow(); r2 >= 2; r2--) {
+      if (toDelete[historySheet.getRange(r2, workIdColH).getValue()]) { historySheet.deleteRow(r2); deletedHistory++; }
+    }
+    Logger.log('ลบ Works ' + deletedWorks + ' แถว, StatusHistory ' + deletedHistory + ' แถว (tracking_no=69-517)');
+  } else {
+    Logger.log('ไม่พบงานเลขทะเบียน 69-517 — ไม่มีอะไรต้องลบ');
+  }
+
+  var remaining = readSheetAsObjects_(worksSheet);
+  var others = remaining.filter(function (w) {
+    var m = String(w.tracking_no || '').match(new RegExp('^' + shortYear + '-(\\d+)$'));
+    return m && Number(m[1]) > 244;
+  });
+  if (others.length) {
+    Logger.log('=== ไม่ reset Settings last_seq_' + year + ' (ยังมีงานเลขเกิน ' + shortYear + '-244 ค้างอยู่ ' + others.length +
+      ' รายการ: ' + others.map(function (w) { return w.tracking_no; }).join(', ') + ' — reset ตอนนี้จะทำให้เลขทะเบียนซ้ำ ตรวจ/ลบให้หมดก่อนแล้วรันใหม่) ===');
+  } else {
+    setSetting_(ss, 'last_seq_' + year, '244', 'เลขลำดับล่าสุดของปี ' + year + ' (ระบบเพิ่มอัตโนมัติ ห้ามแก้มือขณะมีคนใช้งาน)');
+    Logger.log('=== ปรับ Settings last_seq_' + year + ' = 244 เรียบร้อย — งานถัดไปจะได้เลขทะเบียน ' + shortYear + '-245 ===');
+  }
+}
+
+/**
+ * Login สำหรับเจ้าของผลงาน (2026-10-06, ดู OwnerAuth.gs) — รันครั้งเดียวจาก Editor บนชีตจริง: เพิ่มคอลัมน์
+ * owner_login_code_hash ใน Works (reuse migrateAddWorksColumns_() เดิม — append header ถ้ายังไม่มี) +
+ * สร้างชีตใหม่ OwnerSessions/OwnerLoginLog (idempotent ผ่าน ensureSheet_ — มีอยู่แล้วข้ามเฉย ๆ ไม่ทับข้อมูล)
+ * ไม่ต้อง seed ข้อมูลใดๆ (รหัสผ่านใช้ tracking_no เป็นค่าเริ่มต้นโดยอัตโนมัติ ไม่ต้อง migrate ค่าเก่า)
+ */
+function migrateOwnerLoginFeature() {
+  migrateAddWorksColumns_();
+  var ss = getSpreadsheet_();
+  ensureSheet_(ss, SHEET.OWNER_SESSIONS, SHEET_HEADERS[SHEET.OWNER_SESSIONS]);
+  ensureSheet_(ss, SHEET.OWNER_LOGIN_LOG, SHEET_HEADERS[SHEET.OWNER_LOGIN_LOG]);
+  Logger.log('=== migrateOwnerLoginFeature เสร็จ — เพิ่มคอลัมน์ owner_login_code_hash ใน Works + สร้างชีต OwnerSessions/OwnerLoginLog เรียบร้อย ===');
+}

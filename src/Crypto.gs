@@ -60,3 +60,26 @@ function hashCitizenId_(citizenId13) {
     return ('0' + v.toString(16)).slice(-2);
   }).join('');
 }
+
+/** salt สำหรับรหัสผ่านเจ้าของผลงาน (Login สำหรับเจ้าของผลงาน, 2026-10-06) — แยกคีย์จาก citizen id โดยเจตนา
+ *  (คนละข้อมูล คนละความเสี่ยง ไม่ควรแชร์ salt เดียวกัน) */
+function getOwnerLoginCodeHashSalt_() {
+  var props = PropertiesService.getScriptProperties();
+  var salt = props.getProperty('OWNER_LOGIN_CODE_HASH_SALT');
+  if (!salt) {
+    salt = Utilities.getUuid();
+    props.setProperty('OWNER_LOGIN_CODE_HASH_SALT', salt);
+  }
+  return salt;
+}
+
+/** แฮชรหัสผ่านเจ้าของผลงาน (SHA-256+salt) — เก็บใน Works.owner_login_code_hash เท่านั้น ไม่เก็บ plaintext เลย
+ *  (ตามข้อ 20 ของผู้ใช้) ย้อนกลับไม่ได้ ใช้เทียบตอน login เท่านั้น */
+function hashOwnerLoginCode_(code) {
+  var salted = String(code) + '|' + getOwnerLoginCodeHashSalt_();
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salted, Utilities.Charset.UTF_8);
+  return bytes.map(function (b) {
+    var v = (b + 256) % 256;
+    return ('0' + v.toString(16)).slice(-2);
+  }).join('');
+}

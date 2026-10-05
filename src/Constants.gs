@@ -26,6 +26,9 @@ var SHEET = {
   CHAIR_MASTER: 'ChairMaster',
   SECRETARY_MASTER: 'SecretaryMaster',
   COMMITTEE_SECRETARY_MAP: 'CommitteeSecretaryMap',
+  // 2026-10-06 — Login สำหรับเจ้าของผลงาน (ดู OwnerAuth.gs)
+  OWNER_SESSIONS: 'OwnerSessions',
+  OWNER_LOGIN_LOG: 'OwnerLoginLog',
 };
 
 var SHEET_HEADERS = {};
@@ -52,6 +55,11 @@ SHEET_HEADERS[SHEET.WORKS] = [
   // นักวิชาการสาธารณสุข — ดู resolveCommitteeForRegistration_ ใน CommitteeMigration.gs) ว่างได้ถ้าตำแหน่งนั้นยัง
   // ไม่มีคณะกรรมการในระบบ (ChairMaster ยังไม่ครอบคลุม)
   'committee_code',
+  // เพิ่ม 2026-10-06 (Login สำหรับเจ้าของผลงาน) — รหัสผ่าน (hash, ไม่เก็บ plaintext) ที่ Admin ตั้ง/รีเซ็ตให้เป็น
+  // รายกรณีผ่านหน้ารายละเอียดผลงาน ว่างได้เสมอ: ถ้าว่าง verifyOwnerLoginCode_ (OwnerAuth.gs) จะ fallback ไป
+  // เทียบกับ tracking_no ของงานนั้นตรงๆ แทน (ผู้ใช้ยืนยันแล้ว — ไม่มี field รหัสลับจริงเดิม จึงใช้ tracking_no
+  // เป็นค่าเริ่มต้นได้ทันทีทั้งงานเก่า/ใหม่ โดยไม่ต้อง migrate ข้อมูลใดๆ)
+  'owner_login_code_hash',
 ];
 SHEET_HEADERS[SHEET.STATUS_HISTORY] = [
   'history_id', 'work_id', 'tracking_no', 'action', 'from_station', 'to_station', 'from_org', 'to_org',
@@ -95,6 +103,12 @@ SHEET_HEADERS[SHEET.SECRETARY_MASTER] = ['secretary_id', 'name', 'position', 'or
 SHEET_HEADERS[SHEET.COMMITTEE_SECRETARY_MAP] = [
   'map_id', 'committee_code', 'profession', 'field', 'specialty', 'team_no', 'secretary_id', 'role', 'sequence', 'active', 'note',
 ];
+
+// Login สำหรับเจ้าของผลงาน 2026-10-06 (ดู OwnerAuth.gs) — session เก็บเป็นชีต (ไม่ใช่ CacheService) เพราะต้อง
+// รองรับอายุ session ได้ถึง 8 ชม. (CacheService เพดานจริง 6 ชม.) และให้ Admin ตรวจสอบ/audit ย้อนหลังได้จากชีตตรงๆ
+SHEET_HEADERS[SHEET.OWNER_SESSIONS] = ['owner_session_id', 'work_id', 'owner_name', 'login_at', 'expires_at', 'active'];
+// log การพยายาม login ของเจ้าของผลงานทุกครั้ง (สำเร็จ/ล้มเหลว) — ไม่เก็บรหัสผ่านใดๆ ตามที่ผู้ใช้กำชับ (ข้อ 19)
+SHEET_HEADERS[SHEET.OWNER_LOGIN_LOG] = ['log_id', 'timestamp', 'work_id_attempt', 'owner_name_attempt', 'result', 'session_token'];
 
 // สถานี Workflow เริ่มต้น — ตรงกระบวนการจริงที่ผู้ใช้ให้มา (2026-09-02) แทนชุดเดิม
 // แก้ไขได้ภายหลังจากหน้า "จัดการ Workflow" ไม่กระทบ record ที่มีอยู่ เพราะ Works อ้างสถานีด้วย station_key ไม่ใช่ลำดับแถว
