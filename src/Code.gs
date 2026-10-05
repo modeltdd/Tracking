@@ -60,13 +60,23 @@ function routeStaffPage_(e, user) {
       var forwardWorks = getForwardableWorks_(ss, user.organization);
       return renderStaffPage_('ส่งต่อ', renderForwardListBody_(user.organization, forwardWorks, getStationsMap_(ss), baseUrl), user, 'forward', baseUrl);
     case 'registry':
-      // 2026-09-25: Export CSV ของมุมมอง Excel — ต้องเช็ค canAccessRegistry_ เองตรงนี้ (ไม่ผ่าน
-      // renderRegistryRoute_ ที่คืน HtmlOutput เสมอ เพราะ CSV ต้องคืน ContentService ตรงๆ ไม่ห่อหน้า HTML)
-      if (params.export === 'csv') {
+      // 2026-09-25/2026-10-06: Export CSV/Excel ของมุมมอง Excel — ต้องเช็ค canAccessRegistry_ เองตรงนี้ (ไม่ผ่าน
+      // renderRegistryRoute_ ที่คืน HtmlOutput เสมอ เพราะ CSV คืน ContentService ตรงๆ ไม่ห่อหน้า HTML — ส่วน
+      // .xlsx คืน HtmlOutput ก็จริงแต่เป็นหน้าดาวน์โหลดเฉพาะกิจ ไม่ใช่หน้าเชลล์ปกติ) permission เดียวกับทะเบียนเดิม
+      if (params.export === 'csv' || params.export === 'xlsx') {
         if (!canAccessRegistry_(user)) {
           return renderStaffPage_('ไม่มีสิทธิ์เข้าถึง', renderStubBody_('เฉพาะบัญชีผู้รับผิดชอบ/ผู้ดูแลระบบเท่านั้นที่เข้าหน้านี้ได้', baseUrl), user, 'dashboard', baseUrl);
         }
-        return exportRegistryCsv_(ss, user, params);
+        if (params.export === 'csv') return exportRegistryCsv_(ss, user, params);
+        // .xlsx ต้องพึ่ง UrlFetchApp ไปยัง Google เอง + สร้าง/ลบ Spreadsheet ชั่วคราว — ของจริงพังได้ (เครือข่าย/
+        // โควต้า) ต้องจับ error แสดงข้อความที่เข้าใจง่ายแทนหน้า stack trace ดิบของ Apps Script (ข้อ 13)
+        try {
+          return exportRegistryXlsx_(ss, user, params);
+        } catch (xlsxErr) {
+          return renderStaffPage_('สร้างไฟล์ Excel ไม่สำเร็จ',
+            renderStubBody_('เกิดข้อผิดพลาดระหว่างสร้างไฟล์ Excel: ' + xlsxErr.message + ' — ลองใหม่อีกครั้ง หรือดาวน์โหลด CSV แทนไปก่อน', baseUrl),
+            user, 'registry', baseUrl);
+        }
       }
       return renderRegistryRoute_(ss, user, params, baseUrl, '');
     case 'search':

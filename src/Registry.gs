@@ -180,11 +180,13 @@ function renderRegistryRoute_(ss, user, params, baseUrl, flashMessage) {
 }
 
 /**
- * Export CSV ของหน้าทะเบียน (2026-09-25) — ตามเงื่อนไข filter/sort ปัจจุบันทั้งหมด (ไม่ใช่แค่หน้าที่กำลังดูอยู่
- * เอาทุกแถวที่ตรงเงื่อนไข) คืน ContentService ตรงๆ (ไม่ผ่าน renderStaffPage_ — ไม่ใช่หน้า HTML) BOM นำหน้ากัน
- * Excel อ่านภาษาไทยเพี้ยน ใช้ field จริงทั้งหมด ไม่มีคอลัมน์ใหม่ที่ไม่มีอยู่ในระบบจริง
+ * สร้างชุดข้อมูล Export ของหน้าทะเบียน (2026-10-06, ใช้ร่วมกันทั้ง CSV และ Excel .xlsx — ไม่เขียนตรรกะ filter/
+ * sort/คอลัมน์ซ้ำ 2 รอบ) ตามเงื่อนไข filter/sort ปัจจุบันทั้งหมด (ไม่ใช่แค่หน้าที่กำลังดูอยู่ เอาทุกแถวที่ตรง
+ * เงื่อนไข) ใช้ field จริงทั้งหมด ไม่มีคอลัมน์ใหม่ที่ไม่มีอยู่ในระบบจริง
+ * ค่าในแถว (rows) เป็นค่าดิบ (Date object จริงสำหรับคอลัมน์วันที่ — ให้ exportRegistryXlsx_ เขียนลง cell ตรงๆ
+ * เป็น Date จริง, exportRegistryCsv_ ค่อย format เป็นข้อความเองตอนสร้าง CSV)
  */
-function exportRegistryCsv_(ss, user, params) {
+function buildRegistryExportRows_(ss, params) {
   var rp = parseRegistryParams_(params);
   var all = getAllWorksForRegistry_(ss);
   var bucketData = computeRegistryBuckets_(ss, all);
@@ -201,26 +203,219 @@ function exportRegistryCsv_(ss, user, params) {
     headers = headers.concat(monthlySnapshot.months);
   }
 
-  // csvValue_/csvEscape_ (Admin.gs) — reuse ของเดิมเป๊ะ ไม่เขียน escape logic ซ้ำ
-  var lines = [headers.map(csvEscape_).join(',')];
-  filtered.forEach(function (w, i) {
+  var rows = filtered.map(function (w, i) {
     var station = stationsMap[w.current_station_key];
     var ownerName = ((w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '')).trim();
     var row = [
       i + 1, w.tracking_no, ownerName, w.position, w.specialty, w.province,
-      formatDateTh_(w.received_date), w.legacy_team, w.secretary, w.org_from,
+      w.received_date ? new Date(w.received_date) : '',
+      w.legacy_team, w.secretary, w.org_from,
       station ? (station.station_order + ' ' + station.station_name) : w.current_station_key,
-      w.current_owner_org, formatDateTh_(w.updated_at),
-    ].map(csvValue_);
-    if (monthlySnapshot) {
-      row = row.concat((monthlySnapshot.rows[w.work_id] || monthlySnapshot.months.map(function () { return ''; })).map(csvValue_));
-    }
-    lines.push(row.map(csvEscape_).join(','));
+      w.current_owner_org,
+      w.updated_at ? new Date(w.updated_at) : '',
+    ];
+    if (monthlySnapshot) row = row.concat(monthlySnapshot.rows[w.work_id] || monthlySnapshot.months.map(function () { return ''; }));
+    return row;
+  });
+
+  return {
+    rp: rp, headers: headers, rows: rows, filteredCount: filtered.length, totalCount: all.length,
+    monthly: !!monthlySnapshot, monthNames: monthlySnapshot ? monthlySnapshot.months : [],
+    // ตำแหน่งคอลัมน์ (0-based) ที่ต้องจัดการเป็นพิเศษตอนเขียนลง Excel จริง — ใช้ร่วมกับ exportRegistryXlsx_
+    trackingCol: 1, dateCols: [6, 12], textCols: [1, 7], wrapCols: [9, 8],
+  };
+}
+
+/**
+ * Export CSV ของหน้าทะเบียน (2026-09-25) — คืน ContentService ตรงๆ (ไม่ผ่าน renderStaffPage_ — ไม่ใช่หน้า HTML)
+ * BOM นำหน้ากัน Excel อ่านภาษาไทยเพี้ยน (2026-10-06 ปรับให้ใช้ buildRegistryExportRows_ ร่วมกับ Excel export)
+ */
+function exportRegistryCsv_(ss, user, params) {
+  var data = buildRegistryExportRows_(ss, params);
+  // csvValue_/csvEscape_ (Admin.gs) — reuse ของเดิมเป๊ะ ไม่เขียน escape logic ซ้ำ — คอลัมน์วันที่ (Date object
+  // จริงจาก buildRegistryExportRows_) format เป็นข้อความแบบไทยตอนนี้ (CSV เป็นข้อความล้วน ไม่มี cell type จริง)
+  var dateColSet = {}; data.dateCols.forEach(function (c) { dateColSet[c] = true; });
+  var lines = [data.headers.map(csvEscape_).join(',')];
+  data.rows.forEach(function (row) {
+    var csvRow = row.map(function (v, ci) {
+      return csvValue_(dateColSet[ci] && v ? formatDateTh_(v) : v);
+    });
+    lines.push(csvRow.map(csvEscape_).join(','));
   });
 
   var bom = String.fromCharCode(0xFEFF);
   var csv = bom + lines.join('\r\n');
   return ContentService.createTextOutput(csv).setMimeType(ContentService.MimeType.CSV);
+}
+
+/** ชื่อไฟล์ Export ตาม filter ปัจจุบัน (2026-10-06 ตามตัวอย่างที่ผู้ใช้ระบุ) — มีปีงบ+เดือน / มีแค่ปีงบ / ไม่มี
+ *  filter ปีงบ/เดือนเลยใช้วันที่วันนี้แทน (ค.ศ. ตามตัวอย่างที่ผู้ใช้ให้ "ทะเบียนผลงาน_2026-10-05.xlsx") */
+function buildRegistryExportFilename_(rp, ext) {
+  var base = 'ทะเบียนผลงาน';
+  if (rp.fy && rp.month) base += '_' + rp.fy + '_' + THAI_MONTHS_[Number(rp.month) - 1];
+  else if (rp.fy) base += '_' + rp.fy;
+  else {
+    var d = now_();
+    base += '_' + d.getFullYear() + '-' + padLeft_(d.getMonth() + 1, 2) + '-' + padLeft_(d.getDate(), 2);
+  }
+  return base + '.' + ext;
+}
+
+/**
+ * Export Excel .xlsx จริงของหน้าทะเบียน (2026-10-06 ตามที่ผู้ใช้ขอ แทน CSV) — ห้ามสร้าง CSV แล้วเปลี่ยนนามสกุล
+ * ตามที่ผู้ใช้กำชับ ใช้วิธีมาตรฐานของ Apps Script: สร้าง Google Spreadsheet ชั่วคราว -> เขียนข้อมูล (filter/sort
+ * เดียวกับ CSV ทุกประการ ผ่าน buildRegistryExportRows_) -> จัด format -> export เป็น .xlsx จริงผ่าน Sheets
+ * export endpoint (UrlFetchApp + OAuth token ของสคริปต์เอง — ไม่ต้องแชร์ไฟล์ชั่วคราวให้ใครเห็นเลย ไม่เปิดช่องทาง
+ * bypass permission) -> ลบไฟล์ชั่วคราวทิ้งใน finally (กันสะสมใน Drive) -> ส่งไฟล์กลับ Browser เป็นหน้า HTML
+ * เล็กๆ ที่ฝัง Excel แบบ base64 ไว้แล้วสั่งดาวน์โหลดอัตโนมัติด้วย JS (Apps Script ส่งไฟล์ binary ตรงๆ จาก doGet
+ * ไม่ได้ — ContentService รองรับแค่ text/CSV/JSON เท่านั้น นี่คือวิธีมาตรฐานที่ใช้กันจริงสำหรับเคสนี้)
+ */
+function exportRegistryXlsx_(ss, user, params) {
+  var data = buildRegistryExportRows_(ss, params);
+  var filename = buildRegistryExportFilename_(data.rp, 'xlsx');
+  var tempSs = SpreadsheetApp.create('export-temp-' + Utilities.getUuid());
+  try {
+    var sheet = tempSs.getSheets()[0];
+    sheet.setName('ทะเบียนผลงาน');
+    formatExcelWorksheet_(sheet, data);
+    addExportInfoSheet_(tempSs, user, data);
+    SpreadsheetApp.flush();
+    var blob = exportSpreadsheetAsXlsx_(tempSs.getId());
+    var base64 = Utilities.base64Encode(blob.getBytes());
+    return renderXlsxDownloadPage_(base64, filename);
+  } finally {
+    cleanupTempSpreadsheet_(tempSs.getId());
+  }
+}
+
+/** เขียนข้อมูล + จัด format ชีตหลัก "ทะเบียนผลงาน" — batch setValues() เดียวจบ (ข้อ 14: ห้าม setValue ทีละ cell) */
+function formatExcelWorksheet_(sheet, data) {
+  var headers = data.headers, rows = data.rows;
+  var totalCols = headers.length;
+  var totalRows = rows.length + 1;
+
+  sheet.getRange(1, 1, 1, totalCols).setValues([headers]);
+  if (rows.length) sheet.getRange(2, 1, rows.length, totalCols).setValues(rows);
+
+  // Header: ตัวหนา พื้นหลัง navy ตัวอักษรขาว (ข้อ 6)
+  var headerRange = sheet.getRange(1, 1, 1, totalCols);
+  headerRange.setFontWeight('bold').setBackground('#1f3b54').setFontColor('#ffffff');
+
+  // Freeze header แถวแรก + คอลัมน์ A-C (ลำดับ/เลขทะเบียน/ชื่อ-สกุล) ตามข้อ 6
+  sheet.setFrozenRows(1);
+  sheet.setFrozenColumns(3);
+
+  // บังคับคอลัมน์ "เลขทะเบียน"/"ทีม" (และคอลัมน์เดือนถ้ามี) เป็น Text เสมอ (ข้อ 9) — ตั้ง format ก่อนแล้วเขียน
+  // ค่าซ้ำบน range เดิมอีกรอบ (ไม่ใช่แค่ตั้ง format เฉยๆ) กันบั๊กจริงที่เจอมาก่อนหน้านี้ในโปรเจกต์: Google Sheets
+  // auto-detect ค่าตัวเลขล้วน (เช่น "69-004" ไม่เข้าข่าย แต่ "4.3"/"7.1"/"10" เข้าข่าย) เป็น Number ทันทีตอน
+  // setValues แม้ตั้ง format เป็น Text ไว้ก่อนแล้วก็ตาม ถ้าไม่เขียนค่าซ้ำอีกรอบบน range ที่ format แล้วจริงๆ
+  if (rows.length) {
+    var textCols = data.textCols.slice();
+    for (var m = 0; m < data.monthNames.length; m++) textCols.push(headers.length - data.monthNames.length + m);
+    textCols.forEach(function (ci) {
+      var col = ci + 1;
+      var range = sheet.getRange(2, col, rows.length, 1);
+      range.setNumberFormat('@');
+      range.setValues(rows.map(function (r) { var v = r[ci]; return [v === null || v === undefined ? '' : String(v)]; }));
+    });
+
+    // คอลัมน์วันที่ — เขียนเป็น Date object จริง (sort ได้จริงใน Excel) + format dd/mm/yyyy (ข้อ 8)
+    data.dateCols.forEach(function (ci) {
+      var col = ci + 1;
+      sheet.getRange(2, col, rows.length, 1).setNumberFormat('dd/mm/yyyy hh:mm');
+    });
+  }
+
+  // ความกว้างคอลัมน์ตามเนื้อหา (ข้อ 6) — ลำดับ=แคบ, เลขทะเบียน/จังหวัด/ทีม=กลาง, ชื่อ-สกุล/หน่วยงาน/เลขา=กว้าง
+  var widths = [40, 90, 170, 110, 140, 100, 95, 70, 160, 210, 140, 160, 130];
+  widths.forEach(function (w, i) { if (i < totalCols) sheet.setColumnWidth(i + 1, w); });
+  for (var mc = 13; mc < totalCols; mc++) sheet.setColumnWidth(mc + 1, 56); // คอลัมน์เดือน = แคบ
+
+  // Wrap text เฉพาะคอลัมน์ยาว: หน่วยงาน (index 9), เลขา (index 8)
+  data.wrapCols.forEach(function (ci) {
+    sheet.getRange(1, ci + 1, totalRows, 1).setWrap(true);
+  });
+
+  // Auto Filter ที่ header (ข้อ 7) — เปิด Filter ของ Excel ได้ทันทีหลังเปิดไฟล์
+  if (sheet.getFilter()) sheet.getFilter().remove();
+  sheet.getRange(1, 1, totalRows, totalCols).createFilter();
+}
+
+/** Sheet "ข้อมูลการ Export" (ข้อ 11) — สรุปเงื่อนไข/วันที่/ผู้ export/จำนวนรายการ */
+function addExportInfoSheet_(tempSs, user, data) {
+  var infoSheet = tempSs.insertSheet('ข้อมูลการ Export');
+  var rp = data.rp;
+  function cond(label, value) { return [label, value || 'ทั้งหมด']; }
+  var rows = [
+    ['วันที่ Export', formatDateTh_(now_())],
+    ['ผู้ Export', user.display_name || user.user_email],
+    cond('ปีงบประมาณ', rp.fy),
+    cond('เดือนที่รับเรื่อง', rp.month ? THAI_MONTHS_[Number(rp.month) - 1] : ''),
+    cond('จังหวัด', rp.province),
+    cond('ตำแหน่ง', rp.position),
+    cond('ด้าน', rp.specialty),
+    cond('State', rp.state),
+    cond('ผู้รับผิดชอบ', rp.resp),
+    cond('หน่วยงาน', rp.org),
+    cond('คำค้นหา', rp.q),
+    ['จำนวนรายการ', data.filteredCount + ' รายการ (จากทั้งหมด ' + data.totalCount + ' รายการ)'],
+  ];
+  infoSheet.getRange(1, 1, rows.length, 2).setValues(rows);
+  infoSheet.getRange(1, 1, rows.length, 1).setFontWeight('bold');
+  infoSheet.setColumnWidth(1, 160);
+  infoSheet.setColumnWidth(2, 320);
+}
+
+/** export Google Spreadsheet เป็น .xlsx จริงผ่าน Sheets export endpoint ของ Google เอง (ไม่ใช่สร้าง CSV
+ *  แล้วเปลี่ยนนามสกุล) ใช้ token ของสคริปต์เอง (executeAs: USER_DEPLOYING) ไม่ต้องแชร์ไฟล์ให้ใครเห็นเลย */
+function exportSpreadsheetAsXlsx_(spreadsheetId) {
+  var url = 'https://docs.google.com/spreadsheets/d/' + spreadsheetId + '/export?format=xlsx';
+  var response = UrlFetchApp.fetch(url, {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true,
+  });
+  if (response.getResponseCode() !== 200) {
+    throw new Error('สร้างไฟล์ Excel ไม่สำเร็จ (HTTP ' + response.getResponseCode() + ') — ลองดาวน์โหลด CSV แทน หรือลองใหม่อีกครั้ง');
+  }
+  return response.getBlob();
+}
+
+/** ลบ Spreadsheet ชั่วคราวที่ใช้สร้างไฟล์ Excel ทิ้งเสมอ (ข้อ 15 — กันไฟล์ชั่วคราวสะสมใน Drive) เรียกใน
+ *  finally เสมอ ไม่ว่า export จะสำเร็จหรือพัง */
+function cleanupTempSpreadsheet_(spreadsheetId) {
+  try {
+    DriveApp.getFileById(spreadsheetId).setTrashed(true);
+  } catch (err) {
+    Logger.log('ลบไฟล์ Excel ชั่วคราวไม่สำเร็จ (spreadsheetId=' + spreadsheetId + '): ' + err.message + ' — ลบเองได้ที่ Google Drive ถังขยะ');
+  }
+}
+
+/**
+ * หน้า HTML เล็กๆ ที่สั่งดาวน์โหลดไฟล์ Excel อัตโนมัติ (ข้อ 17 — ฝั่ง client ห้ามสร้าง CSV เอง, Server เป็นคน
+ * สร้าง .xlsx จริงทั้งหมดแล้วส่ง base64 มาให้ฝั่งนี้แค่แปลงกลับเป็น Blob แล้วกดดาวน์โหลดแทนผู้ใช้เท่านั้น)
+ */
+function renderXlsxDownloadPage_(base64, filename) {
+  var safeFilename = String(filename).replace(/["\\]/g, '');
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>ดาวน์โหลด Excel</title></head>' +
+    '<body style="font-family:Sarabun,sans-serif;text-align:center;padding-top:60px;color:#1c2b3a;">' +
+    '<p>กำลังดาวน์โหลด <b>' + escapeHtml_(safeFilename) + '</b> ...</p>' +
+    '<p style="font-size:.85rem;color:#5b7184;">ถ้าไฟล์ไม่เริ่มดาวน์โหลดอัตโนมัติ ปิดแท็บนี้แล้วลองกดใหม่อีกครั้ง</p>' +
+    '<script>' +
+    '(function () {' +
+    'var b64 = "' + base64 + '";' +
+    'var byteChars = atob(b64);' +
+    'var byteNumbers = new Array(byteChars.length);' +
+    'for (var i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);' +
+    'var byteArray = new Uint8Array(byteNumbers);' +
+    'var blob = new Blob([byteArray], {type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});' +
+    'var url = URL.createObjectURL(blob);' +
+    'var a = document.createElement("a");' +
+    'a.href = url; a.download = "' + safeFilename + '";' +
+    'document.body.appendChild(a); a.click();' +
+    '})();' +
+    '</script>' +
+    '</body></html>';
+  return HtmlService.createHtmlOutput(html).setTitle('ดาวน์โหลด Excel');
 }
 
 /**

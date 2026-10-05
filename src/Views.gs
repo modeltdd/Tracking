@@ -140,6 +140,27 @@ var GIS_AUTH_SCRIPT_ = '' +
   '});' +
   '</script>';
 
+/**
+ * ข้อความ "กำลังสร้างไฟล์ Excel..." เฉพาะปุ่มดาวน์โหลด .xlsx ของมุมมอง Excel (2026-10-06 ข้อ 13 — สร้าง .xlsx
+ * ใช้เวลานานกว่า CSV เพราะต้องสร้าง/แปลง/ลบ Spreadsheet ชั่วคราวจริงฝั่ง server) ต้องแทรกก่อน
+ * LOADING_FEEDBACK_SCRIPT_ เสมอ (ลำดับ DOMContentLoaded listener) ให้ dataset.loading ถูกตั้งก่อน กัน
+ * LOADING_FEEDBACK_SCRIPT_ ทับข้อความทั่วไป "กำลังโหลด..." — ปุ่มเปิด target="_blank" (หน้าเดิมไม่ navigate
+ * ออกไป) จึงตั้งเวลาคืนสถานะปุ่มให้กดใหม่ได้หลัง 6 วิ ต่างจากปุ่ม _top อื่นๆ ที่ไม่ต้องคืนเพราะหน้าโหลดใหม่อยู่แล้ว
+ */
+var EXCEL_EXPORT_LOADING_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'var btn = document.getElementById("xlsx-export-btn");' +
+  'if (!btn) return;' +
+  'var originalText = btn.textContent;' +
+  'btn.addEventListener("click", function () {' +
+  'if (btn.dataset.loading) return;' +
+  'btn.dataset.loading = "1"; btn.textContent = "กำลังสร้างไฟล์ Excel..."; btn.style.opacity = "0.6";' +
+  'setTimeout(function () { btn.textContent = originalText; btn.style.opacity = "1"; delete btn.dataset.loading; }, 6000);' +
+  '});' +
+  '});' +
+  '</script>';
+
 /** ครอบหน้าเจ้าหน้าที่ด้วยเชลล์เต็มรูปแบบ: header ผู้ใช้ + เนื้อหา + bottom-nav
  *  baseUrl: URL เต็มของ Web App (จาก getWebAppUrl_()) — ลิงก์ภายในทุกอันต้อง absolute + target="_top"
  *  กัน relative href พังใน iframe sandbox ของ HtmlService (ดูคอมเมนต์ getWebAppUrl_ ใน Utils.gs) */
@@ -736,17 +757,19 @@ function renderRegistryExcelViewBody_(ss, pageResult, rp, totalAllCount, bucketC
   var sortSummaryText = rp.sort && sortLabelMap[rp.sort]
     ? 'เรียงตาม ' + sortLabelMap[rp.sort] + ' (' + (rp.dir === 'asc' ? 'น้อย→มาก' : 'มาก→น้อย') + ')'
     : 'ไม่ได้เรียง (ลำดับล่าสุดก่อน)';
-  var exportQuery = buildRegistryQuery_(rp, { p: 1 }) + '&export=csv';
+  var csvExportQuery = buildRegistryQuery_(rp, { p: 1 }) + '&export=csv';
+  var xlsxExportQuery = buildRegistryQuery_(rp, { p: 1 }) + '&export=xlsx';
+  // target="_blank" + class "export-download" — แก้บั๊กจริงที่เจอ (2026-10-06): target="_top" นำทาง top-level
+  // browsing context ไปยัง URL ที่ตอบกลับเป็นไฟล์ (ไม่ใช่หน้า HTML) จาก iframe sandbox ของ HtmlService ทำให้
+  // Google เข้าใจผิดว่าต้องพรีวิวไฟล์ผ่าน Google ไดรฟ์ แล้วเจอ "ไม่สามารถเปิดไฟล์ได้" — ต้องมี class
+  // export-download ให้ GIS_AUTH_SCRIPT_ แนบ auth token ให้ด้วย (เดิมมันจับเฉพาะ a[target="_top"])
   var toolbarMetaHtml = '<div class="excel-toolbar-meta">' +
     '<span class="excel-toolbar-count">ทั้งหมด ' + pageResult.totalItems + ' รายการ' + (pageResult.totalItems !== totalAllCount ? ' (จาก ' + totalAllCount + ')' : '') + '</span>' +
     '<span class="excel-toolbar-sort">' + escapeHtml_(sortSummaryText) + '</span>' +
-    // 2026-10-06 แก้บั๊กจริง: กด "ดาวน์โหลด CSV" แล้วเจอหน้า Google ไดรฟ์ "ไม่สามารถเปิดไฟล์ได้" — เกิดจาก
-    // target="_top" นำทาง top-level browsing context ไปที่ URL ที่ตอบกลับเป็น ContentService (ไฟล์ ไม่ใช่หน้า
-    // HTML) ผ่าน iframe sandbox ของ HtmlService ทำให้ Google เข้าใจผิดว่าต้องพรีวิวไฟล์ผ่าน Google ไดรฟ์ แก้โดย
-    // เปลี่ยนเป็น target="_blank" (เปิดแท็บใหม่แยกออกไปดาวน์โหลดไฟล์ตรงๆ ไม่ผ่าน sandbox เดิม) — ต้องเพิ่ม class
-    // "export-download" ให้ GIS_AUTH_SCRIPT_ แนบ auth token ให้ด้วย (เดิมมันจับเฉพาะ a[target="_top"])
-    '<a class="btn-outline export-download" target="_blank" href="' + baseUrl + '?' + exportQuery + '">ดาวน์โหลด CSV</a>' +
-    '</div>';
+    '<a id="xlsx-export-btn" class="btn-primary excel-export-primary export-download" target="_blank" href="' + baseUrl + '?' + xlsxExportQuery + '">ดาวน์โหลด Excel (.xlsx)</a>' +
+    '<a class="btn-outline export-download" target="_blank" href="' + baseUrl + '?' + csvExportQuery + '">ดาวน์โหลด CSV</a>' +
+    '</div>' +
+    EXCEL_EXPORT_LOADING_SCRIPT_;
 
   // ทำดัชนี order -> station ไว้ล่วงหน้า ใช้ทั้งคอลัมน์ State ปัจจุบัน และคอลัมน์รายเดือน (ไม่ query ซ้ำต่อแถว)
   var orderToStation = {};
@@ -2152,6 +2175,7 @@ var STAFF_CSS_ = '' +
   '.excel-toolbar-meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);font-size:.8rem;}' +
   '.excel-toolbar-count{font-weight:700;color:var(--navy);}' +
   '.excel-toolbar-sort{color:var(--muted);}' +
+  '.excel-export-primary{width:auto;margin-top:0;padding:8px 18px;font-size:.85rem;}' +
   // ตัวตารางเอง — พื้นขาวสนิท กรอบเทาบาง ไม่มีมุมโค้ง/เงาแบบการ์ด ให้ความรู้สึก "เปิดไฟล์ Excel" มากที่สุด
   '.excel-sheet{background:#fff;border:1px solid #c9ced3;border-radius:2px;}' +
   '.excel-table-scroll{overflow:auto;max-height:74vh;}' +
