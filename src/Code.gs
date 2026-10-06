@@ -145,9 +145,12 @@ function doPost(e) {
     return handlePublicSearchPost_(ss, e);
   }
 
-  if (formAction === 'owner_login_search' || formAction === 'owner_login_submit') {
+  if (formAction === 'owner_login_search' || formAction === 'owner_login_submit' || formAction === 'owner_login_direct') {
     // Login สำหรับเจ้าของผลงาน (OwnerAuth.gs) — ไม่ต้อง Login เจ้าหน้าที่เช่นกัน (คนละระบบกับ Google Sign-In)
+    // owner_login_direct (2026-10-06) คือหน้าแรกใหม่ (Username+password แยกช่อง ไม่มีขั้นเลือก record)
+    // owner_login_search/owner_login_submit คือ flow 2 ขั้นเดิม (เก็บไว้ ยังไม่มีจุดเรียกจาก UI แล้ว)
     var ownerBaseUrl = getWebAppUrl_();
+    if (formAction === 'owner_login_direct') return handleOwnerLoginDirectPost_(ss, e, ownerBaseUrl);
     return formAction === 'owner_login_search'
       ? handleOwnerLoginSearchPost_(ss, e, ownerBaseUrl)
       : handleOwnerLoginSubmitPost_(ss, e, ownerBaseUrl);

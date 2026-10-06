@@ -121,15 +121,17 @@ function destroyOwnerSession_(ss, sessionId) {
 
 // ================= doGet/doPost handlers (Code.gs เรียกใช้) =================
 
-/** หน้าแรก ?page=owner-login (GET) */
+/** หน้าแรกของผู้ใช้งานทั่วไป ?page=owner-login (GET) — 2026-10-06 เปลี่ยนเป็นฟอร์ม Login ตรง (Username +
+ *  password แยกช่อง) แทนฟอร์มค้นหาชื่อแบบเดิม (renderOwnerLoginFormBody_ เก็บไว้ไม่ลบ — ยังไม่มีจุดเรียกจาก UI
+ *  แล้ว แต่คงไว้เผื่อย้อนกลับมาใช้ตามธรรมเนียมโปรเจกต์) */
 function handleOwnerLoginGet_(baseUrl, notices) {
-  return renderPublicPage_('เข้าสู่ระบบเจ้าของผลงาน', renderOwnerLoginFormBody_(baseUrl, [], notices || [], {}));
+  return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, [], notices || [], {}));
 }
 
 /** ออกจากระบบ ?page=owner-login&logout=1&osession=... (GET) */
 function handleOwnerLogoutGet_(ss, params, baseUrl) {
   destroyOwnerSession_(ss, params.osession);
-  return renderPublicPage_('ออกจากระบบแล้ว', renderOwnerLoginFormBody_(baseUrl, [], ['ออกจากระบบเรียบร้อยแล้ว'], {}));
+  return renderPublicPage_('ออกจากระบบแล้ว', renderOwnerLoginDirectFormBody_(baseUrl, [], ['ออกจากระบบเรียบร้อยแล้ว'], {}));
 }
 
 /** ?page=owner-dashboard&osession=... (GET) — ต้องตรวจ session ฝั่ง server ทุกครั้ง ห้ามเชื่อ URL เฉยๆ (ข้อ 10) */
@@ -137,8 +139,8 @@ function renderOwnerDashboardRoute_(ss, params, baseUrl) {
   var sessionId = String(params.osession || '').trim();
   var work = sessionId ? validateOwnerSession_(ss, sessionId) : null;
   if (!work) {
-    return renderPublicPage_('เข้าสู่ระบบเจ้าของผลงาน',
-      renderOwnerLoginFormBody_(baseUrl, sessionId ? ['เซสชันหมดอายุหรือไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่อีกครั้ง'] : [], [], {}));
+    return renderPublicPage_('เข้าสู่ระบบ',
+      renderOwnerLoginDirectFormBody_(baseUrl, sessionId ? ['เซสชันหมดอายุหรือไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่อีกครั้ง'] : [], [], {}));
   }
   return renderPublicPage_('ผลงานของฉัน', renderOwnerDashboardBody_(ss, work, baseUrl, sessionId));
 }
@@ -192,7 +194,158 @@ function handleOwnerLoginSubmitPost_(ss, e, baseUrl) {
   return renderPublicPage_('เข้าสู่ระบบสำเร็จ', renderOwnerLoginBounceBody_(baseUrl, session.id));
 }
 
+/**
+ * form_action=owner_login_direct (POST) — 2026-10-06 หน้าแรกใหม่: Username (ชื่อ/นามสกุล — reuse
+ * searchPublicRecordsByName_ เดิม ไม่สร้าง field ใหม่) + Password แยกช่อง รวมเป็น string เดียวฝั่ง client
+ * แล้วส่งมาเป็น owner_login_code เดียวกับ flow เดิมทุกประการ ไม่มีขั้นเลือก record แยก (ต่างจาก
+ * handleOwnerLoginSubmitPost_ เดิมที่ต้องเลือก work_id ก่อน) — แก้ปัญหาชื่อซ้ำด้วยการลองเทียบรหัสผ่านกับ
+ * "ทุกรายการที่ชื่อตรงกัน" แล้ว login เข้ารายการแรกที่รหัสตรง (ของจริงรหัสเริ่มต้น = tracking_no ซึ่งไม่ซ้ำกัน
+ * อยู่แล้วในตัว จึงแยกคนซ้ำชื่อได้โดยอัตโนมัติไม่ต้องให้ผู้ใช้เลือกเอง)
+ */
+function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
+  var p = (e && e.parameter) || {};
+  var username = normalizeSearchName_(p.owner_username || '');
+  var code = String(p.owner_login_code || '').trim();
+  var sessionToken = String(p.session_token || '').trim() || randomToken_(16);
+  var prevValues = { owner_username: username, session_token: sessionToken };
+
+  if (checkOwnerLoginLock_(sessionToken)) {
+    return renderPublicPage_('เข้าสู่ระบบ',
+      renderOwnerLoginDirectFormBody_(baseUrl, ['ลองเข้าสู่ระบบผิดเกินจำนวนที่กำหนด กรุณารอสักครู่แล้วลองใหม่อีกครั้ง'], [], prevValues));
+  }
+  if (!username) {
+    return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['กรุณากรอก Username'], [], prevValues));
+  }
+  // ข้อ 8 — กรอกรหัสไม่ครบ (รูปแบบไม่ตรง __-___) ถือเป็นคนละเคสกับ login ไม่ผ่าน แจ้งข้อความเฉพาะ แต่ยังนับ
+  // เป็นความพยายามผิด 1 ครั้งเพื่อกัน brute-force (ตรวจฝั่ง server เสมอ ไม่เชื่อ client — ข้อ 10)
+  if (!validateOwnerLoginCodeFormat_(code)) {
+    registerOwnerLoginAttempt_(ss, sessionToken, false);
+    writeOwnerLoginLog_(ss, '', username, 'failed', sessionToken);
+    return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['กรุณากรอกรหัสผ่านให้ครบ'], [], prevValues));
+  }
+
+  var candidates = searchPublicRecordsByName_(ss, username);
+  var matchedWork = null;
+  for (var i = 0; i < candidates.length; i++) {
+    if (verifyOwnerLoginCode_(candidates[i], code)) { matchedWork = candidates[i]; break; }
+  }
+  var ok = !!matchedWork;
+
+  registerOwnerLoginAttempt_(ss, sessionToken, ok);
+  writeOwnerLoginLog_(ss, matchedWork ? matchedWork.work_id : '', username, ok ? 'success' : 'failed', sessionToken);
+
+  if (!ok) {
+    // ข้อ 8 — ไม่บอกว่า username ถูกแต่ password ผิด (หรือกลับกัน) ใช้ข้อความเดียวกันเสมอ
+    return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'], [], prevValues));
+  }
+
+  var session = createOwnerSession_(ss, matchedWork);
+  return renderPublicPage_('เข้าสู่ระบบสำเร็จ', renderOwnerLoginBounceBody_(baseUrl, session.id));
+}
+
 // ================= Render =================
+
+/**
+ * หน้าแรกใหม่ของผู้ใช้งานทั่วไป (2026-10-06) — Username (ชื่อ/นามสกุล) + Password แยกช่อง 5 ช่อง (รูปแบบจริง
+ * NN-NNN ไม่ใช่ 6 ช่องเดา) auto-advance/backspace/arrow/paste ผ่าน OWNER_LOGIN_PASSWORD_SCRIPT_ ค่าที่กรอก
+ * รวมเป็น string เดียวลง input hidden #owner_login_code_hidden ก่อน submit จริง (ฝั่ง server ตรวจซ้ำเสมอ
+ * ไม่เชื่อ client — ข้อ 10) ลิงก์รอง "ค้นหาสถานะแบบเดิม"/ปุ่มสแกน QR ยังอยู่ (ข้อ 7 — ไม่ตัดช่องทางเดิมทิ้ง)
+ */
+function renderOwnerLoginDirectFormBody_(baseUrl, errors, notices, prevValues) {
+  prevValues = prevValues || {};
+  var errorHtml = (errors && errors.length)
+    ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+  var noticeHtml = (notices && notices.length)
+    ? notices.map(function (m) { return '<p class="hint">' + escapeHtml_(m) + '</p>'; }).join('')
+    : '';
+  var sessionToken = prevValues.session_token || randomToken_(16);
+
+  var boxesHtml = '';
+  for (var i = 0; i < 5; i++) {
+    if (i === 2) boxesHtml += '<span class="owner-pass-sep">-</span>';
+    boxesHtml += '<input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" class="owner-pass-box">';
+  }
+
+  return '' + errorHtml + noticeHtml +
+    '<div class="detail-card owner-login-card">' +
+    '<p class="pub-subheader-label">กรุณาเข้าสู่ระบบเพื่อติดตามผลงานของท่าน</p>' +
+    '<form id="owner-login-direct-form" method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;">' +
+    '<input type="hidden" name="form_action" value="owner_login_direct">' +
+    '<input type="hidden" name="session_token" value="' + escapeHtml_(sessionToken) + '">' +
+    '<input type="hidden" id="owner_login_code_hidden" name="owner_login_code" value="">' +
+    '<div class="field" style="text-align:left"><label>Username</label>' +
+    '<input class="input" name="owner_username" value="' + escapeHtml_(prevValues.owner_username || '') + '" placeholder="กรอกชื่อผู้ใช้งาน" required></div>' +
+    '<div class="field" style="text-align:left"><label>Password</label>' +
+    '<div class="owner-pass-boxes">' + boxesHtml + '</div>' +
+    '<button type="button" id="owner-pass-toggle" class="owner-pass-toggle-btn">แสดงรหัส</button>' +
+    '</div>' +
+    '<button class="btn-primary" type="submit">เข้าสู่ระบบ</button>' +
+    '</form>' +
+    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?mode=search">ค้นหาสถานะแบบเดิม</a></p>' +
+    '<div class="qr-scan-divider"><span>หรือ</span></div>' +
+    '<input type="file" accept="image/*" capture="environment" id="qr-photo-input" data-base-url="' + escapeHtml_(baseUrl) + '" style="display:none">' +
+    '<button type="button" id="qr-photo-btn" class="btn-action btn-action-secondary" style="display:none">' +
+    'ถ่ายรูป / เลือกรูป QR เพื่อค้นหา</button>' +
+    '<p id="qr-photo-msg" class="hint" style="display:none"></p>' +
+    '</div>' +
+    QR_PHOTO_SCAN_SCRIPT_ + OWNER_LOGIN_PASSWORD_SCRIPT_;
+}
+
+/** พฤติกรรมช่อง password แยกทีละตัว — auto-advance/backspace ย้อนกลับ/ลูกศรซ้าย-ขวา/paste กระจายอัตโนมัติ/
+ *  Enter submit/ปุ่มแสดง-ซ่อนรหัส (ข้อ 3/5/14) รวมค่าทุกช่องเป็น "NN-NNN" ลง hidden input ก่อน submit เสมอ */
+var OWNER_LOGIN_PASSWORD_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'var boxes = Array.prototype.slice.call(document.querySelectorAll(".owner-pass-box"));' +
+  'var hidden = document.getElementById("owner_login_code_hidden");' +
+  'var form = document.getElementById("owner-login-direct-form");' +
+  'var toggleBtn = document.getElementById("owner-pass-toggle");' +
+  'if (!boxes.length || !hidden || !form) return;' +
+  'function syncHidden() {' +
+  'var digits = boxes.map(function (b) { return b.value || ""; }).join("");' +
+  'hidden.value = digits.length > 2 ? (digits.slice(0, 2) + "-" + digits.slice(2)) : digits;' +
+  '}' +
+  'boxes.forEach(function (box, idx) {' +
+  'box.addEventListener("input", function () {' +
+  'box.value = box.value.replace(/[^0-9]/g, "").slice(-1);' +
+  'syncHidden();' +
+  'if (box.value && idx < boxes.length - 1) boxes[idx + 1].focus();' +
+  '});' +
+  'box.addEventListener("keydown", function (ev) {' +
+  'if (ev.key === "Backspace" && !box.value && idx > 0) { boxes[idx - 1].focus(); boxes[idx - 1].value = ""; syncHidden(); }' +
+  'else if (ev.key === "ArrowLeft" && idx > 0) { boxes[idx - 1].focus(); }' +
+  'else if (ev.key === "ArrowRight" && idx < boxes.length - 1) { boxes[idx + 1].focus(); }' +
+  'else if (ev.key === "Enter") { syncHidden(); form.submit(); }' +
+  '});' +
+  'box.addEventListener("paste", function (ev) {' +
+  'ev.preventDefault();' +
+  'var text = (ev.clipboardData || window.clipboardData).getData("text").replace(/[^0-9]/g, "");' +
+  'for (var i = 0; i < boxes.length; i++) boxes[i].value = text.charAt(i) || "";' +
+  'syncHidden();' +
+  'var nextEmptyIdx = -1;' +
+  'for (var j = 0; j < boxes.length; j++) { if (!boxes[j].value) { nextEmptyIdx = j; break; } }' +
+  'boxes[nextEmptyIdx === -1 ? boxes.length - 1 : nextEmptyIdx].focus();' +
+  '});' +
+  '});' +
+  'if (boxes[0]) boxes[0].focus();' +
+  'if (toggleBtn) {' +
+  'var shown = false;' +
+  'toggleBtn.addEventListener("click", function () {' +
+  'shown = !shown;' +
+  'boxes.forEach(function (b) { b.type = shown ? "text" : "password"; });' +
+  'toggleBtn.textContent = shown ? "ซ่อนรหัส" : "แสดงรหัส";' +
+  '});' +
+  '}' +
+  'form.addEventListener("submit", function (ev) {' +
+  'syncHidden();' +
+  'if (hidden.value.length < 6) {' +
+  'ev.preventDefault();' +
+  'alert("กรุณากรอกรหัสผ่านให้ครบ");' +
+  '}' +
+  '});' +
+  '});' +
+  '</script>';
 
 function renderOwnerLoginFormBody_(baseUrl, errors, notices, prevValues) {
   prevValues = prevValues || {};

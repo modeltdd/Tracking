@@ -465,7 +465,8 @@ function handlePublicSearchPost_(ss, e) {
 /**
  * doGet ฝั่งผู้เยี่ยมชม (ไม่ Login) — สแกน QR บนเอกสาร (?t=) เข้าดูสถานะได้ทันที ไม่ต้องกรอกเลขบัตรซ้ำ
  * (2026-09-08 ตัดขั้นกรอกเลขบัตรยืนยันตัวตนออกสำหรับเส้นทางนี้ตามคำขอ — ผู้ที่เห็น/ถ่ายภาพ QR บนเอกสาร
- * จะเปิดดูสถานะได้เลย; ไม่มี t หรือหา QR ไม่เจอ ยังคงใช้ฟอร์มกรอกเลขติดตาม+เลขบัตร 4 ตัวท้ายตามเดิม)
+ * จะเปิดดูสถานะได้เลย) ไม่มี t = หน้าแรก — 2026-10-06 เปลี่ยนหน้าแรกเป็น Login เจ้าของผลงานโดยตรง (OwnerAuth.gs)
+ * แทนฟอร์มค้นหาเดิม ฟอร์มค้นหาเดิมยังอยู่ที่ ?mode=search (ลิงก์ "ค้นหาสถานะแบบเดิม" บนหน้า login ใหม่)
  */
 function handlePublicTrackGet_(e) {
   var baseUrl = getWebAppUrl_();
@@ -479,7 +480,10 @@ function handlePublicTrackGet_(e) {
       return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(work, data, baseUrl));
     }
   }
-  return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ', renderPublicTrackFormBody_(baseUrl, [], {}));
+  if (String((e && e.parameter && e.parameter.mode) || '') === 'search') {
+    return renderPublicPage_('ตรวจสอบสถานะผลงานวิชาการ', renderPublicTrackFormBody_(baseUrl, [], {}));
+  }
+  return handleOwnerLoginGet_(baseUrl);
 }
 
 /** เดิมใช้กับฟอร์ม tracking_no+last4 — เลิกใช้แล้ว 2026-09-15 (แทนที่ด้วย handlePublicSearchPost_/form_action=search_public

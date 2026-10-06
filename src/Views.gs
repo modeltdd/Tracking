@@ -2453,4 +2453,15 @@ var PUBLIC_CSS_ = '' +
   '.revision-box{background:#fdf6e3;border:1px solid var(--revision);border-radius:14px;padding:16px 18px;margin-bottom:16px;}' +
   '.revision-title{color:var(--revision);font-weight:700;margin:0 0 6px;font-size:.82rem;}' +
   '.qr-scan-divider{display:flex;align-items:center;gap:10px;margin:14px 0;color:var(--muted);font-size:.8rem;}' +
-  '.qr-scan-divider::before,.qr-scan-divider::after{content:"";flex:1;height:1px;background:var(--border);}';
+  '.qr-scan-divider::before,.qr-scan-divider::after{content:"";flex:1;height:1px;background:var(--border);}' +
+  // หน้าแรก Login เจ้าของผลงาน (2026-10-06) — ช่อง password แยกทีละตัว (5 ช่อง รูปแบบจริง NN-NNN มีขีดคั่น
+  // กลาง ไม่ใช่ 6 ช่องเดา) ขนาดใหญ่พอแตะง่ายบนมือถือ (ข้อ 12)
+  '.owner-login-card{text-align:center;}' +
+  '.owner-pass-boxes{display:flex;justify-content:center;align-items:center;gap:7px;margin:8px 0 10px;flex-wrap:nowrap;}' +
+  '.owner-pass-box{width:42px;height:52px;text-align:center;font-size:1.3rem;font-weight:700;border:1.5px solid var(--border);' +
+  'border-radius:10px;color:var(--navy);box-sizing:border-box;padding:0;}' +
+  '.owner-pass-box:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 2px rgba(14,124,134,.18);}' +
+  '.owner-pass-sep{font-size:1.3rem;font-weight:700;color:var(--muted);}' +
+  '.owner-pass-toggle-btn{background:none;border:none;color:var(--teal);font-size:.78rem;font-weight:600;' +
+  'cursor:pointer;padding:4px 0;text-decoration:underline;}' +
+  '@media (max-width:360px){.owner-pass-box{width:36px;height:46px;font-size:1.1rem;}}';
