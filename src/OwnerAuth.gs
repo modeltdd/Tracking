@@ -54,9 +54,10 @@ function registerOwnerLoginAttempt_(ss, sessionToken, success) {
   }
 }
 
-/** log การ login ทุกครั้ง (สำเร็จ/ล้มเหลว) — ไม่เก็บรหัสผ่านใดๆ (ข้อ 19) */
+/** log การ login ทุกครั้ง (สำเร็จ/ล้มเหลว) — ไม่เก็บรหัสผ่านใดๆ (ข้อ 19) ensureSheet_ กันพังถ้ายังไม่ได้รัน
+ *  migrateOwnerLoginFeature() มาก่อน (เหมือน createOwnerSession_ ที่ self-heal สร้างชีตเองอยู่แล้ว) */
 function writeOwnerLoginLog_(ss, workIdAttempt, ownerNameAttempt, result, sessionToken) {
-  var sheet = ss.getSheetByName(SHEET.OWNER_LOGIN_LOG);
+  var sheet = ensureSheet_(ss, SHEET.OWNER_LOGIN_LOG, SHEET_HEADERS[SHEET.OWNER_LOGIN_LOG]);
   appendRowByHeader_(sheet, SHEET_HEADERS[SHEET.OWNER_LOGIN_LOG], {
     log_id: Utilities.getUuid(),
     timestamp: now_(),
