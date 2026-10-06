@@ -326,15 +326,25 @@ function migrateAddWorksColumns_() {
   var ss = getSpreadsheet_();
   var sheet = ss.getSheetByName(SHEET.WORKS);
   var lastCol = sheet.getLastColumn();
-  var liveHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var liveHeadersRaw = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  // 2026-10-06 แก้บั๊กจริงที่เจอ: ห้ามใช้ sheet.getLastColumn() เป็นตำแหน่งเพิ่ม header ตรงๆ เพราะมันนับรวม
+  // คอลัมน์ที่ "แถวข้อมูล" ยาวไปถึง ไม่ใช่แค่แถว header จริง — ถ้ามีใครเขียนแถวข้อมูลด้วยคอลัมน์ใหม่ (ตาม
+  // SHEET_HEADERS ในโค้ด) ก่อนรัน migrate นี้ (เช่น เผลอรัน createOwnerLoginSmokeTestRecord() ก่อน
+  // migrateOwnerLoginFeature()) lastCol จะยาวเกิน header จริง ทำให้ header ใหม่ถูกเพิ่มผิดตำแหน่ง (เหลื่อม
+  // ขวาไป 1+ คอลัมน์ เกิดช่องว่างไม่มีชื่อแทรกกลาง ข้อมูลที่เขียนไว้ก่อนหน้ากลาย "อ่านไม่เจอ") — ตัด cell ว่าง
+  // ท้ายแถว header ออกก่อนเสมอ ใช้ความยาว header จริงเป็นตำแหน่งเพิ่มแทน (ถ้าเจอปัญหานี้ไปแล้วให้รัน
+  // repairWorksGhostColumns() ซ่อมก่อน แล้วค่อยรันฟังก์ชันนี้ใหม่)
+  var realHeaderLen = liveHeadersRaw.length;
+  while (realHeaderLen > 0 && !liveHeadersRaw[realHeaderLen - 1]) realHeaderLen--;
+  var liveHeaders = liveHeadersRaw.slice(0, realHeaderLen);
   var newCols = SHEET_HEADERS[SHEET.WORKS].filter(function (h) { return liveHeaders.indexOf(h) === -1; });
   if (!newCols.length) {
     Logger.log('ชีต Works มีคอลัมน์ครบตาม SHEET_HEADERS ปัจจุบันแล้ว — ข้าม');
     return;
   }
-  sheet.getRange(1, lastCol + 1, 1, newCols.length).setValues([newCols]);
-  sheet.getRange(1, lastCol + 1, 1, newCols.length).setFontWeight('bold');
-  Logger.log('เพิ่มคอลัมน์ใหม่ในชีต Works: ' + newCols.join(', '));
+  sheet.getRange(1, realHeaderLen + 1, 1, newCols.length).setValues([newCols]);
+  sheet.getRange(1, realHeaderLen + 1, 1, newCols.length).setFontWeight('bold');
+  Logger.log('เพิ่มคอลัมน์ใหม่ในชีต Works: ' + newCols.join(', ') + ' (ที่ตำแหน่งคอลัมน์ ' + (realHeaderLen + 1) + ')');
 }
 
 /** สร้าง+seed ชีต Master Data ใหม่ — ข้ามการ seed ถ้าชีตมีข้อมูลอยู่แล้ว (MasterMedicalDomains/Specialties
@@ -790,4 +800,174 @@ function migrateOwnerLoginFeature() {
   ensureSheet_(ss, SHEET.OWNER_SESSIONS, SHEET_HEADERS[SHEET.OWNER_SESSIONS]);
   ensureSheet_(ss, SHEET.OWNER_LOGIN_LOG, SHEET_HEADERS[SHEET.OWNER_LOGIN_LOG]);
   Logger.log('=== migrateOwnerLoginFeature เสร็จ — เพิ่มคอลัมน์ owner_login_code_hash ใน Works + สร้างชีต OwnerSessions/OwnerLoginLog เรียบร้อย ===');
+}
+
+var OWNER_LOGIN_SMOKE_TEST_MARKER_ = 'OWNER_LOGIN_SMOKE_TEST_RECORD_DO_NOT_KEEP';
+
+/**
+ * สร้างงานทดสอบ 1 รายการไว้ทดสอบ Login เจ้าของผลงานจริงบนเว็บแบบ end-to-end (2026-10-06, ผู้ใช้ขอหลัง
+ * migrateOwnerLoginFeature()) — รันจาก Editor ครั้งเดียว แล้วลองล็อกอินที่หน้าเว็บจริงด้วย:
+ *   Username: ทดสอบล็อกอิน999
+ *   Password: 99-999
+ * ใช้ nextTrackingNo_/generateUniqueQrToken_/getFirstActiveStation_ ชุดเดียวกับ registerNewWork_ จริงทุก
+ * ประการ (ไม่ข้าม sequence จริง กันเลขทะเบียนชนกัน) ทำเสร็จแล้วรัน deleteOwnerLoginSmokeTestRecord() ทิ้งทันที
+ */
+function createOwnerLoginSmokeTestRecord() {
+  var ss = getSpreadsheet_();
+  var station = getFirstActiveStation_(ss);
+  var trackingNo = nextTrackingNo_(ss);
+  var qrToken = generateUniqueQrToken_(ss);
+  var workId = Utilities.getUuid();
+  var nowTs = now_();
+
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  appendRowByHeader_(worksSheet, SHEET_HEADERS[SHEET.WORKS], {
+    work_id: workId, tracking_no: trackingNo, qr_token: qrToken,
+    citizen_id_last4: '', citizen_id_encrypted: '', citizen_id_hash: '',
+    title_name: 'นาย', first_name: 'ทดสอบล็อกอิน999', last_name: 'ห้ามลบขณะทดสอบ',
+    position: 'ทดสอบ', current_level: '', requested_level: '', work_type: 'ทดสอบ',
+    work_title: OWNER_LOGIN_SMOKE_TEST_MARKER_, org_from: 'หน่วยงานทดสอบ (ลบได้ทันที)',
+    phone: '', email: '', cover_image_url: '', received_date: nowTs,
+    current_station_key: station.station_key, current_status_public: station.public_status,
+    handoff_pending: false, current_owner_org: station.org,
+    current_handler_name: 'ระบบทดสอบ', updated_at: nowTs, next_step_text: '',
+    created_by: 'system-smoke-test', created_at: nowTs,
+    position_no: 'TEST-0', medical_domain: '', medical_specialty: '', province: 'สุราษฎร์ธานี',
+    specialty: '', committee_code: '',
+    owner_login_code_hash: hashOwnerLoginCode_('99-999'),
+  });
+
+  var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
+  appendRowByHeader_(historySheet, SHEET_HEADERS[SHEET.STATUS_HISTORY], {
+    history_id: Utilities.getUuid(), work_id: workId, tracking_no: trackingNo, action: 'registered',
+    from_station: '', to_station: station.station_key, from_org: '', to_org: station.org,
+    action_by: 'system-smoke-test', action_by_org: 'ทดสอบ', action_date: nowTs,
+    note: '', revision_reasons: '', revision_due_date: '', attachment_url: '', created_at: nowTs,
+  });
+
+  Logger.log('=== สร้างงานทดสอบสำเร็จ: tracking_no=' + trackingNo + ' work_id=' + workId + ' ===');
+  Logger.log('ทดสอบที่หน้าเว็บจริง (หน้าแรก) ด้วย Username: ทดสอบล็อกอิน999  /  Password: 99-999');
+  Logger.log('ทดสอบเสร็จแล้ว รัน deleteOwnerLoginSmokeTestRecord() ทันทีเพื่อลบทิ้ง');
+}
+
+/** ลบงานทดสอบที่สร้างจาก createOwnerLoginSmokeTestRecord() — จับคู่ด้วย work_title marker เฉพาะ (ชื่อนี้
+ *  แทบเป็นไปไม่ได้ที่จะชนกับงานจริง) ลบทั้ง Works + StatusHistory + session ที่อาจสร้างไว้ตอนทดสอบ login */
+function deleteOwnerLoginSmokeTestRecord() {
+  var ss = getSpreadsheet_();
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
+
+  var works = readSheetAsObjects_(worksSheet);
+  var toDelete = {};
+  works.forEach(function (w) { if (w.work_title === OWNER_LOGIN_SMOKE_TEST_MARKER_) toDelete[w.work_id] = w.tracking_no; });
+
+  if (!Object.keys(toDelete).length) {
+    Logger.log('ไม่พบงานทดสอบ (marker: ' + OWNER_LOGIN_SMOKE_TEST_MARKER_ + ') — ไม่มีอะไรต้องลบ');
+    return;
+  }
+
+  var worksHeaders = worksSheet.getRange(1, 1, 1, worksSheet.getLastColumn()).getValues()[0];
+  var workIdColW = worksHeaders.indexOf('work_id') + 1;
+  for (var r = worksSheet.getLastRow(); r >= 2; r--) {
+    var wid = worksSheet.getRange(r, workIdColW).getValue();
+    if (toDelete[wid]) { Logger.log('ลบ Works แถว ' + r + ' (tracking_no=' + toDelete[wid] + ')'); worksSheet.deleteRow(r); }
+  }
+
+  var historyHeaders = historySheet.getRange(1, 1, 1, historySheet.getLastColumn()).getValues()[0];
+  var workIdColH = historyHeaders.indexOf('work_id') + 1;
+  for (var r2 = historySheet.getLastRow(); r2 >= 2; r2--) {
+    if (toDelete[historySheet.getRange(r2, workIdColH).getValue()]) historySheet.deleteRow(r2);
+  }
+
+  var sessionsSheet = ss.getSheetByName(SHEET.OWNER_SESSIONS);
+  if (sessionsSheet) {
+    var sessionRows = readSheetAsObjects_(sessionsSheet);
+    var sessHeaders = sessionsSheet.getRange(1, 1, 1, sessionsSheet.getLastColumn()).getValues()[0];
+    var workIdColS = sessHeaders.indexOf('work_id') + 1;
+    for (var r3 = sessionsSheet.getLastRow(); r3 >= 2; r3--) {
+      if (toDelete[sessionsSheet.getRange(r3, workIdColS).getValue()]) sessionsSheet.deleteRow(r3);
+    }
+  }
+
+  Logger.log('=== ลบงานทดสอบ Login เจ้าของผลงาน + session ที่เกี่ยวข้องเรียบร้อย ===');
+}
+
+/**
+ * ซ่อมชีต Works กรณี header เพี้ยน (ช่องว่างไม่มีชื่อแทรกกลาง เลื่อน header คอลัมน์ถัดไปผิดตำแหน่ง) — เกิดจาก
+ * migrateAddWorksColumns_() รุ่นก่อน 2026-10-06 ใช้ sheet.getLastColumn() ตรงๆ (นับรวมแถวข้อมูลที่อาจยาวเกิน
+ * header จริงถ้ามีการเขียนคอลัมน์ใหม่ก่อน migrate) **ต้องลบแถวข้อมูลที่ทำให้คอลัมน์ยาวเกิน header ออกก่อนเสมอ**
+ * (เช่น รัน deleteOwnerLoginSmokeTestRecord() ก่อน) แล้วค่อยรันตัวนี้ ปลอดภัย: ลบเฉพาะคอลัมน์ที่ header ว่าง
+ * "และ" ข้อมูลทุกแถวว่างสนิทเท่านั้น ถ้าคอลัมน์ไหน header ว่างแต่มีข้อมูลจริงอยู่ จะไม่ลบ แค่ log เตือน
+ */
+function repairWorksGhostColumns() {
+  var ss = getSpreadsheet_();
+  var sheet = ss.getSheetByName(SHEET.WORKS);
+  var lastCol = sheet.getLastColumn();
+  var lastRow = sheet.getLastRow();
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+
+  var ghostCols = [];
+  for (var c = 0; c < headers.length; c++) {
+    if (!headers[c]) ghostCols.push(c + 1); // ตำแหน่งคอลัมน์แบบ 1-based
+  }
+  if (!ghostCols.length) {
+    Logger.log('ไม่พบคอลัมน์ header ว่างเลย — ชีต Works ปกติดี ไม่ต้องซ่อมอะไร');
+    return;
+  }
+  Logger.log('พบคอลัมน์ header ว่าง ' + ghostCols.length + ' คอลัมน์ ที่ตำแหน่ง: ' + ghostCols.join(', '));
+
+  ghostCols.sort(function (a, b) { return b - a; }).forEach(function (col) { // ลบขวาไปซ้าย กันเลขคอลัมน์เลื่อน
+    var isEmpty = true;
+    if (lastRow >= 2) {
+      var colValues = sheet.getRange(2, col, lastRow - 1, 1).getValues();
+      isEmpty = colValues.every(function (row) { return row[0] === '' || row[0] === null; });
+    }
+    if (isEmpty) {
+      sheet.deleteColumn(col);
+      Logger.log('ลบคอลัมน์ว่างที่ตำแหน่ง ' + col + ' เรียบร้อย (ไม่มีข้อมูลจริงอยู่ในคอลัมน์นี้เลยทุกแถว)');
+    } else {
+      Logger.log('=== คำเตือน: คอลัมน์ ' + col + ' header ว่างแต่มีข้อมูลอยู่จริง — ไม่ลบอัตโนมัติ ตรวจสอบเองก่อน (อาจมีข้อมูลสำคัญ) ===');
+    }
+  });
+
+  var newHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  Logger.log('=== header หลังซ่อม: ' + newHeaders.join(' | ') + ' ===');
+}
+
+/**
+ * วินิจฉัยว่าทำไม login เจ้าของผลงานล้มเหลว (2026-10-06 ผู้ใช้เจอข้อความ "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
+ * ตอนทดสอบจริง) ตรวจทุกจุดที่เป็นไปได้: คอลัมน์ owner_login_code_hash มีจริงในแถว header หรือยัง (ถ้า migrate
+ * ไม่ทัน/ไม่ครบ ค่าที่เขียนไว้จะ "หาย" ตอนอ่านกลับ เพราะ readSheetAsObjects_ อ่าน header จากแถวจริงของชีต
+ * ไม่ใช่จากค่าคงที่ในโค้ด) + งานทดสอบมีอยู่จริงหรือไม่ + searchPublicRecordsByName_ หาเจอไหม + เทียบรหัสผ่าน
+ * 99-999 ผ่านจริงไหม รันจาก Editor แล้วดู Log ทั้งหมด
+ */
+function diagnoseOwnerLoginSmokeTest() {
+  var ss = getSpreadsheet_();
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var liveHeaders = worksSheet.getRange(1, 1, 1, worksSheet.getLastColumn()).getValues()[0];
+  var hasCodeColumn = liveHeaders.indexOf('owner_login_code_hash') !== -1;
+  Logger.log('1) คอลัมน์ owner_login_code_hash อยู่ในแถว header จริงของชีต Works หรือไม่: ' + hasCodeColumn +
+    (hasCodeColumn ? '' : '  <-- ยังไม่มี! ต้องรัน migrateAddWorksColumns_() หรือ migrateOwnerLoginFeature() ก่อน แล้วค่อยสร้างงานทดสอบใหม่'));
+
+  Logger.log('2) ชีต OwnerSessions มีอยู่จริงหรือไม่: ' + !!ss.getSheetByName(SHEET.OWNER_SESSIONS));
+  Logger.log('3) ชีต OwnerLoginLog มีอยู่จริงหรือไม่: ' + !!ss.getSheetByName(SHEET.OWNER_LOGIN_LOG));
+
+  var works = readSheetAsObjects_(worksSheet);
+  var testWork = works.filter(function (w) { return w.work_title === OWNER_LOGIN_SMOKE_TEST_MARKER_; })[0];
+  if (!testWork) {
+    Logger.log('4) ไม่พบงานทดสอบเลย (marker: ' + OWNER_LOGIN_SMOKE_TEST_MARKER_ + ') — ยังไม่ได้รัน createOwnerLoginSmokeTestRecord() หรือรันไม่สำเร็จ');
+    return;
+  }
+  Logger.log('4) พบงานทดสอบ: work_id=' + testWork.work_id + ' tracking_no=' + testWork.tracking_no +
+    ' first_name="' + testWork.first_name + '" last_name="' + testWork.last_name + '"');
+  Logger.log('5) ค่า owner_login_code_hash ที่อ่านกลับได้จริง: "' + (testWork.owner_login_code_hash || '(ว่าง/อ่านไม่เจอ)') + '"');
+
+  var candidates = searchPublicRecordsByName_(ss, 'ทดสอบล็อกอิน999');
+  Logger.log('6) searchPublicRecordsByName_("ทดสอบล็อกอิน999") เจอ ' + candidates.length + ' รายการ: ' +
+    candidates.map(function (w) { return w.tracking_no; }).join(', '));
+
+  var verify99999 = verifyOwnerLoginCode_(testWork, '99-999');
+  Logger.log('7) verifyOwnerLoginCode_(งานทดสอบ, "99-999") ผ่านหรือไม่: ' + verify99999 +
+    (verify99999 ? '' : '  <-- ถ้า false ทั้งที่ข้อ 5 มีค่า hash ปกติ แปลว่า hash ไม่ตรง (สร้างซ้ำหลาย record?) ถ้าข้อ 5 ว่าง แปลว่าโดนปัญหาข้อ 1'));
+  Logger.log('=== จบการวินิจฉัย — ดูผลข้อ 1-7 ด้านบนเพื่อหาสาเหตุ ===');
 }
