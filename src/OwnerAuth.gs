@@ -430,15 +430,8 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
     ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
     : '';
 
-  var infoGridHtml = renderPubInfoGrid_([
-    { label: 'ผู้รับผิดชอบ', value: work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-') },
-    { label: 'รับงานเมื่อ', value: formatDateThShort_(work.updated_at) },
-    { label: 'รับเรื่องเมื่อ', value: formatDateThShort_(work.received_date) },
-    { label: 'ส่งให้ผู้ว่า', value: data.governorForwardDate ? formatDateThShort_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า' },
-  ]);
-
-  // 2026-10-07 ตามที่ผู้ใช้ขอ — ตัดการ์ด "ความคืบหน้าของผลงาน" ออกเฉพาะหน้า Owner Dashboard (หน้าสาธารณะ/
-  // หน้ารายละเอียดเจ้าหน้าที่ยังมีเหมือนเดิม ไม่แตะ)
+  // 2026-10-07 ตามที่ผู้ใช้ขอ — ตัดการ์ด "ความคืบหน้าของผลงาน" + "ข้อมูลสำคัญ" ออกเฉพาะหน้า Owner Dashboard
+  // (หน้าสาธารณะ/หน้ารายละเอียดเจ้าหน้าที่ยังมีเหมือนเดิม ไม่แตะ)
   var timelineHtml = renderPubTimelineSection_(data.fixedTimeline);
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
@@ -459,7 +452,7 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
 
   return '' +
     '<div class="pub-compact">' +
-    nameBlockHtml + heroHtml + actionHtml + infoGridHtml + timelineHtml + noteHtml +
+    nameBlockHtml + heroHtml + actionHtml + timelineHtml + noteHtml +
     '<p class="pub-back-link"><a target="_top" href="' + logoutUrl + '">ออกจากระบบ &rarr;</a></p>' +
     '</div>';
 }
