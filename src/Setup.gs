@@ -803,6 +803,7 @@ function migrateOwnerLoginFeature() {
 }
 
 var OWNER_LOGIN_SMOKE_TEST_MARKER_ = 'OWNER_LOGIN_SMOKE_TEST_RECORD_DO_NOT_KEEP';
+var OWNER_LOGIN_SMOKE_TEST_MARKER_2_ = 'OWNER_LOGIN_SMOKE_TEST_RECORD_2_DO_NOT_KEEP';
 
 /**
  * สร้างงานทดสอบ 1 รายการไว้ทดสอบ Login เจ้าของผลงานจริงบนเว็บแบบ end-to-end (2026-10-06, ผู้ใช้ขอหลัง
@@ -850,8 +851,54 @@ function createOwnerLoginSmokeTestRecord() {
   Logger.log('ทดสอบเสร็จแล้ว รัน deleteOwnerLoginSmokeTestRecord() ทันทีเพื่อลบทิ้ง');
 }
 
-/** ลบงานทดสอบที่สร้างจาก createOwnerLoginSmokeTestRecord() — จับคู่ด้วย work_title marker เฉพาะ (ชื่อนี้
- *  แทบเป็นไปไม่ได้ที่จะชนกับงานจริง) ลบทั้ง Works + StatusHistory + session ที่อาจสร้างไว้ตอนทดสอบ login */
+/**
+ * งานทดสอบ "อีกคน" ไว้ทดสอบว่า owner A เปิดข้อมูลของ owner B ไม่ได้ (ข้อ 9 ของสเปก, 2026-10-07 ผู้ใช้ขอ) —
+ * ข้อมูลทดสอบล้วนๆ เหมือน createOwnerLoginSmokeTestRecord() ทุกประการ แค่คนละชื่อ/รหัส ไม่ใช่ข้อมูลจริงของใคร
+ *   Username: ทดสอบล็อกอินสอง888
+ *   Password: 88-888
+ */
+function createOwnerLoginSmokeTestRecord2() {
+  var ss = getSpreadsheet_();
+  var station = getFirstActiveStation_(ss);
+  var trackingNo = nextTrackingNo_(ss);
+  var qrToken = generateUniqueQrToken_(ss);
+  var workId = Utilities.getUuid();
+  var nowTs = now_();
+
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  appendRowByHeader_(worksSheet, SHEET_HEADERS[SHEET.WORKS], {
+    work_id: workId, tracking_no: trackingNo, qr_token: qrToken,
+    citizen_id_last4: '', citizen_id_encrypted: '', citizen_id_hash: '',
+    title_name: 'นาง', first_name: 'ทดสอบล็อกอินสอง888', last_name: 'ห้ามลบขณะทดสอบ2',
+    position: 'ทดสอบ', current_level: '', requested_level: '', work_type: 'ทดสอบ',
+    work_title: OWNER_LOGIN_SMOKE_TEST_MARKER_2_, org_from: 'หน่วยงานทดสอบ (ลบได้ทันที)',
+    phone: '', email: '', cover_image_url: '', received_date: nowTs,
+    current_station_key: station.station_key, current_status_public: station.public_status,
+    handoff_pending: false, current_owner_org: station.org,
+    current_handler_name: 'ระบบทดสอบ', updated_at: nowTs, next_step_text: '',
+    created_by: 'system-smoke-test', created_at: nowTs,
+    position_no: 'TEST-1', medical_domain: '', medical_specialty: '', province: 'สุราษฎร์ธานี',
+    specialty: '', committee_code: '',
+    owner_login_code_hash: hashOwnerLoginCode_('88-888'),
+  });
+
+  var historySheet2 = ss.getSheetByName(SHEET.STATUS_HISTORY);
+  appendRowByHeader_(historySheet2, SHEET_HEADERS[SHEET.STATUS_HISTORY], {
+    history_id: Utilities.getUuid(), work_id: workId, tracking_no: trackingNo, action: 'registered',
+    from_station: '', to_station: station.station_key, from_org: '', to_org: station.org,
+    action_by: 'system-smoke-test', action_by_org: 'ทดสอบ', action_date: nowTs,
+    note: '', revision_reasons: '', revision_due_date: '', attachment_url: '', created_at: nowTs,
+  });
+
+  Logger.log('=== สร้างงานทดสอบ "คนที่ 2" สำเร็จ: tracking_no=' + trackingNo + ' work_id=' + workId + ' ===');
+  Logger.log('ทดสอบที่หน้าเว็บจริง ด้วย Username: ทดสอบล็อกอินสอง888  /  Password: 88-888');
+  Logger.log('ใช้ทดสอบว่า session ของคนนี้เปิดดูข้อมูลของ "ทดสอบล็อกอิน999" (คนแรก) ไม่ได้ และกลับกัน');
+  Logger.log('ทดสอบเสร็จแล้ว รัน deleteOwnerLoginSmokeTestRecord() ครั้งเดียวลบทั้ง 2 คนพร้อมกัน');
+}
+
+/** ลบงานทดสอบที่สร้างจาก createOwnerLoginSmokeTestRecord()/createOwnerLoginSmokeTestRecord2() ทั้งหมดในครั้ง
+ *  เดียว — จับคู่ด้วย work_title marker เฉพาะ (ชื่อนี้แทบเป็นไปไม่ได้ที่จะชนกับงานจริง) ลบทั้ง Works +
+ *  StatusHistory + session ที่อาจสร้างไว้ตอนทดสอบ login */
 function deleteOwnerLoginSmokeTestRecord() {
   var ss = getSpreadsheet_();
   var worksSheet = ss.getSheetByName(SHEET.WORKS);
@@ -859,10 +906,12 @@ function deleteOwnerLoginSmokeTestRecord() {
 
   var works = readSheetAsObjects_(worksSheet);
   var toDelete = {};
-  works.forEach(function (w) { if (w.work_title === OWNER_LOGIN_SMOKE_TEST_MARKER_) toDelete[w.work_id] = w.tracking_no; });
+  works.forEach(function (w) {
+    if (w.work_title === OWNER_LOGIN_SMOKE_TEST_MARKER_ || w.work_title === OWNER_LOGIN_SMOKE_TEST_MARKER_2_) toDelete[w.work_id] = w.tracking_no;
+  });
 
   if (!Object.keys(toDelete).length) {
-    Logger.log('ไม่พบงานทดสอบ (marker: ' + OWNER_LOGIN_SMOKE_TEST_MARKER_ + ') — ไม่มีอะไรต้องลบ');
+    Logger.log('ไม่พบงานทดสอบ (marker: ' + OWNER_LOGIN_SMOKE_TEST_MARKER_ + ' หรือ ' + OWNER_LOGIN_SMOKE_TEST_MARKER_2_ + ') — ไม่มีอะไรต้องลบ');
     return;
   }
 
