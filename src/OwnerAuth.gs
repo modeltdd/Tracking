@@ -437,7 +437,8 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
     { label: 'ส่งให้ผู้ว่า', value: data.governorForwardDate ? formatDateThShort_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า' },
   ]);
 
-  var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
+  // 2026-10-07 ตามที่ผู้ใช้ขอ — ตัดการ์ด "ความคืบหน้าของผลงาน" ออกเฉพาะหน้า Owner Dashboard (หน้าสาธารณะ/
+  // หน้ารายละเอียดเจ้าหน้าที่ยังมีเหมือนเดิม ไม่แตะ)
   var timelineHtml = renderPubTimelineSection_(data.fixedTimeline);
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
@@ -458,7 +459,7 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
 
   return '' +
     '<div class="pub-compact">' +
-    nameBlockHtml + heroHtml + actionHtml + infoGridHtml + progressHtml + timelineHtml + noteHtml +
+    nameBlockHtml + heroHtml + actionHtml + infoGridHtml + timelineHtml + noteHtml +
     '<p class="pub-back-link"><a target="_top" href="' + logoutUrl + '">ออกจากระบบ &rarr;</a></p>' +
     '</div>';
 }
