@@ -67,9 +67,21 @@ function readSheetAsObjects_(sheet) {
   });
 }
 
-/** ต่อท้ายแถวใหม่ตามลำดับ header ของชีต (กันพลาดลำดับคอลัมน์เวลาคนแก้ schema ทีหลัง) */
+/**
+ * ต่อท้ายแถวใหม่ตามลำดับ header "แถวจริงบนชีต" เสมอ (2026-10-06 แก้บั๊กจริงที่เจอ) — เดิมใช้ลำดับจาก
+ * SHEET_HEADERS ในโค้ด (`headers` param) ตรงๆ โดยไม่เช็คว่าชีตจริงเรียงคอลัมน์ตรงกันหรือไม่ พบว่าชีต Works จริง
+ * เรียงคอลัมน์ไม่ตรงกับโค้ดมานานแล้ว (evaluation_result อยู่คอลัมน์ 35 จริง แต่โค้ดคาดว่าอยู่ 29 — ดู
+ * diagnoseWorksColumnAlignment() ใน Setup.gs) ทำให้ค่าที่เขียนไปตกคอลัมน์ผิดช่องมาตลอดตั้งแต่เกิดการเหลื่อม
+ * readSheetAsObjects_ อ่านด้วยชื่อ header อยู่แล้วไม่กระทบ แต่ appendRow เดิมเขียนตามตำแหน่งล้วนๆ จึงพัง —
+ * แก้ให้ map ตามชื่อ header ของแถวจริงบนชีตแทน (สมมาตรกับฝั่งอ่าน) ปลอดภัยไม่ว่าชีตจริงจะเรียงคอลัมน์ต่างจาก
+ * โค้ดแค่ไหนก็ตาม — `headers` param ยังใช้เป็น fallback เฉพาะกรณีชีตว่างเปล่าไม่มี header แถวแรกเลย (เช่น
+ * ensureSheet_ สร้างชีตใหม่ปกติจะเขียน header ก่อนอยู่แล้ว กรณีนี้แทบไม่เกิด)
+ */
 function appendRowByHeader_(sheet, headers, rowObj) {
-  var row = headers.map(function (h) { return (h in rowObj) ? rowObj[h] : ''; });
+  var lastCol = sheet.getLastColumn();
+  var liveHeaders = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var cols = liveHeaders.some(function (h) { return h; }) ? liveHeaders : headers;
+  var row = cols.map(function (h) { return (h && h in rowObj) ? rowObj[h] : ''; });
   sheet.appendRow(row);
 }
 

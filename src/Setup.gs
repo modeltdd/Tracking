@@ -935,6 +935,38 @@ function repairWorksGhostColumns() {
 }
 
 /**
+ * เทียบ header จริงบนชีต Works ทีละคอลัมน์กับที่โค้ดคาดไว้ (SHEET_HEADERS[SHEET.WORKS]) — ใช้หา "เหลื่อม
+ * ตำแหน่ง" ตรงๆ (2026-10-06, หลัง repairWorksGhostColumns() แล้วยัง owner_login_code_hash อ่านค่าไม่เจออยู่ดี
+ * ต้องดูตำแหน่งจริงเทียบกันทีละคอลัมน์ถึงจะฟันธงได้) รันจาก Editor แล้วส่งเฉพาะบรรทัดที่มี "ไม่ตรงกัน" +
+ * บรรทัดสรุปตำแหน่ง owner_login_code_hash กลับมา
+ */
+function diagnoseWorksColumnAlignment() {
+  var ss = getSpreadsheet_();
+  var sheet = ss.getSheetByName(SHEET.WORKS);
+  var lastCol = sheet.getLastColumn();
+  var liveHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var codeHeaders = SHEET_HEADERS[SHEET.WORKS];
+
+  Logger.log('ความยาว header จริงบนชีต: ' + liveHeaders.length + ' | ความยาวตาม SHEET_HEADERS ในโค้ด: ' + codeHeaders.length);
+
+  var liveIdx = liveHeaders.indexOf('owner_login_code_hash');
+  var codeIdx = codeHeaders.indexOf('owner_login_code_hash');
+  Logger.log('owner_login_code_hash: อยู่คอลัมน์ที่ (1-based) จริงบนชีต = ' + (liveIdx + 1) + ' | โค้ดคาดว่าควรอยู่คอลัมน์ที่ = ' + (codeIdx + 1));
+
+  var maxLen = Math.max(liveHeaders.length, codeHeaders.length);
+  var mismatchCount = 0;
+  for (var i = 0; i < maxLen; i++) {
+    var liveH = liveHeaders[i] || '(ไม่มี)';
+    var codeH = codeHeaders[i] || '(ไม่มี)';
+    if (liveH !== codeH) {
+      mismatchCount++;
+      Logger.log('คอลัมน์ ' + (i + 1) + ': ชีตจริง="' + liveH + '" | โค้ดคาดไว้="' + codeH + '"  <<< ไม่ตรงกัน');
+    }
+  }
+  Logger.log('=== พบจุดไม่ตรงกันทั้งหมด ' + mismatchCount + ' คอลัมน์ (0 = เรียงตรงกันสมบูรณ์) ===');
+}
+
+/**
  * วินิจฉัยว่าทำไม login เจ้าของผลงานล้มเหลว (2026-10-06 ผู้ใช้เจอข้อความ "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
  * ตอนทดสอบจริง) ตรวจทุกจุดที่เป็นไปได้: คอลัมน์ owner_login_code_hash มีจริงในแถว header หรือยัง (ถ้า migrate
  * ไม่ทัน/ไม่ครบ ค่าที่เขียนไว้จะ "หาย" ตอนอ่านกลับ เพราะ readSheetAsObjects_ อ่าน header จากแถวจริงของชีต
