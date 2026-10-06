@@ -2464,4 +2464,10 @@ var PUBLIC_CSS_ = '' +
   '.owner-pass-sep{font-size:1.3rem;font-weight:700;color:var(--muted);}' +
   '.owner-pass-toggle-btn{background:none;border:none;color:var(--teal);font-size:.78rem;font-weight:600;' +
   'cursor:pointer;padding:4px 0;text-decoration:underline;}' +
-  '@media (max-width:360px){.owner-pass-box{width:36px;height:46px;font-size:1.1rem;}}';
+  '@media (max-width:360px){.owner-pass-box{width:36px;height:46px;font-size:1.1rem;}}' +
+  // Timeline "เส้นทางจริง" (Branching Workflow) เฉพาะหน้า Owner Dashboard, 2026-10-07 — ข้อความอธิบายผล
+  // การพิจารณา/branch indicator ใต้รายการ Timeline แต่ละขั้น ใช้โทนสีเดิม (muted/navy) ไม่เพิ่มสีใหม่
+  '.owner-tl-note{display:block;font-size:.78rem;color:var(--muted);margin-top:3px;line-height:1.5;}' +
+  '.owner-tl-branch{margin-top:4px;}' +
+  '.owner-tl-branch-row{font-size:.78rem;color:var(--muted);line-height:1.6;}' +
+  '.owner-tl-branch-row b{color:var(--navy);}';

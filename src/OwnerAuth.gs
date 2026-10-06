@@ -410,9 +410,141 @@ function renderOwnerLoginBounceBody_(baseUrl, sessionId) {
     '<script>(function () { var u = ' + JSON.stringify(url) + '; try { top.location.href = u; } catch (err) { location.href = u; } })();</script>';
 }
 
+/**
+ * Timeline "เส้นทางจริง" เฉพาะหน้า Owner Dashboard (2026-10-07 ตามที่ผู้ใช้ขอ) — ต่างจาก
+ * buildFixedMainTimeline_ (PublicTrack.gs, หน้าสาธารณะ/เจ้าหน้าที่ ยังคงแสดง backbone คงที่ 1-10 เหมือนเดิม
+ * ไม่แตะ) ตัวนี้แสดงเฉพาะขั้นตอนที่อยู่บน "เส้นทางจริง" ของงานนั้น (ผ่านมาแล้ว + ปัจจุบัน + ขั้นถัดไปที่แน่นอน
+ * ไม่ต้องเดา — ยืมเครื่องยนต์เดินหน้า "ไม่เดาข้ามจุดแตกสาย" จาก buildPublicDetailedSteps_ มาตรงๆ ของจริงเดินได้
+ * ไกลแค่ไหนก็ตามนั้น ไม่ใช่ fix 1-10) จัดกลุ่มตาม parentStepOrder_ ตามลำดับที่ปรากฏจริง ไม่บังคับวนลูป 1..10
+ *
+ * ยืนยันกับผู้ใช้แล้ว (ตรวจจาก WORKFLOW_TRANSITIONS_SEED จริง, Constants.gs): state 7 เป็นจุดแตกสายจริง
+ * (7.1 ผ่าน/7.4 ไม่ผ่าน → 10 ตรงๆ, 7.2/7.3 แก้ไข → 8) ส่วน state 8 "ไม่ใช่" จุดแตกสาย — 8.1-8.6 ไหลเข้า 9.1
+ * เสมอไม่มีทางลัดไป 10 ตรงๆ เลยในข้อมูลจริง จึงไม่มี branch indicator ที่ state 8
+ */
+function buildOwnerActualPathTimeline_(steps, stationsMap, work) {
+  if (!steps) return null;
+
+  var order = [];
+  var groups = {};
+  steps.forEach(function (s) {
+    var n = parentStepOrder_(s.order);
+    if (!groups[n]) { groups[n] = []; order.push(n); }
+    groups[n].push(s);
+  });
+
+  var currentStep = steps.filter(function (s) { return s.state === 'current'; })[0] || null;
+  var currentMain = currentStep ? parentStepOrder_(currentStep.order) : null;
+  var currentStation = stationsMap[work.current_station_key] || null;
+
+  var path = order.map(function (n, idx) {
+    var group = groups[n];
+    var isCurrent = n === currentMain;
+    var anyDone = group.some(function (s) { return s.state === 'done'; });
+    var state = isCurrent ? 'current' : (anyDone ? 'done' : 'upcoming');
+    var lastReal = group.filter(function (s) { return s.state !== 'upcoming'; }).slice(-1)[0] || null;
+
+    var entry = {
+      order: n, split: mainStepNameFor_(n, stationsMap), state: state,
+      org: lastReal ? lastReal.org : '', enteredAt: lastReal ? lastReal.enteredAt : null,
+      isLastStep: idx === order.length - 1 && n === '10',
+    };
+
+    if (isCurrent) {
+      var heroInfo = buildHeroDisplayInfo_(currentStation, stationsMap);
+      if (heroInfo.isSub) entry.sub = { order: heroInfo.subOrder, split: heroInfo.subSplit, tone: heroInfo.subTone };
+    }
+
+    if (n === '7') entry.branch = buildOwnerStep7BranchInfo_(group, isCurrent);
+    if (n === '9' && isCurrent) entry.note = 'ผลงานอยู่ระหว่างการพิจารณาครั้งที่ 2';
+
+    return entry;
+  });
+
+  return { path: path, totalSteps: path.length };
+}
+
+/** branch indicator ของ state 7 (จุดตัดสินใจจริงเดียวในระบบ) — ถ้ายังไม่ถึง 7.1-7.4 (ปัจจุบันอยู่ที่ "7" เฉยๆ)
+ *  แสดงตัวเลือกทั้ง 2 ทาง (ข้อ 5) ถ้าผ่านไปแล้ว แสดงผลจริงที่เกิดขึ้น (ข้อ 2/4) ที่มาของข้อความอ้างอิงจากชื่อ
+ *  station จริงที่ StatusHistory บันทึกไว้ (ไม่เดา ไม่ผูกกับ work.evaluation_result เพราะอาจถูกรอบ 2 ทับค่าไปแล้ว) */
+function buildOwnerStep7BranchInfo_(group, isCurrent) {
+  var resolved = group.filter(function (s) { return s.order !== '7'; })[0] || null; // 7.1/7.2/7.3/7.4 ตัวที่ผ่านจริง
+  if (resolved) {
+    var staysForRevision = resolved.name.indexOf('แก้ไข') !== -1;
+    return {
+      resolved: true,
+      text: staysForRevision
+        ? 'ผลการพิจารณา: ' + resolved.name + ' — เข้าสู่ขั้นตอนแก้ไขผลงาน'
+        : 'ผลการพิจารณา: ' + resolved.name + ' — จึงข้ามขั้นตอนการแก้ไขและเข้าสู่ขั้นตอนแจ้งผลโดยตรง',
+    };
+  }
+  if (isCurrent) {
+    return {
+      resolved: false,
+      options: [
+        { label: 'ผ่าน / ไม่ผ่าน', to: 'ขั้นตอน 10 แจ้งผลหน่วยงาน' },
+        { label: 'ต้องแก้ไข', to: 'ขั้นตอน 8 แก้ไขผลงาน' },
+      ],
+    };
+  }
+  return null;
+}
+
+/** รายการเดียวบน Timeline เส้นทางจริง — ใช้ class เดิมจาก renderPubFixedTimelineItem_ (Views.gs) ทุกอัน
+ *  (ธีม/สี/ไอคอนเหมือนกันทั้งระบบ) เพิ่มแค่ branch indicator ใหม่ที่ไม่มีในหน้าอื่น */
+function renderOwnerTimelineItem_(entry) {
+  var icon = entry.state === 'current' ? '●' : (entry.state === 'done' ? '✓' : '○');
+  var badges = '';
+  if (entry.state === 'current') badges += '<span class="pub-tl-badge">สถานะปัจจุบัน</span>';
+  if (entry.isLastStep) badges += '<span class="pub-tl-badge pub-tl-badge-last">ขั้นตอนสุดท้าย</span>';
+
+  var metaHtml;
+  if (entry.state === 'upcoming') {
+    metaHtml = '<span class="pub-tl-meta pub-tl-meta-pending">รอดำเนินการ</span>';
+  } else {
+    metaHtml = (entry.org || entry.enteredAt)
+      ? '<span class="pub-tl-meta">' +
+        (entry.org ? 'ผู้รับผิดชอบ: ' + escapeHtml_(entry.org) : '') +
+        (entry.org && entry.enteredAt ? ' — ' : '') +
+        (entry.enteredAt ? escapeHtml_(formatDateThShort_(entry.enteredAt)) : '') +
+        '</span>'
+      : '';
+  }
+
+  var subHtml = entry.sub
+    ? '<span class="pub-tl-sub-row">&#9492; <span class="pub-tl-sub-label">ผลการพิจารณา:</span> ' +
+      '<span class="pub-tl-sub-badge pub-hero-sub-' + entry.sub.tone + '">' +
+      escapeHtml_(entry.sub.order) + ' ' + escapeHtml_(entry.sub.split.main) + '</span></span>'
+    : '';
+
+  var noteHtml = entry.note ? '<span class="owner-tl-note">' + escapeHtml_(entry.note) + '</span>' : '';
+
+  var branchHtml = '';
+  if (entry.branch) {
+    if (entry.branch.resolved) {
+      branchHtml = '<span class="owner-tl-note">' + escapeHtml_(entry.branch.text) + '</span>';
+    } else {
+      branchHtml = '<div class="owner-tl-branch">' + entry.branch.options.map(function (o, i) {
+        return '<div class="owner-tl-branch-row">' + (i === entry.branch.options.length - 1 ? '&#9492;' : '&#9500;') +
+          ' <b>' + escapeHtml_(o.label) + '</b> &rarr; ' + escapeHtml_(o.to) + '</div>';
+      }).join('') + '</div>';
+    }
+  }
+
+  return '<div class="pub-tl-item pub-tl-' + entry.state + '">' +
+    '<span class="pub-tl-icon">' + icon + '</span>' +
+    '<span class="pub-tl-text"><b>ขั้นตอนที่ ' + escapeHtml_(entry.order) + '</b> ' + escapeHtml_(entry.split.main) +
+    badges + metaHtml + subHtml + noteHtml + branchHtml + '</span></div>';
+}
+
+function renderOwnerTimelineSection_(pathData) {
+  if (!pathData) return '';
+  return '<details class="pub-tl-full-details" open><summary>ดู Timeline ทั้งหมด ' + pathData.totalSteps + ' ขั้นตอน (เฉพาะเส้นทางของผลงานนี้)</summary>' +
+    '<div class="pub-timeline">' + pathData.path.map(renderOwnerTimelineItem_).join('') + '</div></details>';
+}
+
 /** หน้า "ผลงานของฉัน" หลัง login — reuse buildPublicResultData_/renderPub* เดิมทั้งหมด (ข้อ 12 — ใช้ layout
- *  เดิมของหน้าเจ้าของผลงานที่พัฒนาไว้) ต่างจากหน้าสาธารณะแค่ 2 จุด: ไม่ mask ชื่อ (เป็นเจ้าของจริง) + ปุ่ม
- *  "ออกจากระบบ" แทน "ตรวจสอบรายการอื่น" */
+ *  เดิมของหน้าเจ้าของผลงานที่พัฒนาไว้) ต่างจากหน้าสาธารณะ 3 จุด: ไม่ mask ชื่อ (เป็นเจ้าของจริง) + Timeline
+ *  เส้นทางจริง (ไม่ใช่ backbone คงที่ 1-10) + ปุ่ม "ออกจากระบบ" แทน "ตรวจสอบรายการอื่น" */
 function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   var ownerName = ((work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')).trim();
   var data = buildPublicResultData_(ss, work);
@@ -431,8 +563,10 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
     : '';
 
   // 2026-10-07 ตามที่ผู้ใช้ขอ — ตัดการ์ด "ความคืบหน้าของผลงาน" + "ข้อมูลสำคัญ" ออกเฉพาะหน้า Owner Dashboard
-  // (หน้าสาธารณะ/หน้ารายละเอียดเจ้าหน้าที่ยังมีเหมือนเดิม ไม่แตะ)
-  var timelineHtml = renderPubTimelineSection_(data.fixedTimeline);
+  // (หน้าสาธารณะ/หน้ารายละเอียดเจ้าหน้าที่ยังมีเหมือนเดิม ไม่แตะ) + เปลี่ยน Timeline เป็น "เส้นทางจริง" แบบ
+  // รองรับ Branching Workflow (ไม่ใช่ backbone คงที่ 1-10 เหมือนหน้าอื่น — เฉพาะหน้านี้)
+  var ownerPathTimeline = buildOwnerActualPathTimeline_(data.steps, data.stationsMap, work);
+  var timelineHtml = renderOwnerTimelineSection_(ownerPathTimeline);
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
   var noteHtml = '';
