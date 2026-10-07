@@ -1729,8 +1729,8 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     (values.organization_type ? '' : ' disabled placeholder="กรุณาเลือกประเภทหน่วยงานก่อน"') + '>' +
     '<div class="org-suggest" id="reg-org-suggest" role="listbox"></div>' +
     '</div></div>' +
+    '<div class="field field-org-province"><label>จังหวัด</label><input class="input" name="reg_province" id="reg-org-province" value="' + v('province') + '" readonly placeholder="เติมอัตโนมัติเมื่อเลือกหน่วยงาน"></div>' +
     '</div>' +
-    '<div class="field"><label>จังหวัด</label><input class="input" name="reg_province" id="reg-org-province" value="' + v('province') + '" readonly placeholder="เติมอัตโนมัติเมื่อเลือกหน่วยงาน"></div>' +
     '<input type="hidden" name="reg_organization_id" id="reg-org-id" value="' + v('organization_id') + '">' +
     '</div>' +
 
@@ -1873,10 +1873,15 @@ var REG_ORG_SCRIPT_ = '' +
   'nameInput.value = o.name; idField.value = o.id; if (provinceField) provinceField.value = o.province;' +
   'closeSuggest();' +
   '}' +
-  'function renderResults(results) {' +
+  'function renderResults(results, type) {' +
   'suggestBox.innerHTML = ""; activeIndex = -1;' +
   'if (!results.length) {' +
-  'var empty = document.createElement("div"); empty.className = "org-suggest-empty"; empty.textContent = "ไม่พบหน่วยงานที่ตรงกับคำค้น";' +
+  'var empty = document.createElement("div"); empty.className = "org-suggest-empty";' +
+  // แยกข้อความ "ไม่มีข้อมูลเลยทั้งประเภทนี้" (master ยังไม่ import/ว่าง) ออกจาก "มีข้อมูลแต่ไม่ตรงคำค้น" —
+  // ช่วย debug ได้ตรงจุดกว่าเดิม (2026-10-07 ตามที่ผู้ใช้รายงานปัญหา)
+  'empty.textContent = (REG_ORG_LOOKUP_[type] || []).length === 0' +
+  '? "ยังไม่มีข้อมูลหน่วยงานประเภทนี้ในระบบ (กรุณาติดต่อผู้ดูแลระบบ)"' +
+  ': "ไม่พบหน่วยงานที่ตรงกับคำค้น";' +
   'suggestBox.appendChild(empty); suggestBox.classList.add("open"); nameInput.setAttribute("aria-expanded", "true"); return;' +
   '}' +
   'results.forEach(function (o) {' +
@@ -1899,7 +1904,7 @@ var REG_ORG_SCRIPT_ = '' +
   'var kw = nameInput.value.trim();' +
   'if (!typeSel.value || kw.length < MIN_CHARS) { closeSuggest(); return; }' +
   'currentResults = searchOrgs(typeSel.value, kw);' +
-  'renderResults(currentResults);' +
+  'renderResults(currentResults, typeSel.value);' +
   '});' +
   'nameInput.addEventListener("keydown", function (ev) {' +
   'if (!suggestBox.classList.contains("open")) return;' +
@@ -2280,7 +2285,12 @@ var STAFF_CSS_ = '' +
   '.field-row-position .field{margin-bottom:0;}' +
   '.field-branch select:disabled{background:#f2f4f6;color:var(--muted);}' +
   // ข้อมูลหน่วยงาน (2026-10-07, Master Data เขตสุขภาพที่ 11) — ประเภทหน่วยงาน:ชื่อหน่วยงาน สัดส่วน 30:70 บน desktop
-  '.field-row-org{flex-wrap:wrap;}.field-row-org .field-org-type{flex:1 1 30%;}.field-row-org .field-org-name{flex:2 1 70%;}' +
+  // ประเภทหน่วยงาน | ชื่อหน่วยงาน | จังหวัด บรรทัดเดียวกันบน desktop (2026-10-07 รอบ 2 แก้ตาม requirement จริง —
+  // เดิมจังหวัดอยู่คนละ row) สัดส่วน 25:50:25 ด้วย CSS Grid ตามที่ระบุ (relative position ของ .org-suggest ต้อง
+  // อยู่ใน grid item เดียวกับช่องชื่อหน่วยงาน ไม่กระทบ — .org-suggest-wrap อยู่ชั้นในไม่ใช่ grid item เอง)
+  '.field-row-org{display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;}' +
+  '.field-row-org .field{margin-bottom:0;}' +
+  '@media (max-width:768px){.field-row-org{grid-template-columns:1fr;}}' +
   '.input[readonly]{background:#f2f4f6;color:var(--muted);}' +
   // Searchable autocomplete ชื่อหน่วยงาน (2026-10-07 รอบ 2) — custom dropdown เอง (ไม่ใช้ <datalist> เดิม เพราะ
   // ต้อง partial-match หลาย field + โชว์จังหวัด/อำเภอใต้ชื่อ + keyboard nav ซึ่ง datalist ทำไม่ได้) vanilla JS
@@ -2305,7 +2315,6 @@ var STAFF_CSS_ = '' +
   '.field-row{flex-wrap:wrap;}' +
   '.field-row-name{flex-wrap:wrap;}.field-row-name .field-title{flex:1 1 100%;}' +
   '.field-row-name .field-first,.field-row-name .field-last{flex:1 1 calc(50% - 5px);}' +
-  '.field-row-org .field-org-type,.field-row-org .field-org-name{flex:1 1 100%;}' +
   '.reg-form .btn-primary{width:100%;}' +
   '}' +
   '.field label{font-size:.78rem;color:var(--muted);}' +

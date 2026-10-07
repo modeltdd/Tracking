@@ -950,6 +950,64 @@ function migrateAddOrganizationMaster() {
   Logger.log('=== seed OrganizationMaster สำเร็จ: ' + rows.length + ' หน่วยงาน (เขตสุขภาพที่ 11 เท่านั้น) ===');
 }
 
+/**
+ * Debug การค้นหาหน่วยงานในหน้ารับเอกสารใหม่ (2026-10-07 — ผู้ใช้รายงานว่าเลือก "สสจ." แล้วพิมพ์ "พังงา" ไม่เจอ)
+ * รันจาก Editor แล้วดู Log ตามลำดับที่ผู้ใช้ขอ: ประเภทที่เลือก, จำนวน record ทั้งชีต, จำนวนหลัง filter ประเภท,
+ * จำนวนหลัง filter คำค้น, ตัวอย่าง 5 รายการแรก — หา root cause ว่าเป็นที่ master ว่าง/type ไม่ตรง/search field
+ * ผิด/normalize ผิด ตัวไหนกันแน่ ไม่เดา (ไม่มี "mapped master type" แยกต่างหาก เพราะ organization_type ใน
+ * OrganizationMaster เก็บเป็นรูปย่อ "สสจ./สสอ./รพ.สต./รพศ./รพท./รพช." ตรงกับค่าที่ dropdown ส่งมาอยู่แล้วเป๊ะ
+ * ไม่มีชั้น mapping คนละรูปแบบให้ไม่ตรงกัน — ยืนยันจากไฟล์ seed จริง ไม่ได้เดา)
+ */
+function diagnoseOrganizationSearch(organizationType, keyword) {
+  organizationType = organizationType || 'สสจ.';
+  keyword = keyword || 'พังงา';
+  var ss = getSpreadsheet_();
+  var sheet = ss.getSheetByName(SHEET.ORGANIZATION_MASTER);
+  if (!sheet) {
+    Logger.log('=== ไม่พบชีต OrganizationMaster เลย — ยังไม่เคยรัน migrateAddOrganizationMaster() ===');
+    return;
+  }
+  var all = readSheetAsObjects_(sheet);
+  Logger.log('1) ประเภทที่เลือก (organization_type ที่ form ส่งมา): "' + organizationType + '"');
+  Logger.log('2) คำค้น (keyword): "' + keyword + '"');
+  Logger.log('3) จำนวน record ทั้งชีต OrganizationMaster (ทุกประเภทรวมกัน): ' + all.length);
+  if (all.length === 0) {
+    Logger.log('=== root cause ชัดเจน: ชีต OrganizationMaster ว่างเปล่า — ยังไม่เคยรัน migrateAddOrganizationMaster() (หรือรันไม่สำเร็จ) ให้รันฟังก์ชันนั้นก่อนแล้วค่อยลองใหม่ ===');
+    return;
+  }
+  var distinctTypes = {};
+  all.forEach(function (r) { distinctTypes[r.organization_type] = (distinctTypes[r.organization_type] || 0) + 1; });
+  Logger.log('3.1) ประเภทที่มีอยู่จริงในชีต (แยกนับ): ' + JSON.stringify(distinctTypes));
+
+  var afterType = all.filter(function (r) { return r.organization_type === organizationType && r.active; });
+  Logger.log('4) จำนวนหลัง filter ประเภท "' + organizationType + '" (active เท่านั้น): ' + afterType.length);
+  if (afterType.length === 0) {
+    Logger.log('=== root cause ชัดเจน: ไม่มี record ประเภท "' + organizationType + '" เลยในชีต (เทียบ exact string ตรงๆ — ' +
+      'ถ้าในชีตสะกด/เว้นวรรคต่างจากนี้แม้แต่นิดเดียว เช่น "สสจ" ไม่มีจุด จะไม่ตรง) ตรวจ distinct types ข้อ 3.1 ด้านบนว่าตรงกันเป๊ะหรือไม่ ===');
+    return;
+  }
+
+  function norm(s) { return String(s || '').trim().toLowerCase(); }
+  var kw = norm(keyword);
+  var afterSearch = afterType.filter(function (r) {
+    return norm(r.organization_name).indexOf(kw) !== -1 || norm(r.organization_full_name).indexOf(kw) !== -1 ||
+      norm(r.district_name).indexOf(kw) !== -1 || norm(r.province_name).indexOf(kw) !== -1;
+  });
+  Logger.log('5) ค้นจาก field: organization_name, organization_full_name, district_name, province_name (ทั้ง 4 field ตามที่ระบุ)');
+  Logger.log('6) จำนวนหลัง filter คำค้น "' + keyword + '": ' + afterSearch.length);
+  Logger.log('7) ตัวอย่างผลลัพธ์ 5 รายการแรก: ' + JSON.stringify(afterSearch.slice(0, 5).map(function (r) {
+    return { name: r.organization_name, fullName: r.organization_full_name, province: r.province_name, id: r.organization_id };
+  })));
+
+  if (afterSearch.length === 0) {
+    Logger.log('=== root cause: มี record ประเภทนี้อยู่ (' + afterType.length + ' แห่ง) แต่ไม่มีแห่งไหนตรงคำค้น "' + keyword +
+      '" เลยใน 4 field ข้างต้น — ตรวจการสะกดคำค้น หรือดูรายชื่อทั้งหมดประเภทนี้: ' +
+      afterType.map(function (r) { return r.organization_name; }).join(', ') + ' ===');
+  } else {
+    Logger.log('=== เจอผลลัพธ์ตรงตามคาด ' + afterSearch.length + ' รายการ — ถ้าหน้าเว็บจริงยังไม่ขึ้น suggestion ปัญหาน่าจะอยู่ฝั่ง frontend (REG_ORG_LOOKUP_ ที่ฝังมาไม่ตรงกับที่ query นี้ใช้ — ลองโหลดหน้าใหม่/เช็ค cache) ไม่ใช่ที่ข้อมูล/การค้นหาฝั่ง server ===');
+  }
+}
+
 var OWNER_LOGIN_SMOKE_TEST_MARKER_ = 'OWNER_LOGIN_SMOKE_TEST_RECORD_DO_NOT_KEEP';
 var OWNER_LOGIN_SMOKE_TEST_MARKER_2_ = 'OWNER_LOGIN_SMOKE_TEST_RECORD_2_DO_NOT_KEEP';
 
