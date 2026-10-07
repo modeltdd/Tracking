@@ -1812,7 +1812,7 @@ var REG_COMMITTEE_SCRIPT_ = '' +
   'if (entry.mode === "manual") {' +
   'var html = `<select class="input" name="reg_committee_code" required><option value="">-- เลือกคณะกรรมการ --</option>`;' +
   'entry.committees.forEach(function (c) {' +
-  'html += `<option value="` + escC(c.committee_code) + `">` + escC(c.committee_code) + ` — ประธาน: ` + escC(c.chair_name) + ` (` + escC(c.chair_org) + `)</option>`;' +
+  'html += `<option value="` + escC(c.committee_code) + `">ประธาน: ` + escC(c.chair_name) + ` (` + escC(c.chair_org) + `)</option>`;' +
   '});' +
   'infoDiv.innerHTML = html + `<p class="hint">ตำแหน่งนี้มีหลายคณะ ไม่สามารถจับคู่อัตโนมัติได้ กรุณาเลือกเอง</p>`;' +
   'return;' +
@@ -1820,7 +1820,7 @@ var REG_COMMITTEE_SCRIPT_ = '' +
   'var match = entry.mode === "single" ? entry.committees[0] :' +
   'entry.committees.filter(function (c) { return c.key === (specSel ? specSel.value : ""); })[0];' +
   'infoDiv.innerHTML = match' +
-  '? `<p class="hint">` + escC(match.committee_code) + ` — ประธาน: ` + escC(match.chair_name) + ` (` + escC(match.chair_org) + `)</p>`' +
+  '? `<p class="hint">ประธาน: ` + escC(match.chair_name) + ` (` + escC(match.chair_org) + `)</p>`' +
   ': `<p class="hint">เลือก "ด้าน/สาขา" เพื่อดูคณะกรรมการที่รับผิดชอบ</p>`;' +
   '}' +
   'posSel.addEventListener("change", syncCommittee);' +
