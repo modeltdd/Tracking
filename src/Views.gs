@@ -1638,7 +1638,6 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
       errors.map(function (e) { return '<li>' + escapeHtml_(e) + '</li>'; }).join('') + '</ul></div>'
     : '';
 
-  var typeOptions = getSettingList_(ss, 'work_type_options', ['อื่น ๆ']);
   // 2026-10-07: จังหวัดเดิม (dropdown ให้เลือกเอง) ถูกแทนด้วยช่อง readonly เติมอัตโนมัติจากหน่วยงานที่เลือกแล้ว
   // (province_options ไม่ได้ใช้ในฟอร์มนี้แล้ว — ดู reg-org-province ด้านล่าง)
   var positionRows = getActiveMasterRows_(ss, SHEET.MASTER_POSITIONS);
@@ -1682,8 +1681,6 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     }).join('') +
     '<option value="อื่น ๆ"' + (showTitleOther ? ' selected' : '') + '>อื่น ๆ</option>';
 
-  var showWorkTypeOther = values.work_type === 'อื่น ๆ';
-
   return '' +
     errorHtml +
     '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" id="reg-form">' +
@@ -1707,12 +1704,8 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '<label>คณะกรรมการที่รับผิดชอบ</label><div id="reg-committee-info"></div></div>' +
     '</div>' +
 
+    // 2026-10-07 ผู้ใช้ขอเอา "ประเภทผลงาน" ออกจากฟอร์มทั้งหมด — เหลือแค่ "ชื่อผลงาน" เป็นหัวข้อแรก/อย่างเดียว
     '<div class="reg-section"><div class="reg-section-title">ข้อมูลผลงาน</div>' +
-    '<div class="field-row">' +
-    '<div class="field"><label>ประเภทผลงาน</label>' + selectHtml('reg_work_type', typeOptions, values.work_type, 'reg-work-type') + '</div>' +
-    '<div class="field" id="reg-worktype-other-field" style="' + (showWorkTypeOther ? '' : 'display:none') + '">' +
-    '<label>ระบุประเภทผลงาน</label><input class="input" name="reg_work_type_other" id="reg-worktype-other" placeholder="ระบุประเภทผลงาน (ใช้เฉพาะกรณีเลือกอื่น ๆ)"></div>' +
-    '</div>' +
     '<div class="field"><label>ชื่อผลงาน</label><textarea class="input" name="reg_work_title" rows="2">' + v('work_title') + '</textarea></div>' +
     '</div>' +
 
@@ -1734,11 +1727,9 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '<input type="hidden" name="reg_organization_id" id="reg-org-id" value="' + v('organization_id') + '">' +
     '</div>' +
 
+    // 2026-10-07 ผู้ใช้ขอเอาช่องอีเมลออก + ตัดคำว่า "(ถ้ามี)" ออกจาก label ทุกจุดในหน้านี้
     '<div class="reg-section"><div class="reg-section-title">ข้อมูลติดต่อ</div>' +
-    '<div class="field-row">' +
-    '<div class="field"><label>เบอร์โทร (ถ้ามี)</label><input class="input" name="reg_phone" value="' + v('phone') + '"></div>' +
-    '<div class="field"><label>อีเมล (ถ้ามี)</label><input class="input" name="reg_email" value="' + v('email') + '"></div>' +
-    '</div>' +
+    '<div class="field"><label>เบอร์โทร</label><input class="input" name="reg_phone" value="' + v('phone') + '"></div>' +
     '</div>' +
 
     '<button class="btn-primary" type="submit">บันทึกและออกเลขติดตาม</button>' +
@@ -1917,8 +1908,9 @@ var REG_ORG_SCRIPT_ = '' +
   '});' +
   '</script>';
 
-/** ซ่อน/โชว์ช่อง "ระบุคำนำหน้าชื่อ" และ "ระบุประเภทผลงาน" เฉพาะตอนเลือก "อื่น ๆ" (2026-09-24, ใหม่ — คนละช่อง
- *  จาก REG_DYNAMIC_SCRIPT_/REG_COMMITTEE_SCRIPT_ เดิม กันกระทบ logic ตำแหน่ง/คณะกรรมการที่มีอยู่แล้ว) */
+/** ซ่อน/โชว์ช่อง "ระบุคำนำหน้าชื่อ" เฉพาะตอนเลือก "อื่น ๆ" (2026-09-24 — คนละช่อง จาก REG_DYNAMIC_SCRIPT_/
+ *  REG_COMMITTEE_SCRIPT_ เดิม กันกระทบ logic ตำแหน่ง/คณะกรรมการที่มีอยู่แล้ว — 2026-10-07 ตัด binding ของ
+ *  "ระบุประเภทผลงาน" ออก เพราะตัด field ประเภทผลงานออกจากฟอร์มทั้งหมดแล้วตามที่ผู้ใช้ขอ) */
 var REG_LAYOUT_TOGGLE_SCRIPT_ = '' +
   '<script>' +
   'document.addEventListener("DOMContentLoaded", function () {' +
@@ -1933,7 +1925,6 @@ var REG_LAYOUT_TOGGLE_SCRIPT_ = '' +
   '});' +
   '}' +
   'bindOtherToggle("reg-title-name", "reg-title-other-field", "reg-title-name-other");' +
-  'bindOtherToggle("reg-work-type", "reg-worktype-other-field", "reg-worktype-other");' +
   '});' +
   '</script>';
 

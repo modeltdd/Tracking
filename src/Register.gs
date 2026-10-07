@@ -15,7 +15,10 @@ var REGISTER_REQUIRED_FIELDS_ = [
   { key: 'last_name', label: 'นามสกุล' },
   { key: 'position', label: 'ตำแหน่ง' },
   { key: 'position_no', label: 'เลขตำแหน่งเดิม' },
-  { key: 'work_type', label: 'ประเภทผลงาน' },
+  // 2026-10-07 ผู้ใช้ขอเอา "ประเภทผลงาน" ออกจากฟอร์มทั้งหมด (field/validation/"อื่น ๆ") — คอลัมน์ work_type
+  // เดิมในชีต Works ยังอยู่ ไม่ลบ (กันกระทบข้อมูลเก่า/รายงานเดิม) งานใหม่เขียนค่าว่างแทน ดูจุดอื่นที่ยังอ้างอิง
+  // work_type อยู่ (แสดงผลเฉยๆ ไม่บังคับ): renderPubOwnerRow_('ประเภทผลงาน', ...) ในหน้ารายละเอียด (Views.gs),
+  // คอลัมน์ CSV รายงาน (Admin.gs) — ยังไม่ได้ตัดออกจากจุดเหล่านั้นตามที่ผู้ใช้สั่งไว้ชัดเจนว่า "อย่าลบทันที"
   { key: 'work_title', label: 'ชื่อผลงาน' },
   // 2026-10-07 (ข้อมูลหน่วยงานแบบ Master Data เขตสุขภาพที่ 11) — org_from/province ยังบังคับเหมือนเดิม แต่ตอนนี้
   // มาจากการเลือกหน่วยงานจริงเท่านั้น (validate เพิ่มด้วย organization_id ด้านล่าง ไม่ใช่ free text อีกต่อไป)
@@ -32,30 +35,27 @@ var REGISTER_REQUIRED_FIELDS_ = [
 function registerNewWork_(ss, user, e) {
   var p = (e && e.parameter) || {};
   var values = {};
-  REGISTER_REQUIRED_FIELDS_.concat([{ key: 'phone' }, { key: 'email' }]).forEach(function (f) {
+  // 2026-10-07 ตัด email ออกจากฟอร์ม (ผู้ใช้ขอ) — ไม่อ่าน p.reg_email อีกต่อไป เขียนค่าว่างแทนตอนบันทึก
+  REGISTER_REQUIRED_FIELDS_.concat([{ key: 'phone' }]).forEach(function (f) {
     values[f.key] = (p['reg_' + f.key] || '').toString().trim();
   });
   values.medical_domain = ''; // เลิกใช้แล้ว (2026-09-15 รอบ 3) — คอลัมน์เดิมยังอยู่ เขียนค่าว่างเสมอ
   values.specialty = String(p.reg_specialty || '').trim();
   values.organization_id = String(p.reg_organization_id || '').trim();
-  if (values.work_type === 'อื่น ๆ' && p.reg_work_type_other) {
-    values.work_type = String(p.reg_work_type_other).trim();
-  }
-  // 2026-09-24: คำนำหน้าชื่อเปลี่ยนจาก text input เป็น dropdown — เลือก "อื่น ๆ" คู่กับช่อง custom (pattern
-  // เดียวกับ work_type/work_type_other ข้างบน) title_name ยัง free-text ไม่ validate ค่าตายตัวเหมือนเดิม
+  // 2026-09-24: คำนำหน้าชื่อเปลี่ยนจาก text input เป็น dropdown — เลือก "อื่น ๆ" คู่กับช่อง custom
+  // title_name ยัง free-text ไม่ validate ค่าตายตัวเหมือนเดิม
   if (values.title_name === 'อื่น ๆ' && p.reg_title_name_other) {
     values.title_name = String(p.reg_title_name_other).trim();
   }
 
   var errors = [];
-  REGISTER_REQUIRED_FIELDS_.forEach(function (f) {
-    if (!values[f.key]) errors.push(f.label + 'ห้ามว่าง');
-  });
 
   // 2026-10-07 (ข้อมูลหน่วยงานแบบ Master Data เขตสุขภาพที่ 11) — ต้องเลือกหน่วยงานจริงจากรายการเท่านั้น (ห้าม
   // free text ตามที่ผู้ใช้กำชับ) ตรวจฝั่ง server เสมอ ไม่เชื่อค่า org_from/province ที่ client ส่งมาตรงๆ เลย —
   // ใช้ organization_id (รหัสหน่วยงาน9หลัก) หา record จริงใน OrganizationMaster แล้ว "เขียนทับ" org_from/province
-  // ด้วยค่าจริงจาก master เสมอ (กัน mismatch/ของปลอมแม้ client JS จะพังหรือถูกแก้ไข)
+  // ด้วยค่าจริงจาก master เสมอ (กัน mismatch/ของปลอมแม้ client JS จะพังหรือถูกแก้ไข) — ต้องทำ "ก่อน" เช็ค required
+  // fields ด้านล่างเสมอ (พบบั๊กจริงตอนเทส: ถ้าทำหลัง required check จะเจอ org_from/province ว่างจากค่าดิบของ
+  // client ก่อนเสมอ ทำให้ error message ออกเป็น "ห้ามว่าง" แทนที่จะเป็น "กรุณาเลือกหน่วยงานจากรายการ" ที่ตรงจุดกว่า)
   values.organization_code = '';
   if (values.organization_type && values.organization_id) {
     var orgRow = findOrganizationMasterById_(ss, values.organization_id);
@@ -69,6 +69,10 @@ function registerNewWork_(ss, user, e) {
   } else if (values.organization_type) {
     errors.push('กรุณาเลือกหน่วยงานจากรายการ');
   }
+
+  REGISTER_REQUIRED_FIELDS_.forEach(function (f) {
+    if (!values[f.key]) errors.push(f.label + 'ห้ามว่าง');
+  });
 
   // 2026-09-15 รอบ 3: ตำแหน่งต้อง valid ตาม MasterPositions จริง — "ด้าน/สาขา" เป็น dropdown ชั้นเดียว generic
   // ผูกกับตำแหน่งที่เลือก (MasterSpecialties.position_code) ไม่ใช่แค่นายแพทย์อีกต่อไป (พบจากข้อมูลจริง 244 ราย
@@ -135,11 +139,11 @@ function registerNewWork_(ss, user, e) {
     position: values.position,
     current_level: '',
     requested_level: '',
-    work_type: values.work_type,
+    work_type: '', // 2026-10-07 ตัดออกจากฟอร์มแล้ว (ผู้ใช้ขอ) — คอลัมน์เดิมยังอยู่ กันกระทบข้อมูลเก่า/รายงานเดิม
     work_title: values.work_title,
     org_from: values.org_from,
     phone: values.phone,
-    email: values.email,
+    email: '', // 2026-10-07 ตัดออกจากฟอร์มแล้วเช่นกัน — คอลัมน์เดิมยังอยู่ งานเก่าที่เคยมีอีเมลไม่ถูกแตะ
     cover_image_url: '',
     received_date: nowTs,
     current_station_key: station.station_key,
