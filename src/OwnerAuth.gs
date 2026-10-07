@@ -214,16 +214,23 @@ function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
   var sessionToken = String(p.session_token || '').trim() || randomToken_(16);
   var prevValues = { owner_username: username, session_token: sessionToken };
 
+  // 2026-10-07 รอบ 2 — เพิ่ม log ทุกขั้นตามที่ผู้ใช้ขอ (ข้อ 7: ห้าม log password) ไว้ตรวจได้จาก Apps Script
+  // Editor > Executions เวลา login ไม่ redirect แล้วเกิดซ้ำอีก จะรู้ทันทีว่าหลุดตรงขั้นไหน
+  Logger.log('[OwnerLogin] request received, username=' + username);
+
   if (checkOwnerLoginLock_(sessionToken)) {
+    Logger.log('[OwnerLogin] blocked: rate-limit lock active for this session_token');
     return renderPublicPage_('เข้าสู่ระบบ',
       renderOwnerLoginDirectFormBody_(baseUrl, ['ลองเข้าสู่ระบบผิดเกินจำนวนที่กำหนด กรุณารอสักครู่แล้วลองใหม่อีกครั้ง'], [], prevValues));
   }
   if (!username) {
+    Logger.log('[OwnerLogin] rejected: username ว่าง');
     return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['กรุณากรอก Username'], [], prevValues));
   }
   // ข้อ 8 — กรอกรหัสไม่ครบ (รูปแบบไม่ตรง __-___) ถือเป็นคนละเคสกับ login ไม่ผ่าน แจ้งข้อความเฉพาะ แต่ยังนับ
   // เป็นความพยายามผิด 1 ครั้งเพื่อกัน brute-force (ตรวจฝั่ง server เสมอ ไม่เชื่อ client — ข้อ 10)
   if (!validateOwnerLoginCodeFormat_(code)) {
+    Logger.log('[OwnerLogin] rejected: รูปแบบรหัสผ่านไม่ตรง NN-NNN (ไม่ log ค่าจริง)');
     registerOwnerLoginAttempt_(ss, sessionToken, false);
     writeOwnerLoginLog_(ss, '', username, 'failed', sessionToken);
     return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['กรุณากรอกรหัสผ่านให้ครบ'], [], prevValues));
@@ -235,6 +242,7 @@ function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
     if (verifyOwnerLoginCode_(candidates[i], code)) { matchedWork = candidates[i]; break; }
   }
   var ok = !!matchedWork;
+  Logger.log('[OwnerLogin] auth result: ' + (ok ? ('success, work_id=' + matchedWork.work_id) : 'failed (username หรือ password ไม่ตรง)'));
 
   registerOwnerLoginAttempt_(ss, sessionToken, ok);
   writeOwnerLoginLog_(ss, matchedWork ? matchedWork.work_id : '', username, ok ? 'success' : 'failed', sessionToken);
@@ -246,7 +254,11 @@ function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
 
   // 2026-10-07 กลับมาใช้หน้า bounce + redirect (ดูเหตุผลที่ handleOwnerLoginSubmitPost_ ด้านบน — render
   // dashboard ตรงใน POST response ทำให้ refresh/ย้อนกลับ resubmit POST เดิมจน script.google.com ปฏิเสธการเชื่อมต่อ)
+  // session ต้องสร้าง+บันทึกสำเร็จ "ก่อน" ส่ง response กลับเสมอ (บรรทัดถัดไปรันแบบ synchronous ใน Apps Script
+  // อยู่แล้ว ไม่มีทาง race — createOwnerSession_ เขียนชีต OwnerSessions เสร็จก่อนบรรทัด return เสมอ)
   var session = createOwnerSession_(ss, matchedWork);
+  var redirectUrl = baseUrl + '?page=owner-dashboard&osession=' + encodeURIComponent(session.id);
+  Logger.log('[OwnerLogin] session created: session_id=' + session.id + ', redirectUrl=' + redirectUrl);
   return renderPublicPage_('เข้าสู่ระบบสำเร็จ', renderOwnerLoginBounceBody_(baseUrl, session.id));
 }
 
@@ -256,7 +268,8 @@ function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
  * หน้าแรกใหม่ของผู้ใช้งานทั่วไป (2026-10-06) — Username (ชื่อ/นามสกุล) + Password แยกช่อง 5 ช่อง (รูปแบบจริง
  * NN-NNN ไม่ใช่ 6 ช่องเดา) auto-advance/backspace/arrow/paste ผ่าน OWNER_LOGIN_PASSWORD_SCRIPT_ ค่าที่กรอก
  * รวมเป็น string เดียวลง input hidden #owner_login_code_hidden ก่อน submit จริง (ฝั่ง server ตรวจซ้ำเสมอ
- * ไม่เชื่อ client — ข้อ 10) ลิงก์รอง "ค้นหาสถานะแบบเดิม"/ปุ่มสแกน QR ยังอยู่ (ข้อ 7 — ไม่ตัดช่องทางเดิมทิ้ง)
+ * ไม่เชื่อ client — ข้อ 10) 2026-10-07 รอบ 2: ตัดลิงก์ "ค้นหาสถานะแบบเดิม"/ปุ่มสแกน QR ออกจากหน้านี้แล้ว
+ * (ผู้ใช้ขอให้เหลือแค่ Username/Password/ปุ่มเข้าสู่ระบบ) ฟังก์ชันค้นหาเดิม/QR ยังอยู่ปกติที่ ?mode=search
  */
 function renderOwnerLoginDirectFormBody_(baseUrl, errors, notices, prevValues) {
   prevValues = prevValues || {};
@@ -319,7 +332,16 @@ var OWNER_LOGIN_PASSWORD_SCRIPT_ = '' +
   'if (ev.key === "Backspace" && !box.value && idx > 0) { boxes[idx - 1].focus(); boxes[idx - 1].value = ""; syncHidden(); }' +
   'else if (ev.key === "ArrowLeft" && idx > 0) { boxes[idx - 1].focus(); }' +
   'else if (ev.key === "ArrowRight" && idx < boxes.length - 1) { boxes[idx + 1].focus(); }' +
-  'else if (ev.key === "Enter") { syncHidden(); form.submit(); }' +
+  // 2026-10-07 แก้บั๊กจริงที่เจอ: form.submit() (เรียกตรง) ไม่ยิง "submit" event ตาม spec เลย ทำให้ validation/
+  // loading-state listener ด้านล่างถูกข้าม แล้วถ้าไม่ preventDefault ไว้ด้วย browser จะ submit ซ้ำเองอีกรอบ
+  // (native default action ของ Enter ในฟอร์ม) กลายเป็น 2 POST แข่งกันไปที่ target="_top" เดียวกัน อาจทำให้
+  // หน้าค้าง/ไม่ redirect ตามที่คาด — ต้อง preventDefault ก่อนเสมอ แล้ว validate ซ้ำเหมือน submit listener จริง
+  'else if (ev.key === "Enter") {' +
+  'ev.preventDefault();' +
+  'syncHidden();' +
+  'if (hidden.value.length < 6) { alert("กรุณากรอกรหัสผ่านให้ครบ"); }' +
+  'else { form.submit(); }' +
+  '}' +
   '});' +
   'box.addEventListener("paste", function (ev) {' +
   'ev.preventDefault();' +
@@ -412,14 +434,28 @@ function renderOwnerLoginCandidatesBody_(candidates, baseUrl, sessionToken, erro
  * ภายใน 3 วิ (เช่น popup blocker/เบราว์เซอร์แปลกบล็อก JS navigate) กันผู้ใช้ค้างหน้าเปล่าแบบกู้คืนทางไม่ได้เลย */
 function renderOwnerLoginBounceBody_(baseUrl, sessionId) {
   var url = baseUrl + '?page=owner-dashboard&osession=' + encodeURIComponent(sessionId);
+  // 2026-10-07 รอบ 2 — เพิ่ม console.log/console.error ตามข้อ 7 ที่ผู้ใช้ขอ (เปิด DevTools Console ตอน repro
+  // จะเห็นชัดว่า current URL/target URL คืออะไร และ top.location.replace สำเร็จหรือตกไป fallback)
   return '' +
     '<div class="detail-card" id="owner-bounce-fallback" style="display:none">' +
     '<p>หากหน้าไม่เปลี่ยนอัตโนมัติ กรุณากดลิงก์ด้านล่าง</p>' +
     '<p><a target="_top" class="btn-primary" href="' + escapeHtml_(url) + '" style="display:inline-block;text-decoration:none;text-align:center">ไปที่หน้าผลงานของฉัน</a></p></div>' +
     '<script>(function () {' +
     'var u = ' + JSON.stringify(url) + ';' +
-    'try { top.location.replace(u); } catch (err) { try { location.replace(u); } catch (err2) {} }' +
-    'setTimeout(function () { var el = document.getElementById("owner-bounce-fallback"); if (el) el.style.display = ""; }, 3000);' +
+    'console.log("[OwnerLoginBounce] current URL =", location.href);' +
+    'console.log("[OwnerLoginBounce] target URL =", u);' +
+    'try {' +
+    'top.location.replace(u);' +
+    'console.log("[OwnerLoginBounce] top.location.replace() เรียกสำเร็จ");' +
+    '} catch (err) {' +
+    'console.error("[OwnerLoginBounce] top.location.replace() ล้มเหลว:", err);' +
+    'try { location.replace(u); console.log("[OwnerLoginBounce] fallback location.replace() เรียกสำเร็จ"); }' +
+    'catch (err2) { console.error("[OwnerLoginBounce] fallback location.replace() ก็ล้มเหลว:", err2); }' +
+    '}' +
+    'setTimeout(function () {' +
+    'var el = document.getElementById("owner-bounce-fallback");' +
+    'if (el) { el.style.display = ""; console.warn("[OwnerLoginBounce] redirect ไม่สำเร็จภายใน 3 วิ โชว์ fallback link แล้ว"); }' +
+    '}, 3000);' +
     '})();</script>';
 }
 
