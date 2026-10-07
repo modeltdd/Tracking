@@ -1454,6 +1454,15 @@ function renderScanEntryBody_(baseUrl, errorMsg) {
  * + ปุ่ม utility action เสริม (more_info/terminated/closed/reassigned) วางไว้ระหว่างการ์ดสถานะกับ Progress/Timeline
  * ตามที่ผู้ใช้ระบุ — business logic ของปุ่ม/การ scan ไม่แตะเลย
  */
+/**
+ * 2026-10-08 — redesign "หน้า Workflow Action" ตามที่ผู้ใช้ขอ: 3 ส่วน A(ข้อมูลเอกสารย่อ) B(เปลี่ยนสถานะ —
+ * checklist ✓ผ่านแล้ว/●ปัจจุบัน/[ ]กดได้/○ยังไม่ถึง + ยืนยันแบบ inline ไม่เปลี่ยน state ทันที) C(ลิงก์ประวัติ)
+ * reuse data.steps (buildPublicDetailedSteps_, เดินเส้นทางจริงเหมือน Owner Dashboard เป๊ะ — ไม่สร้าง logic
+ * คู่ขนาน) + eligibleTransitions (computeEligibleTransitions_ เดิม, ตรวจสิทธิ์/allowed-state ซ้ำฝั่ง server
+ * อยู่แล้วตอน submit จริง) ส่วน "การดำเนินการเพิ่มเติม" (ปิดงาน/เปลี่ยนผู้รับผิดชอบ/more_info) ย้ายเข้า
+ * <details> ไม่ให้เด่นเท่าปุ่ม workflow หลัก (ข้อ 12/13) ฟอร์ม action เดิม (renderActionFormBody_) ยังทำงาน
+ * เหมือนเดิมทุกประการ ไม่แตะ — แค่ลิงก์เข้าถึงย้ายที่
+ */
 function renderScanWorkBody_(ss, work, eligible, eligibleTransitions, baseUrl, token, errors) {
   var errorHtml = (errors && errors.length)
     ? '<div class="error-banner"><ul>' + errors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
@@ -1463,59 +1472,106 @@ function renderScanWorkBody_(ss, work, eligible, eligibleTransitions, baseUrl, t
   var data = buildPublicResultData_(ss, work);
   var stationsMap = data.stationsMap;
 
+  // A. ข้อมูลเอกสารย่อ — ชื่อ/เลขทะเบียน/ชื่อผลงาน/วันที่รับผลงาน (ตัวเดียวกับ formatOwnerReceivedDate_ ที่ใช้
+  // ในหน้า "ผลงานของฉัน" — ซ่อนเวลาถ้าไม่มีเวลาจริง) ต่อด้วยกรอบสถานะปัจจุบัน (renderPubHero_ เดิม มีทั้งสถานะ
+  // ปัจจุบัน+ผู้รับผิดชอบอยู่แล้ว ไม่สร้างกรอบใหม่ซ้ำ)
   var nameBlockHtml = '' +
     '<div class="pub-name-block">' +
     '<div class="pub-name-owner">' + escapeHtml_(ownerName || '-') + '</div>' +
     '<div class="pub-name-tracking">เลขทะเบียน ' + escapeHtml_(work.tracking_no) + '</div>' +
     '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
+    '<div class="pub-name-received">วันที่รับผลงาน: ' + escapeHtml_(formatOwnerReceivedDate_(work.received_date)) + '</div>' +
     '</div>';
 
   var heroHtml = renderPubHero_(work, data.currentStation, stationsMap, data.steps);
 
-  var actionInfoHtml = work.next_step_text
-    ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
-    : '';
+  // B. เปลี่ยนสถานะ — checklist: done -> current -> [ปุ่มกดได้ x N จาก eligibleTransitions] -> locked (steps
+  // ที่เหลือจาก data.steps ตัดตัวที่ซ้ำกับปุ่มกดได้ออก กันโชว์ซ้ำ)
+  var currentStationName = data.currentStation ? splitStationNameDesc_(data.currentStation.station_name).main : '';
+  var eligibleToKeys = eligibleTransitions.map(function (t) { return t.to_state; });
 
-  var infoGridHtml = renderPubInfoGrid_([
-    { label: 'ผู้รับผิดชอบ', value: work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-') },
-    { label: 'รับงานเมื่อ', value: formatDateThShort_(work.updated_at) },
-    { label: 'รับเรื่องเมื่อ', value: formatDateThShort_(work.received_date) },
-    { label: 'ส่งให้ผู้ว่า', value: data.governorForwardDate ? formatDateThShort_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า' },
-  ]);
+  var checklistRowsHtml = '';
+  var confirmPanelsHtml = '';
+  if (data.steps) {
+    data.steps.forEach(function (s) {
+      if (s.state === 'done') {
+        checklistRowsHtml += '<div class="wf-step wf-step-done"><div class="wf-step-icon">&#10003;</div>' +
+          '<div class="wf-step-label">' + escapeHtml_(s.name) + '</div></div>';
+      } else if (s.state === 'current') {
+        checklistRowsHtml += '<div class="wf-step wf-step-current"><div class="wf-step-icon">&#9679;</div>' +
+          '<div><div class="wf-step-label">' + escapeHtml_(s.name) + '</div>' +
+          '<span class="wf-step-badge">สถานะปัจจุบัน</span></div></div>';
+      } else if (eligibleToKeys.indexOf(s.key) === -1) { // upcoming ที่ไม่ใช่ปุ่มกดได้ -> locked
+        checklistRowsHtml += '<div class="wf-step wf-step-locked"><div class="wf-step-icon">&#9675;</div>' +
+          '<div><div class="wf-step-label">' + escapeHtml_(s.name) + '</div>' +
+          (s.org ? '<span class="wf-step-locked-resp">อยู่ในความรับผิดชอบของ ' + escapeHtml_(s.org) + '</span>' : '') +
+          '</div></div>';
+      }
+    });
+  }
 
-  var transitionButtonsHtml = eligibleTransitions.length
-    ? '<div class="action-list">' + eligibleTransitions.map(function (t) {
-        return '<a class="btn-action btn-action-primary" target="_top" href="' + baseUrl +
-          '?page=scan&t=' + encodeURIComponent(token) + '&trans=' + encodeURIComponent(t.transition_id) + '">' +
-          escapeHtml_(t.button_label) + '</a>';
-      }).join('') + '</div>'
-    : '';
+  eligibleTransitions.forEach(function (t) {
+    var targetStation = stationsMap[t.to_state];
+    var targetName = targetStation ? splitStationNameDesc_(targetStation.station_name).main : t.to_state;
+    var confirmId = 'wf-confirm-' + t.transition_id;
+    checklistRowsHtml += '' +
+      '<button type="button" class="wf-step-actionable" data-confirm-target="' + escapeHtml_(confirmId) + '">' +
+      '<span class="wf-step-actionable-label">' + escapeHtml_(t.button_label) + '</span>' +
+      '<span class="wf-step-actionable-hint">กดเพื่ออัปเดตเป็นขั้นตอนนี้</span>' +
+      '</button>';
 
-  var utilityButtonsHtml = eligible.length
-    ? '<div class="action-list">' + eligible.map(function (a) {
+    confirmPanelsHtml += '' +
+      '<div class="wf-confirm" id="' + escapeHtml_(confirmId) + '">' +
+      '<div class="wf-confirm-title">กำลังเปลี่ยนสถานะ</div>' +
+      '<div class="wf-confirm-from">จาก: <b>' + escapeHtml_(currentStationName) + '</b></div>' +
+      '<div class="wf-confirm-to">เป็น: <b>' + escapeHtml_(targetName) + '</b></div>' +
+      '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;margin-top:8px">' +
+      '<input type="hidden" name="form_action" value="state_transition">' +
+      '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
+      '<input type="hidden" name="transition_id" value="' + escapeHtml_(t.transition_id) + '">' +
+      '<input type="hidden" name="qr_token" value="' + escapeHtml_(token) + '">' +
+      '<div class="field"><label>หมายเหตุ' + (t.requires_note ? '' : ' (ถ้ามี)') + '</label>' +
+      '<textarea class="input" name="note" rows="2"></textarea></div>' +
+      '<div class="wf-confirm-actions">' +
+      '<button class="btn-primary" type="submit" data-loading-text="กำลังบันทึก...">ยืนยันเปลี่ยนสถานะ</button>' +
+      '<button type="button" class="btn-outline wf-confirm-cancel">ยกเลิก</button>' +
+      '</div></form></div>';
+  });
+
+  var checklistHtml = checklistRowsHtml
+    ? '<div class="wf-checklist">' + checklistRowsHtml + '</div>' + confirmPanelsHtml
+    : '<div class="empty">ไม่มีการกระทำที่ทำได้กับงานนี้ในขณะนี้ (อาจไม่ใช่หน่วยงานที่รับผิดชอบ หรืองานสิ้นสุดแล้ว)</div>';
+
+  // "การดำเนินการเพิ่มเติม" — action พิเศษ (ปิดงาน/เปลี่ยนผู้รับผิดชอบ/more_info) ไม่เด่นเท่าปุ่ม workflow หลัก
+  // แสดงเฉพาะเมื่อมีสิทธิ์ (eligible มาจาก computeEligibleActions_ ตรวจ permission มาแล้ว)
+  var moreActionsHtml = eligible.length
+    ? '<details class="wf-more-actions"><summary>การดำเนินการเพิ่มเติม</summary>' +
+      '<div class="action-list">' + eligible.map(function (a) {
         var variant = ACTION_BUTTON_VARIANT_[a] || 'secondary';
         return '<a class="btn-action btn-action-' + variant + '" target="_top" href="' + baseUrl +
           '?page=scan&t=' + encodeURIComponent(token) + '&do=' + a + '">' + escapeHtml_(ACTION_LABELS_[a] || a) + '</a>';
-      }).join('') + '</div>'
+      }).join('') + '</div></details>'
     : '';
 
-  var buttonsHtml = '<div class="pub-scan-actions">' + ((transitionButtonsHtml || utilityButtonsHtml)
-    ? transitionButtonsHtml + utilityButtonsHtml
-    : '<div class="empty">ไม่มีการกระทำที่ทำได้กับงานนี้ในขณะนี้ (อาจไม่ใช่หน่วยงานที่รับผิดชอบ หรืองานสิ้นสุดแล้ว)</div>') + '</div>';
+  // C. ประวัติ/Timeline แบบย่อ — ลิงก์เดียว ไม่ฝัง Timeline เต็มซ้ำกับ checklist ข้างบน (ข้อ 11)
+  var historyLinkHtml = '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=detail&id=' +
+    encodeURIComponent(work.work_id) + '">ดูประวัติการดำเนินงาน &rarr;</a></p>';
 
-  var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
-  var timelineHtml = renderPubTimelineSection_(data.fixedTimeline);
-  if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
+  if (data.isLegacyImportOnly) checklistHtml += renderPubLegacyInfoBox_();
 
   return '' +
     '<div class="pub-compact">' +
     errorHtml +
     '<div class="detail-card">' +
-    nameBlockHtml + heroHtml + actionInfoHtml + infoGridHtml + buttonsHtml + progressHtml + timelineHtml +
+    nameBlockHtml + heroHtml +
+    '<div class="wf-section-title">เปลี่ยนสถานะ</div>' +
+    '<div class="wf-section-hint">กดสถานะถัดไปเพื่ออัปเดตเอกสาร</div>' +
+    checklistHtml + moreActionsHtml +
     '</div>' +
-    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(work.work_id) + '">ดูรายละเอียด/ประวัติทั้งหมด &rarr;</a></p>' +
+    historyLinkHtml +
     '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=scan">&larr; สแกนรายการอื่น</a></p>' +
-    '</div>';
+    '</div>' +
+    WF_CONFIRM_TOGGLE_SCRIPT_;
 }
 
 /** ฟอร์มกรอกข้อมูลเฉพาะ action (หรือหน้ายืนยันเฉยๆ กรณี received/forwarded) — POST กลับไปที่ doPost form_action=work_action
@@ -1932,6 +1988,35 @@ var REG_LAYOUT_TOGGLE_SCRIPT_ = '' +
   '});' +
   '}' +
   'bindOtherToggle("reg-title-name", "reg-title-other-field", "reg-title-name-other");' +
+  '});' +
+  '</script>';
+
+/**
+ * 2026-10-08 — toggle พื้นที่ยืนยัน (.wf-confirm) ของหน้า Workflow Checklist (?page=scan) กดปุ่มกดได้
+ * (.wf-step-actionable) แล้วเลื่อนลงมาเห็นฟอร์ม "กำลังเปลี่ยนสถานะ จาก/เป็น + หมายเหตุ + ยืนยัน/ยกเลิก" แทนเปลี่ยน
+ * state ทันที (ตามที่ผู้ใช้ขอข้อ 6) ไม่ใช่ AJAX — ฟอร์มข้างในยัง POST เต็มรูปแบบไปที่ form_action=state_transition
+ * เดิมทุกประการ (performStateTransition_ ตรวจสิทธิ์/allowed-state ซ้ำฝั่ง server เสมอ) toggle นี้แค่ซ่อน/โชว์
+ * DOM เฉยๆ กดได้ปุ่มเดียวต่อครั้ง (เลือกปุ่มอื่นจะปิดฟอร์มเดิมอัตโนมัติ กันสับสนว่ากำลังยืนยันอันไหน)
+ */
+var WF_CONFIRM_TOGGLE_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'var buttons = document.querySelectorAll(".wf-step-actionable");' +
+  'var panels = document.querySelectorAll(".wf-confirm");' +
+  'function closeAll() { panels.forEach(function (p) { p.style.display = "none"; }); }' +
+  'buttons.forEach(function (btn) {' +
+  'btn.addEventListener("click", function () {' +
+  'var targetId = btn.getAttribute("data-confirm-target");' +
+  'var target = document.getElementById(targetId);' +
+  'if (!target) return;' +
+  'var alreadyOpen = target.style.display === "block";' +
+  'closeAll();' +
+  'if (!alreadyOpen) { target.style.display = "block"; target.scrollIntoView({ behavior: "smooth", block: "center" }); }' +
+  '});' +
+  '});' +
+  'document.querySelectorAll(".wf-confirm-cancel").forEach(function (btn) {' +
+  'btn.addEventListener("click", closeAll);' +
+  '});' +
   '});' +
   '</script>';
 
@@ -2695,4 +2780,45 @@ var PUBLIC_CSS_ = '' +
   '.pub-tl-current .owner-tl-station-name{color:var(--navy);}' +
   '.owner-tl-resp{font-size:.76rem;color:var(--muted);margin-top:4px;}' +
   '.owner-tl-resp b{color:var(--navy);}' +
-  '.owner-tl-summary-sub{display:block;font-size:.72rem;font-weight:400;color:var(--muted);margin-top:2px;}';
+  '.owner-tl-summary-sub{display:block;font-size:.72rem;font-weight:400;color:var(--muted);margin-top:2px;}' +
+  // 2026-10-08 — redesign หน้า Staff "อัปเดตสถานะเอกสาร" (?page=scan หลังสแกน/เลือกงาน) เป็น Workflow
+  // Checklist ตามที่ผู้ใช้ขอ: ผ่านแล้ว(เขียว,ปิด)/ปัจจุบัน(navy,ปิด)/กดได้(teal,เด่นสุด)/ยังไม่ถึง(เทา,ปิด)
+  // ใช้ token สีเดิมทั้งหมด (--done/--navy/--teal/--pending) ไม่เพิ่มสีใหม่
+  '.wf-section-title{font-size:.95rem;font-weight:700;color:var(--navy);margin:18px 0 2px;}' +
+  '.wf-section-hint{font-size:.78rem;color:var(--muted);margin-bottom:10px;}' +
+  '.wf-checklist{display:flex;flex-direction:column;gap:7px;}' +
+  '.wf-step{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border-radius:12px;border:1.5px solid var(--border);' +
+  'background:var(--card);min-height:48px;box-sizing:border-box;}' +
+  '.wf-step-icon{flex-shrink:0;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;' +
+  'font-size:.78rem;font-weight:700;margin-top:1px;}' +
+  '.wf-step-label{font-size:.88rem;font-weight:600;line-height:1.4;}' +
+  '.wf-step-done{border-color:#cfe8d8;background:#f1faf4;}' +
+  '.wf-step-done .wf-step-icon{background:var(--done);color:#fff;}' +
+  '.wf-step-done .wf-step-label{color:var(--muted);text-decoration:line-through;text-decoration-color:#bcdfc7;}' +
+  '.wf-step-current{border-color:var(--navy);background:#eaf0f5;}' +
+  '.wf-step-current .wf-step-icon{background:var(--navy);color:#fff;}' +
+  '.wf-step-current .wf-step-label{color:var(--navy);}' +
+  '.wf-step-badge{display:inline-block;margin-top:3px;font-size:.68rem;font-weight:700;color:#fff;background:var(--navy);' +
+  'border-radius:6px;padding:1px 7px;}' +
+  '.wf-step-locked{border-color:var(--border);background:#f7f9fa;opacity:.7;}' +
+  '.wf-step-locked .wf-step-icon{background:#dde3e8;color:var(--muted);}' +
+  '.wf-step-locked .wf-step-label{color:var(--muted);}' +
+  '.wf-step-locked-resp{display:block;font-size:.72rem;color:var(--muted);margin-top:2px;}' +
+  '.wf-step-actionable{display:flex;flex-direction:column;align-items:flex-start;width:100%;gap:2px;padding:13px 14px;' +
+  'border-radius:12px;border:none;background:var(--teal);color:#fff;cursor:pointer;font-family:inherit;min-height:48px;' +
+  'box-sizing:border-box;text-align:left;}' +
+  '.wf-step-actionable:focus-visible{outline:2px solid var(--navy);outline-offset:2px;}' +
+  '.wf-step-actionable .wf-step-actionable-label{font-size:.92rem;font-weight:700;}' +
+  '.wf-step-actionable .wf-step-actionable-hint{font-size:.72rem;font-weight:400;opacity:.9;}' +
+  '.wf-confirm{display:none;margin-top:8px;padding:14px;border-radius:12px;border:1.5px solid var(--teal);background:#eaf6f6;}' +
+  '.wf-confirm-title{font-size:.85rem;font-weight:700;color:var(--navy);margin-bottom:6px;}' +
+  '.wf-confirm-from,.wf-confirm-to{font-size:.85rem;color:var(--text);line-height:1.6;}' +
+  '.wf-confirm-actions{display:flex;flex-direction:column;gap:8px;margin-top:10px;}' +
+  '.wf-more-actions{margin-top:16px;border:1.5px solid var(--border);border-radius:12px;padding:0 14px;background:var(--card);}' +
+  '.wf-more-actions summary{padding:13px 0;font-size:.85rem;font-weight:600;color:var(--muted);cursor:pointer;list-style:none;' +
+  'display:flex;justify-content:space-between;align-items:center;}' +
+  '.wf-more-actions summary::-webkit-details-marker{display:none;}' +
+  '.wf-more-actions summary::after{content:"▾";font-size:.75rem;transition:transform .15s;}' +
+  '.wf-more-actions[open] summary::after{transform:rotate(180deg);}' +
+  '.wf-more-actions .action-list{padding-bottom:12px;}' +
+  '@media (min-width:600px){.pub-compact{max-width:860px;}}';
