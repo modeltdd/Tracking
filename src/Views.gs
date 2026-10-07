@@ -1237,6 +1237,12 @@ function renderPubHero_(work, currentStation, stationsMap, steps, friendlyMode) 
     (friendlyMode ? '' : '<div class="pub-hero-step-label">ขั้นตอนที่ ' + escapeHtml_(info.stepOrder) + '</div>') +
     '<div class="pub-hero-main">' + escapeHtml_(info.stepSplit.main) + '</div>' +
     (info.stepSplit.desc ? '<div class="pub-hero-desc">' + escapeHtml_(info.stepSplit.desc) + '</div>' : '');
+  // 2026-10-07 friendlyMode — ข้อความอธิบายสถานะแบบภาษาคน (ข้อ 4) ดึงจาก WorkflowStates.public_hint ของ
+  // สถานีปัจจุบันจริง (field ที่มีอยู่แล้ว Admin แก้ไขได้จากหน้า "จัดการ Workflow" โดยไม่ต้องแก้โค้ด) ไม่ได้
+  // แต่งข้อความเองทุก state (ห้ามเดา — ตอนนี้มีค่าแค่บาง state ที่เกี่ยวกับการแก้ไขเอกสาร) ถ้าว่างไม่แสดงอะไรเลย
+  if (friendlyMode && currentStation && currentStation.public_hint) {
+    bodyHtml += '<div class="pub-hero-hint">' + escapeHtml_(currentStation.public_hint) + '</div>';
+  }
   if (info.isSub) {
     // 2026-10-07 friendlyMode (หน้า Owner Dashboard เท่านั้น) — ซ่อนเลข state ย่อย (7.1/7.4 ฯลฯ) ออกจากบรรทัด
     // "ผลการพิจารณา" และใช้คำเต็มจากชื่อ state จริง (ส่วนในวงเล็บ) แทนคำสั้นๆ "ผ่าน"/"ไม่ผ่าน" ที่กำกวม —
@@ -1264,8 +1270,9 @@ function renderPubHero_(work, currentStation, stationsMap, steps, friendlyMode) 
 
   var nextStep = findNextStepDisplay_(steps, stationsMap || {});
   if (nextStep) {
-    bodyHtml += '<div class="pub-hero-next-row"><span class="pub-hero-next-label">ขั้นตอนถัดไป</span>' +
-      '<span class="pub-hero-next-value">' + escapeHtml_(nextStep.order) + ' ' + escapeHtml_(nextStep.split.main) + '</span></div>';
+    // friendlyMode (ข้อ 3/7) — ป้าย "ถัดไป" แทน "ขั้นตอนถัดไป" และไม่แสดงเลข state นำหน้าชื่อ
+    bodyHtml += '<div class="pub-hero-next-row"><span class="pub-hero-next-label">' + (friendlyMode ? 'ถัดไป' : 'ขั้นตอนถัดไป') + '</span>' +
+      '<span class="pub-hero-next-value">' + (friendlyMode ? '' : escapeHtml_(nextStep.order) + ' ') + escapeHtml_(nextStep.split.main) + '</span></div>';
   }
 
   return '' +
@@ -2485,4 +2492,22 @@ var PUBLIC_CSS_ = '' +
   '.owner-tl-note{display:block;font-size:.78rem;color:var(--muted);margin-top:3px;line-height:1.5;}' +
   '.owner-tl-branch{margin-top:4px;}' +
   '.owner-tl-branch-row{font-size:.78rem;color:var(--muted);line-height:1.6;}' +
-  '.owner-tl-branch-row b{color:var(--navy);}';
+  '.owner-tl-branch-row b{color:var(--navy);}' +
+  // redesign Owner Dashboard รอบ 2026-10-07 — ข้อความอธิบายสถานะ (public_hint) ใต้ชื่อสถานะหลักในกรอบสถานะ
+  // ปัจจุบัน (ข้อ 4)
+  '.pub-hero-hint{font-size:.8rem;color:var(--muted);margin-top:4px;line-height:1.45;}' +
+  // การ์ดสรุป "ตอนนี้ / ถัดไป" compact 2 การ์ด มือถือเรียงบน-ล่าง เดสก์ท็อป 2 คอลัมน์ (ข้อ 5)
+  '.owner-nownext-grid{display:flex;flex-direction:column;gap:10px;margin:14px 0;}' +
+  '.owner-nownext-card{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:12px 14px;}' +
+  '.owner-nownext-label{font-size:.72rem;color:var(--muted);margin-bottom:3px;}' +
+  '.owner-nownext-value{font-size:.95rem;font-weight:700;color:var(--navy);line-height:1.3;}' +
+  '.owner-nownext-next{background:#eaf6f6;border-color:#cdeaea;}' +
+  '@media (min-width:600px){.owner-nownext-grid{flex-direction:row;}.owner-nownext-card{flex:1;}}' +
+  // Timeline ภาษาคน (ข้อ 6/7/10/12/13) — แทนที่ "ขั้นตอนที่ N" ด้วยป้ายตำแหน่งสัมพัทธ์ + ชื่อสถานีเด่นขึ้น +
+  // "ผู้รับผิดชอบ :: ค่า" รูปแบบเดียวกับกรอบสถานะปัจจุบัน
+  '.owner-tl-position-label{font-size:.7rem;color:var(--muted);}' +
+  '.owner-tl-station-name{font-size:.92rem;font-weight:600;color:var(--text);margin-top:1px;line-height:1.35;}' +
+  '.pub-tl-current .owner-tl-station-name{color:var(--navy);}' +
+  '.owner-tl-resp{font-size:.76rem;color:var(--muted);margin-top:4px;}' +
+  '.owner-tl-resp b{color:var(--navy);}' +
+  '.owner-tl-summary-sub{display:block;font-size:.72rem;font-weight:400;color:var(--muted);margin-top:2px;}';

@@ -470,6 +470,15 @@ function buildOwnerActualPathTimeline_(steps, stationsMap, work) {
     return entry;
   });
 
+  // 2026-10-07 ตามที่ผู้ใช้ขอ — ป้ายตำแหน่งสัมพัทธ์แทนเลข state (ข้อ 6/7): ผ่านแล้ว/ตอนนี้/ถัดไป/หลังจากนั้น
+  // (เฉพาะ "upcoming" ตัวแรกเท่านั้นที่เป็น "ถัดไป" ที่เหลือเป็น "หลังจากนั้น" ทั้งหมด)
+  var seenUpcoming = false;
+  path.forEach(function (entry) {
+    if (entry.state === 'done') entry.positionLabel = 'ผ่านแล้ว';
+    else if (entry.state === 'current') entry.positionLabel = 'ตอนนี้';
+    else { entry.positionLabel = seenUpcoming ? 'หลังจากนั้น' : 'ถัดไป'; seenUpcoming = true; }
+  });
+
   return { path: path, totalSteps: path.length };
 }
 
@@ -499,39 +508,35 @@ function buildOwnerStep7BranchInfo_(group, isCurrent) {
   return null;
 }
 
-/** รายการเดียวบน Timeline เส้นทางจริง — ใช้ class เดิมจาก renderPubFixedTimelineItem_ (Views.gs) ทุกอัน
- *  (ธีม/สี/ไอคอนเหมือนกันทั้งระบบ) เพิ่มแค่ branch indicator ใหม่ที่ไม่มีในหน้าอื่น */
+/**
+ * รายการเดียวบน Timeline เส้นทางจริง (2026-10-07 redesign ภาษาคน ตามที่ผู้ใช้ขอ) — ใช้ icon/สี class เดิมจาก
+ * renderPubFixedTimelineItem_ (Views.gs, ✓ เขียว=ผ่านแล้ว/● navy-teal=ตอนนี้/○ เทา=ยังไม่ถึง ข้อ 9) แต่เปลี่ยน
+ * label จาก "ขั้นตอนที่ N" เป็นคำสัมพัทธ์ (ผ่านแล้ว/ตอนนี้/ถัดไป/หลังจากนั้น — ข้อ 6/7) ไม่โชว์เลข state ที่ไหน
+ * เลย + "ผู้รับผิดชอบ :: ค่า" รูปแบบเดียวกับกรอบสถานะปัจจุบัน (ข้อ 10) + ตัด "รอดำเนินการ"/วันที่ต่อรายการออก
+ * (ข้อ 11/12 — ลด clutter, วันที่อัปเดตล่าสุดดูที่กรอบสถานะปัจจุบันพอ)
+ */
 function renderOwnerTimelineItem_(entry) {
   var icon = entry.state === 'current' ? '●' : (entry.state === 'done' ? '✓' : '○');
-  var badges = '';
-  if (entry.state === 'current') badges += '<span class="pub-tl-badge">สถานะปัจจุบัน</span>';
-  if (entry.isLastStep) badges += '<span class="pub-tl-badge pub-tl-badge-last">ขั้นตอนสุดท้าย</span>';
 
-  var metaHtml;
-  if (entry.state === 'upcoming') {
-    metaHtml = '<span class="pub-tl-meta pub-tl-meta-pending">รอดำเนินการ</span>';
-  } else {
-    metaHtml = (entry.org || entry.enteredAt)
-      ? '<span class="pub-tl-meta">' +
-        (entry.org ? 'ผู้รับผิดชอบ: ' + escapeHtml_(entry.org) : '') +
-        (entry.org && entry.enteredAt ? ' — ' : '') +
-        (entry.enteredAt ? escapeHtml_(formatDateThShort_(entry.enteredAt)) : '') +
-        '</span>'
-      : '';
-  }
-
-  var subHtml = entry.sub
-    ? '<span class="pub-tl-sub-row">&#9492; <span class="pub-tl-sub-label">ผลการพิจารณา:</span> ' +
-      '<span class="pub-tl-sub-badge pub-hero-sub-' + entry.sub.tone + '">' +
-      escapeHtml_(entry.sub.order) + ' ' + escapeHtml_(entry.sub.split.main) + '</span></span>'
+  var respHtml = entry.org
+    ? '<div class="owner-tl-resp">ผู้รับผิดชอบ :: <b>' + escapeHtml_(entry.org) + '</b></div>'
     : '';
 
-  var noteHtml = entry.note ? '<span class="owner-tl-note">' + escapeHtml_(entry.note) + '</span>' : '';
+  // ตัดเลข state ย่อย (7.1/7.4) ออกจากบรรทัด "ผลการพิจารณา" เหมือนกรอบสถานะปัจจุบัน (ข้อ 2/7) ใช้คำเต็มจาก
+  // station_name จริงแทนคำสั้นๆ ที่กำกวม
+  var subHtml = entry.sub
+    ? '<div class="pub-tl-sub-row"><span class="pub-tl-sub-label">ผลการพิจารณา:</span> ' +
+      '<span class="pub-tl-sub-badge pub-hero-sub-' + entry.sub.tone + '">' +
+      escapeHtml_((entry.sub.split.main === 'ผ่าน' || entry.sub.split.main === 'ไม่ผ่าน') && entry.sub.split.desc
+        ? entry.sub.split.desc : entry.sub.split.main) + '</span></div>'
+    : '';
+
+  var noteHtml = entry.note ? '<div class="owner-tl-note">' + escapeHtml_(entry.note) + '</div>' : '';
 
   var branchHtml = '';
   if (entry.branch) {
     if (entry.branch.resolved) {
-      branchHtml = '<span class="owner-tl-note">' + escapeHtml_(entry.branch.text) + '</span>';
+      branchHtml = '<div class="owner-tl-note">' + escapeHtml_(entry.branch.text) + '</div>';
     } else {
       branchHtml = '<div class="owner-tl-branch">' + entry.branch.options.map(function (o, i) {
         return '<div class="owner-tl-branch-row">' + (i === entry.branch.options.length - 1 ? '&#9492;' : '&#9500;') +
@@ -542,14 +547,34 @@ function renderOwnerTimelineItem_(entry) {
 
   return '<div class="pub-tl-item pub-tl-' + entry.state + '">' +
     '<span class="pub-tl-icon">' + icon + '</span>' +
-    '<span class="pub-tl-text"><b>ขั้นตอนที่ ' + escapeHtml_(entry.order) + '</b> ' + escapeHtml_(entry.split.main) +
-    badges + metaHtml + subHtml + noteHtml + branchHtml + '</span></div>';
+    '<span class="pub-tl-text">' +
+    '<div class="owner-tl-position-label">' + escapeHtml_(entry.positionLabel) + '</div>' +
+    '<div class="owner-tl-station-name">' + escapeHtml_(entry.split.main) + '</div>' +
+    subHtml + noteHtml + branchHtml + respHtml +
+    '</span></div>';
 }
 
+/** หัวข้อ Timeline ภาษาคน (ข้อ 8) แทน "ดู Timeline ทั้งหมด N ขั้นตอน" เดิม */
 function renderOwnerTimelineSection_(pathData) {
   if (!pathData) return '';
-  return '<details class="pub-tl-full-details" open><summary>ดู Timeline ทั้งหมด ' + pathData.totalSteps + ' ขั้นตอน (เฉพาะเส้นทางของผลงานนี้)</summary>' +
+  return '<details class="pub-tl-full-details" open><summary>เส้นทางการดำเนินงาน' +
+    '<span class="owner-tl-summary-sub">แสดงเฉพาะขั้นตอนที่เกี่ยวข้องกับผลงานของท่าน</span></summary>' +
     '<div class="pub-timeline">' + pathData.path.map(renderOwnerTimelineItem_).join('') + '</div></details>';
+}
+
+/** การ์ดสรุป "ตอนนี้ / ถัดไป" แบบ compact (2026-10-07 ข้อ 5) — reuse ข้อมูลเดียวกับกรอบสถานะปัจจุบัน
+ *  (buildHeroDisplayInfo_/findNextStepDisplay_ เดิมทุกประการ ไม่สร้าง logic คำนวณใหม่) */
+function renderOwnerNowNextSummary_(currentStation, stationsMap, steps) {
+  var info = buildHeroDisplayInfo_(currentStation, stationsMap || {});
+  var nextStep = findNextStepDisplay_(steps, stationsMap || {});
+  return '' +
+    '<div class="owner-nownext-grid">' +
+    '<div class="owner-nownext-card"><div class="owner-nownext-label">ตอนนี้</div>' +
+    '<div class="owner-nownext-value">' + escapeHtml_(info.stepSplit.main) + '</div></div>' +
+    (nextStep ? '' +
+      '<div class="owner-nownext-card owner-nownext-next"><div class="owner-nownext-label">ถัดไป</div>' +
+      '<div class="owner-nownext-value">' + escapeHtml_(nextStep.split.main) + '</div></div>' : '') +
+    '</div>';
 }
 
 /** หน้า "ผลงานของฉัน" หลัง login — reuse buildPublicResultData_/renderPub* เดิมทั้งหมด (ข้อ 12 — ใช้ layout
@@ -582,6 +607,9 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   // รายละเอียดเจ้าหน้าที่ยังมีเหมือนเดิม ไม่แตะ renderPubLegacyInfoBox_ เอง)
   var timelineHtml = renderOwnerTimelineSection_(ownerPathTimeline);
 
+  // 2026-10-07 redesign ตามที่ผู้ใช้ขอ (ข้อ 5) — การ์ดสรุป "ตอนนี้ / ถัดไป" แบบ compact
+  var nowNextHtml = renderOwnerNowNextSummary_(data.currentStation, data.stationsMap, data.steps);
+
   var noteHtml = '';
   if (work.current_status_public === 'need_revision' && data.revisionInfo) {
     noteHtml = '' +
@@ -597,9 +625,11 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
 
   var logoutUrl = baseUrl + '?page=owner-login&logout=1&osession=' + encodeURIComponent(sessionId);
 
+  // ลำดับหน้าใหม่ (2026-10-07 redesign ตามที่ผู้ใช้ขอ): A.ข้อมูลเจ้าของผลงาน -> B.สถานะปัจจุบัน ->
+  // สิ่งที่ต้องดำเนินการ (ถ้ามี) -> C.ตอนนี้/ถัดไป -> D.Timeline เส้นทาง -> หมายเหตุ (ถ้ามี) -> E.ออกจากระบบ
   return '' +
     '<div class="pub-compact">' +
-    nameBlockHtml + heroHtml + actionHtml + timelineHtml + noteHtml +
+    nameBlockHtml + heroHtml + actionHtml + nowNextHtml + timelineHtml + noteHtml +
     '<p class="pub-back-link"><a target="_top" href="' + logoutUrl + '">ออกจากระบบ &rarr;</a></p>' +
     '</div>';
 }
