@@ -1609,8 +1609,8 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     : '';
 
   var typeOptions = getSettingList_(ss, 'work_type_options', ['อื่น ๆ']);
-  var provinceOptions = getSettingList_(ss, 'district11_provinces',
-    ['นครศรีธรรมราช', 'กระบี่', 'พังงา', 'ภูเก็ต', 'สุราษฎร์ธานี', 'ระนอง', 'ชุมพร']);
+  // 2026-10-07: จังหวัดเดิม (dropdown ให้เลือกเอง) ถูกแทนด้วยช่อง readonly เติมอัตโนมัติจากหน่วยงานที่เลือกแล้ว
+  // (province_options ไม่ได้ใช้ในฟอร์มนี้แล้ว — ดู reg-org-province ด้านล่าง)
   var positionRows = getActiveMasterRows_(ss, SHEET.MASTER_POSITIONS);
   var specialtyRows = getActiveMasterRows_(ss, SHEET.MASTER_SPECIALTIES);
 
@@ -1640,6 +1640,10 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
   // ทั้งหมดเป็น JSON ให้ client JS ตัดสินใจแบบ reactive (ไม่มี AJAX ในระบบนี้) ฝั่ง backend validate ซ้ำเสมอที่
   // registerNewWork_ (resolveCommitteeForRegistration_ ใช้ logic เดียวกันเป๊ะ ไม่มี drift)
   var committeeLookup = buildCommitteeLookupForRegisterForm_(ss);
+
+  // 2026-10-07 — ข้อมูลหน่วยงาน Master Data เขตสุขภาพที่ 11 เดียวกัน ฝังเป็น JSON จัดกลุ่มตามประเภท (ไม่มี AJAX
+  // client กรอง/เติม <datalist> เองจาก JSON ชุดนี้ตามประเภทที่เลือก — ห้ามโหลดทุกประเภทลง dropdown เดียวพร้อมกัน)
+  var organizationLookup = buildOrganizationMasterLookupForRegisterForm_(ss);
 
   // คำนำหน้าชื่อ (2026-09-24 รอบใหม่) — dropdown ยศทางการ + "อื่น ๆ" คู่กับช่อง custom (reuse pattern work_type_other)
   var isKnownTitle = TITLE_NAME_OPTIONS_.indexOf(values.title_name) !== -1;
@@ -1686,14 +1690,19 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '</div>' +
 
     '<div class="reg-section"><div class="reg-section-title">ข้อมูลหน่วยงาน</div>' +
-    '<div class="field-row">' +
-    '<div class="field"><label>หน่วยงานต้นสังกัด</label><input class="input" name="reg_org_from" value="' + v('org_from') + '"></div>' +
-    '<div class="field"><label>จังหวัด</label><select class="input" name="reg_province"><option value="">-- เลือกจังหวัด --</option>' +
-    provinceOptions.map(function (opt) {
-      var sel = opt === values.province ? ' selected' : '';
-      return '<option' + sel + '>' + escapeHtml_(opt) + '</option>';
+    '<div class="field-row field-row-org">' +
+    '<div class="field field-org-type"><label>ประเภทหน่วยงาน</label><select class="input" name="reg_organization_type" id="reg-org-type">' +
+    '<option value="">-- เลือกประเภทหน่วยงาน --</option>' +
+    ORGANIZATION_TYPE_OPTIONS_.map(function (t) {
+      return '<option' + (t === values.organization_type ? ' selected' : '') + '>' + escapeHtml_(t) + '</option>';
     }).join('') + '</select></div>' +
+    '<div class="field field-org-name"><label>ชื่อหน่วยงาน</label>' +
+    '<input class="input" name="reg_org_from" id="reg-org-name" list="reg-org-datalist" autocomplete="off" value="' + v('org_from') + '"' +
+    (values.organization_type ? '' : ' disabled placeholder="กรุณาเลือกประเภทหน่วยงานก่อน"') + '>' +
+    '<datalist id="reg-org-datalist"></datalist></div>' +
     '</div>' +
+    '<div class="field"><label>จังหวัด</label><input class="input" name="reg_province" id="reg-org-province" value="' + v('province') + '" readonly placeholder="เติมอัตโนมัติเมื่อเลือกหน่วยงาน"></div>' +
+    '<input type="hidden" name="reg_organization_id" id="reg-org-id" value="' + v('organization_id') + '">' +
     '</div>' +
 
     '<div class="reg-section"><div class="reg-section-title">ข้อมูลติดต่อ</div>' +
@@ -1705,9 +1714,11 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
 
     '<button class="btn-primary" type="submit">บันทึกและออกเลขติดตาม</button>' +
     '</form>' +
-    '<script>var REG_COMMITTEE_LOOKUP_ = ' + JSON.stringify(committeeLookup) + ';</script>' +
+    '<script>var REG_COMMITTEE_LOOKUP_ = ' + JSON.stringify(committeeLookup) + ';' +
+    'var REG_ORG_LOOKUP_ = ' + JSON.stringify(organizationLookup) + ';</script>' +
     REG_DYNAMIC_SCRIPT_ +
     REG_COMMITTEE_SCRIPT_ +
+    REG_ORG_SCRIPT_ +
     REG_LAYOUT_TOGGLE_SCRIPT_;
 }
 
@@ -1773,6 +1784,49 @@ var REG_COMMITTEE_SCRIPT_ = '' +
   'posSel.addEventListener("change", syncCommittee);' +
   'if (specSel) specSel.addEventListener("change", syncCommittee);' +
   'syncCommittee();' +
+  '});' +
+  '</script>';
+
+/**
+ * ข้อมูลหน่วยงาน Master Data เขตสุขภาพที่ 11 (2026-10-07) — เลือกประเภทหน่วยงานก่อน (เปิดช่องชื่อหน่วยงาน +
+ * เติม <datalist> เฉพาะประเภทนั้น ไม่โหลดทุกประเภทพร้อมกัน) พิมพ์/เลือกชื่อหน่วยงานแล้วจับคู่ตรงตัวกับ
+ * REG_ORG_LOOKUP_[ประเภท] เพื่อเติมจังหวัดอัตโนมัติ + hidden organization_id (ฝั่ง server ตรวจซ้ำเสมอที่
+ * registerNewWork_ ไม่เชื่อค่าที่ client เติมมาเลย) เปลี่ยนประเภทหน่วยงาน = ล้างชื่อ/จังหวัด/id เดิมทิ้งหมด
+ * (กันข้อมูลค้างข้ามประเภท) vanilla JS ล้วน ไม่มี framework/AJAX ตาม pattern เดียวกับ REG_COMMITTEE_SCRIPT_
+ */
+var REG_ORG_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'var typeSel = document.getElementById("reg-org-type");' +
+  'var nameInput = document.getElementById("reg-org-name");' +
+  'var datalist = document.getElementById("reg-org-datalist");' +
+  'var idField = document.getElementById("reg-org-id");' +
+  'var provinceField = document.getElementById("reg-org-province");' +
+  'if (!typeSel || !nameInput || !datalist) return;' +
+  'function rebuildDatalist(type) {' +
+  'datalist.innerHTML = "";' +
+  'var list = REG_ORG_LOOKUP_[type] || [];' +
+  'list.forEach(function (o) { var opt = document.createElement("option"); opt.value = o.name; datalist.appendChild(opt); });' +
+  '}' +
+  'function findMatch(type, name) {' +
+  'var list = REG_ORG_LOOKUP_[type] || [];' +
+  'for (var i = 0; i < list.length; i++) { if (list[i].name === name) return list[i]; }' +
+  'return null;' +
+  '}' +
+  'function clearSelection() { idField.value = ""; if (provinceField) provinceField.value = ""; }' +
+  'typeSel.addEventListener("change", function () {' +
+  'nameInput.value = ""; clearSelection();' +
+  'if (typeSel.value) {' +
+  'nameInput.disabled = false; nameInput.placeholder = "พิมพ์ชื่อหน่วยงาน..."; rebuildDatalist(typeSel.value);' +
+  '} else {' +
+  'nameInput.disabled = true; nameInput.placeholder = "กรุณาเลือกประเภทหน่วยงานก่อน"; datalist.innerHTML = "";' +
+  '}' +
+  '});' +
+  'nameInput.addEventListener("input", function () {' +
+  'var match = findMatch(typeSel.value, nameInput.value.trim());' +
+  'if (match) { idField.value = match.id; if (provinceField) provinceField.value = match.province; } else { clearSelection(); }' +
+  '});' +
+  'if (typeSel.value) rebuildDatalist(typeSel.value);' + // re-render หลัง validate ไม่ผ่าน — เติม datalist ให้ตรงประเภทเดิม
   '});' +
   '</script>';
 
@@ -2138,11 +2192,15 @@ var STAFF_CSS_ = '' +
   '.reg-section-title{font-size:.8rem;font-weight:700;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border);letter-spacing:.2px;}' +
   '.field-row-name .field-title{flex:1 1 110px;}' +
   '.field-row-name .field-first,.field-row-name .field-last{flex:2 1 140px;}' +
+  // ข้อมูลหน่วยงาน (2026-10-07, Master Data เขตสุขภาพที่ 11) — ประเภทหน่วยงาน:ชื่อหน่วยงาน สัดส่วน 30:70 บน desktop
+  '.field-row-org{flex-wrap:wrap;}.field-row-org .field-org-type{flex:1 1 30%;}.field-row-org .field-org-name{flex:2 1 70%;}' +
+  '.input[readonly]{background:#f2f4f6;color:var(--muted);}' +
   '@media (max-width:640px){' +
   '.reg-form{padding:16px;}' +
   '.field-row{flex-wrap:wrap;}' +
   '.field-row-name{flex-wrap:wrap;}.field-row-name .field-title{flex:1 1 100%;}' +
   '.field-row-name .field-first,.field-row-name .field-last{flex:1 1 calc(50% - 5px);}' +
+  '.field-row-org .field-org-type,.field-row-org .field-org-name{flex:1 1 100%;}' +
   '.reg-form .btn-primary{width:100%;}' +
   '}' +
   '.field label{font-size:.78rem;color:var(--muted);}' +

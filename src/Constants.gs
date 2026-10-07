@@ -29,6 +29,8 @@ var SHEET = {
   // 2026-10-06 — Login สำหรับเจ้าของผลงาน (ดู OwnerAuth.gs)
   OWNER_SESSIONS: 'OwnerSessions',
   OWNER_LOGIN_LOG: 'OwnerLoginLog',
+  // 2026-10-07 — Master Data หน่วยงานเขตสุขภาพที่ 11 (ดู OrganizationMasterSeed.gs/Setup.gs)
+  ORGANIZATION_MASTER: 'OrganizationMaster',
 };
 
 var SHEET_HEADERS = {};
@@ -60,6 +62,10 @@ SHEET_HEADERS[SHEET.WORKS] = [
   // เทียบกับ tracking_no ของงานนั้นตรงๆ แทน (ผู้ใช้ยืนยันแล้ว — ไม่มี field รหัสลับจริงเดิม จึงใช้ tracking_no
   // เป็นค่าเริ่มต้นได้ทันทีทั้งงานเก่า/ใหม่ โดยไม่ต้อง migrate ข้อมูลใดๆ)
   'owner_login_code_hash',
+  // เพิ่ม 2026-10-07 (Master Data หน่วยงานเขตสุขภาพที่ 11) — เชื่อม Works กับ OrganizationMaster แบบมี key จริง
+  // (organization_id = รหัสหน่วยงาน9หลัก) org_from/province เดิมยังเขียนค่าเหมือนเดิมทุกประการ (ชื่อ/จังหวัดจริง
+  // จาก master ที่เลือก) ไม่ทำให้ข้อมูลเดิมเสีย งานเก่าก่อนหน้านี้จะมีค่าว่างใน 2 คอลัมน์นี้ (ยังไม่เคยผูก master)
+  'organization_id', 'organization_code',
 ];
 SHEET_HEADERS[SHEET.STATUS_HISTORY] = [
   'history_id', 'work_id', 'tracking_no', 'action', 'from_station', 'to_station', 'from_org', 'to_org',
@@ -109,6 +115,16 @@ SHEET_HEADERS[SHEET.COMMITTEE_SECRETARY_MAP] = [
 SHEET_HEADERS[SHEET.OWNER_SESSIONS] = ['owner_session_id', 'work_id', 'owner_name', 'login_at', 'expires_at', 'active'];
 // log การพยายาม login ของเจ้าของผลงานทุกครั้ง (สำเร็จ/ล้มเหลว) — ไม่เก็บรหัสผ่านใดๆ ตามที่ผู้ใช้กำชับ (ข้อ 19)
 SHEET_HEADERS[SHEET.OWNER_LOGIN_LOG] = ['log_id', 'timestamp', 'work_id_attempt', 'owner_name_attempt', 'result', 'session_token'];
+
+// Master Data หน่วยงาน เขตสุขภาพที่ 11 (2026-10-07) — import จาก Excel จริงครั้งเดียว ดู OrganizationMasterSeed.gs
+// organization_id = รหัสหน่วยงาน9หลัก จริง (ตรวจแล้วไม่ซ้ำกันเลยสักรายการใน 877 แถว ใช้เป็น key ได้ปลอดภัย
+// ตามที่ผู้ใช้กำหนด "ห้ามใช้ชื่อหน่วยงานอย่างเดียวเป็น key")
+SHEET_HEADERS[SHEET.ORGANIZATION_MASTER] = [
+  'organization_id', 'organization_code', 'organization_code_9', 'organization_type', 'organization_name',
+  'organization_full_name', 'health_region', 'province_name', 'district_name', 'active',
+];
+// ประเภทหน่วยงาน 6 แบบ ตามที่ผู้ใช้กำหนด (ตรงกับค่าจริงที่ map มาจากคอลัมน์ "ประเภทหน่วยงาน" ในไฟล์ Excel/ชื่อชีต)
+var ORGANIZATION_TYPE_OPTIONS_ = ['สสจ.', 'สสอ.', 'รพ.สต.', 'รพศ.', 'รพท.', 'รพช.'];
 
 // สถานี Workflow เริ่มต้น — ตรงกระบวนการจริงที่ผู้ใช้ให้มา (2026-09-02) แทนชุดเดิม
 // แก้ไขได้ภายหลังจากหน้า "จัดการ Workflow" ไม่กระทบ record ที่มีอยู่ เพราะ Works อ้างสถานีด้วย station_key ไม่ใช่ลำดับแถว

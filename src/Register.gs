@@ -17,6 +17,9 @@ var REGISTER_REQUIRED_FIELDS_ = [
   { key: 'position_no', label: 'เลขตำแหน่งเดิม' },
   { key: 'work_type', label: 'ประเภทผลงาน' },
   { key: 'work_title', label: 'ชื่อผลงาน' },
+  // 2026-10-07 (ข้อมูลหน่วยงานแบบ Master Data เขตสุขภาพที่ 11) — org_from/province ยังบังคับเหมือนเดิม แต่ตอนนี้
+  // มาจากการเลือกหน่วยงานจริงเท่านั้น (validate เพิ่มด้วย organization_id ด้านล่าง ไม่ใช่ free text อีกต่อไป)
+  { key: 'organization_type', label: 'ประเภทหน่วยงาน' },
   { key: 'org_from', label: 'หน่วยงานต้นสังกัด' },
   { key: 'province', label: 'จังหวัด' },
 ];
@@ -34,6 +37,7 @@ function registerNewWork_(ss, user, e) {
   });
   values.medical_domain = ''; // เลิกใช้แล้ว (2026-09-15 รอบ 3) — คอลัมน์เดิมยังอยู่ เขียนค่าว่างเสมอ
   values.specialty = String(p.reg_specialty || '').trim();
+  values.organization_id = String(p.reg_organization_id || '').trim();
   if (values.work_type === 'อื่น ๆ' && p.reg_work_type_other) {
     values.work_type = String(p.reg_work_type_other).trim();
   }
@@ -47,6 +51,24 @@ function registerNewWork_(ss, user, e) {
   REGISTER_REQUIRED_FIELDS_.forEach(function (f) {
     if (!values[f.key]) errors.push(f.label + 'ห้ามว่าง');
   });
+
+  // 2026-10-07 (ข้อมูลหน่วยงานแบบ Master Data เขตสุขภาพที่ 11) — ต้องเลือกหน่วยงานจริงจากรายการเท่านั้น (ห้าม
+  // free text ตามที่ผู้ใช้กำชับ) ตรวจฝั่ง server เสมอ ไม่เชื่อค่า org_from/province ที่ client ส่งมาตรงๆ เลย —
+  // ใช้ organization_id (รหัสหน่วยงาน9หลัก) หา record จริงใน OrganizationMaster แล้ว "เขียนทับ" org_from/province
+  // ด้วยค่าจริงจาก master เสมอ (กัน mismatch/ของปลอมแม้ client JS จะพังหรือถูกแก้ไข)
+  values.organization_code = '';
+  if (values.organization_type && values.organization_id) {
+    var orgRow = findOrganizationMasterById_(ss, values.organization_id);
+    if (!orgRow || orgRow.organization_type !== values.organization_type || !orgRow.active) {
+      errors.push('กรุณาเลือกหน่วยงานจากรายการ (ไม่พบหน่วยงานที่ตรงกับที่เลือก)');
+    } else {
+      values.org_from = orgRow.organization_name;
+      values.province = orgRow.province_name;
+      values.organization_code = orgRow.organization_code;
+    }
+  } else if (values.organization_type) {
+    errors.push('กรุณาเลือกหน่วยงานจากรายการ');
+  }
 
   // 2026-09-15 รอบ 3: ตำแหน่งต้อง valid ตาม MasterPositions จริง — "ด้าน/สาขา" เป็น dropdown ชั้นเดียว generic
   // ผูกกับตำแหน่งที่เลือก (MasterSpecialties.position_code) ไม่ใช่แค่นายแพทย์อีกต่อไป (พบจากข้อมูลจริง 244 ราย
@@ -135,6 +157,8 @@ function registerNewWork_(ss, user, e) {
     province: values.province,
     specialty: values.specialty,
     committee_code: values.committee_code,
+    organization_id: values.organization_id,
+    organization_code: values.organization_code,
   });
 
   var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
@@ -237,4 +261,42 @@ function saveCoverImageToDrive_(ss, blob, trackingNo) {
     Logger.log('อัปโหลดภาพหน้าปกไม่สำเร็จ (ข้ามไป): ' + err.message);
     return '';
   }
+}
+
+/**
+ * Master Data หน่วยงาน เขตสุขภาพที่ 11 (2026-10-07) — หา record เดียวด้วย organization_id (รหัสหน่วยงาน9หลัก)
+ * ใช้ตรวจสอบฝั่ง server ตอน submit (registerNewWork_) ห้ามเชื่อ org_from/province ที่ client ส่งมาตรงๆ
+ */
+function findOrganizationMasterById_(ss, organizationId) {
+  if (!organizationId) return null;
+  var sheet = ss.getSheetByName(SHEET.ORGANIZATION_MASTER);
+  if (!sheet) return null;
+  var rows = readSheetAsObjects_(sheet);
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i].organization_id === organizationId) return rows[i];
+  }
+  return null;
+}
+
+/**
+ * ข้อมูลหน่วยงานทั้งหมด (เขตสุขภาพ 11 เท่านั้น — ชีตเก็บแค่เขต 11 อยู่แล้วตั้งแต่ import) จัดกลุ่มตาม
+ * organization_type ฝังเป็น JSON ในหน้าฟอร์มลงทะเบียนครั้งเดียว (reuse pattern เดียวกับ
+ * buildCommitteeLookupForRegisterForm_ — ไม่มี AJAX ในระบบนี้ client กรอง/ค้นหาเองจาก JSON ชุดนี้) โหลดเฉพาะ
+ * ประเภทที่เลือกเท่านั้นไปแสดงใน <datalist> (ข้อ 12 — ห้ามโหลดหน่วยงานทั้งหมดพร้อมกันในช่องเดียว)
+ * แต่ละรายการ: { id, code, name, fullName, province, district } — ชื่อ key สั้นช่วยลดขนาด JSON ที่ฝังในหน้า
+ */
+function buildOrganizationMasterLookupForRegisterForm_(ss) {
+  var sheet = ss.getSheetByName(SHEET.ORGANIZATION_MASTER);
+  if (!sheet) return {};
+  var rows = readSheetAsObjects_(sheet).filter(function (r) { return r.active; });
+  var byType = {};
+  ORGANIZATION_TYPE_OPTIONS_.forEach(function (t) { byType[t] = []; });
+  rows.forEach(function (r) {
+    if (!byType[r.organization_type]) byType[r.organization_type] = [];
+    byType[r.organization_type].push({
+      id: r.organization_id, code: r.organization_code, name: r.organization_name,
+      fullName: r.organization_full_name, province: r.province_name, district: r.district_name,
+    });
+  });
+  return byType;
 }

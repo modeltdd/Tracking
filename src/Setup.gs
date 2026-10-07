@@ -802,6 +802,27 @@ function migrateOwnerLoginFeature() {
   Logger.log('=== migrateOwnerLoginFeature เสร็จ — เพิ่มคอลัมน์ owner_login_code_hash ใน Works + สร้างชีต OwnerSessions/OwnerLoginLog เรียบร้อย ===');
 }
 
+/**
+ * สร้าง+seed ชีต OrganizationMaster (2026-10-07, ข้อมูลหน่วยงานเขตสุขภาพที่ 11 จาก Excel จริง — ดู
+ * OrganizationMasterSeed.gs) + เพิ่มคอลัมน์ organization_id/organization_code ใน Works (reuse
+ * migrateAddWorksColumns_() เดิม) รันครั้งเดียวจาก Editor บนชีตจริง idempotent — ถ้าชีตมีข้อมูลอยู่แล้วข้าม
+ * การ seed ซ้ำ (เช็คจาก getLastRow เหมือน migrateAddMasterDataSheets_ เดิม)
+ */
+function migrateAddOrganizationMaster() {
+  migrateAddWorksColumns_();
+  var ss = getSpreadsheet_();
+  var sheet = ensureSheet_(ss, SHEET.ORGANIZATION_MASTER, SHEET_HEADERS[SHEET.ORGANIZATION_MASTER]);
+  if (sheet.getLastRow() > 1) {
+    Logger.log('ชีต OrganizationMaster มีข้อมูลอยู่แล้ว (' + (sheet.getLastRow() - 1) + ' แถว) — ข้าม seed ซ้ำ');
+    return;
+  }
+  var rows = getOrganizationMasterSeed_();
+  // เขียนครั้งเดียวด้วย setValues() (ไม่ appendRow ทีละแถว — 877 แถว) ลำดับคอลัมน์ตรงกับ
+  // SHEET_HEADERS[SHEET.ORGANIZATION_MASTER] อยู่แล้วตอนสร้างไฟล์ seed
+  sheet.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
+  Logger.log('=== seed OrganizationMaster สำเร็จ: ' + rows.length + ' หน่วยงาน (เขตสุขภาพที่ 11 เท่านั้น) ===');
+}
+
 var OWNER_LOGIN_SMOKE_TEST_MARKER_ = 'OWNER_LOGIN_SMOKE_TEST_RECORD_DO_NOT_KEEP';
 var OWNER_LOGIN_SMOKE_TEST_MARKER_2_ = 'OWNER_LOGIN_SMOKE_TEST_RECORD_2_DO_NOT_KEEP';
 
