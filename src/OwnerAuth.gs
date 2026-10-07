@@ -191,10 +191,12 @@ function handleOwnerLoginSubmitPost_(ss, e, baseUrl) {
     return renderPublicPage_('เข้าสู่ระบบเจ้าของผลงาน', renderOwnerLoginFormBody_(baseUrl, ['ชื่อหรือรหัสผ่านไม่ถูกต้อง'], [], {}));
   }
 
-  // 2026-10-07 ตามที่ผู้ใช้ขอ — ข้ามหน้าระหว่างทาง "เข้าสู่ระบบสำเร็จ" ไปแสดงหน้าผลงานโดยตรงเลย (ยังสร้าง
-  // session จริงเหมือนเดิมทุกประการ แค่ไม่ต้องกดปุ่ม/รอ JS redirect อีกขั้น)
+  // 2026-10-07 กลับมาใช้หน้า bounce + redirect อีกครั้ง (ย้อนการแก้รอบก่อน) — พบบั๊กจริง: render dashboard
+  // ตรงใน POST response ทำให้ refresh/กดย้อนกลับ/login ใหม่ กลายเป็นการ resubmit POST เดิมซ้ำ ซึ่ง
+  // script.google.com ปฏิเสธการเชื่อมต่อแทนที่จะถาม "ส่งฟอร์มซ้ำ" ตามปกติ — ต้อง redirect ไป URL แบบ GET
+  // (?page=owner-dashboard&osession=) เสมอหลัง login สำเร็จ ให้ refresh/ย้อนกลับปลอดภัย
   var session = createOwnerSession_(ss, work);
-  return renderPublicPage_('ผลงานของฉัน', renderOwnerDashboardBody_(ss, work, baseUrl, session.id));
+  return renderPublicPage_('เข้าสู่ระบบสำเร็จ', renderOwnerLoginBounceBody_(baseUrl, session.id));
 }
 
 /**
@@ -242,9 +244,10 @@ function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
     return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'], [], prevValues));
   }
 
-  // 2026-10-07 ตามที่ผู้ใช้ขอ — ข้ามหน้าระหว่างทาง "เข้าสู่ระบบสำเร็จ" ไปแสดงหน้าผลงานโดยตรงเลย
+  // 2026-10-07 กลับมาใช้หน้า bounce + redirect (ดูเหตุผลที่ handleOwnerLoginSubmitPost_ ด้านบน — render
+  // dashboard ตรงใน POST response ทำให้ refresh/ย้อนกลับ resubmit POST เดิมจน script.google.com ปฏิเสธการเชื่อมต่อ)
   var session = createOwnerSession_(ss, matchedWork);
-  return renderPublicPage_('ผลงานของฉัน', renderOwnerDashboardBody_(ss, matchedWork, baseUrl, session.id));
+  return renderPublicPage_('เข้าสู่ระบบสำเร็จ', renderOwnerLoginBounceBody_(baseUrl, session.id));
 }
 
 // ================= Render =================
@@ -407,10 +410,14 @@ function renderOwnerLoginCandidatesBody_(candidates, baseUrl, sessionToken, erro
  *  อยู่ดี (renderOwnerDashboardRoute_) จึงไม่ใช่จุดอ่อนด้านความปลอดภัย แค่ช่วยให้ refresh หน้าใช้ URL ที่ถูกต้อง */
 function renderOwnerLoginBounceBody_(baseUrl, sessionId) {
   var url = baseUrl + '?page=owner-dashboard&osession=' + encodeURIComponent(sessionId);
+  // 2026-10-07 ใช้ location.replace() แทน location.href — แทนที่หน้าผลลัพธ์ของ POST นี้ใน browser history
+  // เลย (ไม่เพิ่ม entry ใหม่) กัน refresh/กดย้อนกลับ ไปเจอ POST เดิมแล้วถูก resubmit ซ้ำ (ต้นเหตุบั๊กจริงที่เจอ:
+  // script.google.com ปฏิเสธการเชื่อมต่อแทนที่จะถามส่งฟอร์มซ้ำตามปกติ) ต้องเป็น top-level เสมอ (ห้ามอยู่ใน
+  // iframe ซ้อน) ลอง top.location ก่อนเสมอ ตกไป location ธรรมดาเฉพาะกรณี cross-origin เข้าไม่ถึง top จริงๆ
   return '' +
     '<div class="detail-card"><p>เข้าสู่ระบบสำเร็จ กำลังพาไปหน้าผลงานของท่าน...</p>' +
     '<p><a target="_top" class="btn-primary" href="' + escapeHtml_(url) + '" style="display:inline-block;text-decoration:none;text-align:center">ไปที่หน้าผลงานของฉัน</a></p></div>' +
-    '<script>(function () { var u = ' + JSON.stringify(url) + '; try { top.location.href = u; } catch (err) { location.href = u; } })();</script>';
+    '<script>(function () { var u = ' + JSON.stringify(url) + '; try { top.location.replace(u); } catch (err) { location.replace(u); } })();</script>';
 }
 
 /**
