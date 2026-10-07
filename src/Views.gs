@@ -1663,8 +1663,6 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
       escapeHtml_(row.specialty_name) + '</option>';
   }).join('');
 
-  var selectedPositionRow = positionRows.filter(function (row) { return row.position_name === values.position; })[0];
-  var showSpecialty = !!selectedPositionRow && specialtyRows.some(function (row) { return row.position_code === selectedPositionRow.position_code; });
 
   // 2026-09-21: auto-suggest คณะกรรมการที่รับผิดชอบ (ChairMaster) ตามตำแหน่ง+ด้าน/สาขาที่เลือก — ฝัง lookup
   // ทั้งหมดเป็น JSON ให้ client JS ตัดสินใจแบบ reactive (ไม่มี AJAX ในระบบนี้) ฝั่ง backend validate ซ้ำเสมอที่
@@ -1699,13 +1697,12 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '</div>' +
     '<div class="field" id="reg-title-other-field" style="' + (showTitleOther ? '' : 'display:none') + '">' +
     '<label>ระบุคำนำหน้าชื่อ</label><input class="input" name="reg_title_name_other" id="reg-title-name-other" value="' + (showTitleOther ? v('title_name') : '') + '" placeholder="ระบุคำนำหน้าชื่อ (ใช้เฉพาะกรณีเลือกอื่น ๆ)"></div>' +
-    '<div class="field-row">' +
-    '<div class="field"><label>ตำแหน่ง</label><select class="input" name="reg_position" id="reg-position">' + positionOptionsHtml + '</select>' +
+    '<div class="field-row field-row-position">' +
+    '<div class="field field-pos"><label>ตำแหน่ง</label><select class="input" name="reg_position" id="reg-position">' + positionOptionsHtml + '</select>' +
     (positionRows.length ? '' : '<p class="hint" style="margin-top:4px">ยังไม่มีตำแหน่งใน Master Data — เพิ่มได้ที่ Admin &gt; ข้อมูลหลัก</p>') + '</div>' +
-    '<div class="field"><label>เลขตำแหน่งเดิม</label><input class="input" name="reg_position_no" value="' + v('position_no') + '"></div>' +
+    '<div class="field field-branch" id="reg-specialty-field"><label>ด้าน/สาขา</label><select class="input" name="reg_specialty" id="reg-specialty">' + specialtyOptionsHtml + '</select></div>' +
+    '<div class="field field-posno"><label>เลขตำแหน่งเดิม</label><input class="input" name="reg_position_no" value="' + v('position_no') + '"></div>' +
     '</div>' +
-    '<div class="field" id="reg-specialty-field" style="' + (showSpecialty ? '' : 'display:none') + '">' +
-    '<label>ด้าน/สาขา</label><select class="input" name="reg_specialty" id="reg-specialty">' + specialtyOptionsHtml + '</select></div>' +
     '<div class="field" id="reg-committee-field" style="display:none">' +
     '<label>คณะกรรมการที่รับผิดชอบ</label><div id="reg-committee-info"></div></div>' +
     '</div>' +
@@ -1754,31 +1751,46 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     REG_LAYOUT_TOGGLE_SCRIPT_;
 }
 
-/** ซ่อน/โชว์+กรอง option ฟิลด์ "ด้าน/สาขา" ตามตำแหน่งที่เลือก (generic ทุกตำแหน่ง, รอบ 3) — ไม่มี framework
- *  vanilla change listener ธรรมดา กรอง option ให้เหลือเฉพาะ position_code ที่ตรงกับตำแหน่งที่เลือก
- *  (data-position-code บน <option> ทั้งของ position select และ specialty select) */
+/**
+ * ด้าน/สาขา ตามตำแหน่งที่เลือก (2026-10-07 แก้ตาม requirement จริง — เดิมมี placeholder "-- เลือก --" เสมอแม้
+ * เหลือตัวเลือกเดียว ผู้ใช้ต้องคลิกเลือกเองอยู่ดี) ตอนนี้แบ่ง 3 กรณีตามจำนวนตัวเลือกที่ตรงกับตำแหน่ง:
+ *   0 ตัวเลือก -> ช่อง disabled โชว์ "-" (ค่าว่างคือค่าที่ถูกต้องอยู่แล้วสำหรับตำแหน่งที่ไม่มีด้าน/สาขาใน
+ *     Master Data — ไม่ต้อง hidden input เสริม เพราะ blank คือค่าที่ต้องการจริงๆ ไม่ใช่ค่าที่ "หาย")
+ *   1 ตัวเลือก  -> auto-select ทันที ไม่ใส่ placeholder เลย (ผู้ใช้ไม่ต้องคลิกซ้ำ) ยังเป็น <select> ธรรมดา
+ *     (ไม่ disabled) เพื่อให้ค่าถูกส่งไปตอน submit แน่นอน (select ที่ disabled จะไม่ถูกส่งค่าตาม HTML spec —
+ *     ถ้า disable ต้องมี hidden input คู่กันเสมอ เลยเลือกไม่ disable แทน ปลอดภัยกว่า ไม่มีจุดพลาด)
+ *   >1 ตัวเลือก -> ปกติ มี placeholder "-- เลือกด้าน/สาขา --" ให้ผู้ใช้เลือกเอง เหมือนเดิม
+ * เปลี่ยนตำแหน่งใหม่ = clear ค่าด้าน/สาขาเดิมทิ้งก่อนเสมอ แล้วคำนวณ 3 กรณีข้างบนใหม่ทันที (กันค่าตำแหน่งก่อน
+ * หน้าค้าง) — data-position-code บน <option> ทั้งของ position select และ specialty select (ฝังมาจาก server)
+ */
 var REG_DYNAMIC_SCRIPT_ = '' +
   '<script>' +
   'document.addEventListener("DOMContentLoaded", function () {' +
   'var posSel = document.getElementById("reg-position");' +
-  'var specField = document.getElementById("reg-specialty-field");' +
   'var specSel = document.getElementById("reg-specialty");' +
   'if (!posSel || !specSel) return;' +
-  'var allSpecOptions = Array.prototype.slice.call(specSel.options);' +
-  'function syncVisibility() {' +
+  'var allSpecOptions = Array.prototype.slice.call(specSel.options).filter(function (opt) { return opt.value; });' +
+  'function getBranchesByPosition(posCode) {' +
+  'return allSpecOptions.filter(function (opt) { return opt.dataset.positionCode === posCode; });' +
+  '}' +
+  'function onPositionChange() {' +
+  'specSel.innerHTML = ""; specSel.disabled = false;' + // clear ค่าเดิมก่อนเสมอ กันค้างจากตำแหน่งก่อนหน้า
   'var posCode = (posSel.selectedOptions[0] || {}).dataset ? posSel.selectedOptions[0].dataset.positionCode : "";' +
-  'var matching = allSpecOptions.filter(function (opt) { return opt.value && opt.dataset.positionCode === posCode; });' +
-  'specSel.innerHTML = "";' +
-  'matching.forEach(function (opt) { specSel.appendChild(opt.cloneNode(true)); });' +
-  'if (matching.length) {' +
-  'specSel.insertBefore(new Option("-- เลือกด้าน/สาขา --", ""), specSel.firstChild);' +
-  'specField.style.display = "";' +
+  'var options = getBranchesByPosition(posCode);' +
+  'if (options.length === 0) {' +
+  'specSel.appendChild(new Option("-", "")); specSel.disabled = true;' +
+  '} else if (options.length === 1) {' +
+  'specSel.appendChild(options[0].cloneNode(true)); specSel.value = options[0].value;' +
   '} else {' +
-  'specField.style.display = "none"; specSel.value = "";' +
+  'specSel.appendChild(new Option("-- เลือกด้าน/สาขา --", ""));' +
+  'options.forEach(function (opt) { specSel.appendChild(opt.cloneNode(true)); });' +
   '}' +
   '}' +
-  'posSel.addEventListener("change", syncVisibility);' +
-  'syncVisibility();' +
+  'posSel.addEventListener("change", onPositionChange);' +
+  // ค่าด้าน/สาขาที่เคยกรอกไว้ (กรณี re-render หลัง validate ไม่ผ่าน) ถูกคงไว้เองโดยอัตโนมัติอยู่แล้ว เพราะ
+  // option ต้นฉบับใน allSpecOptions มี attribute "selected" จาก SSR ติดมาด้วย (specialtyOptionsHtml ฝั่ง
+  // server) และ cloneNode(true) จะ clone attribute นั้นไปด้วยตอน rebuild — ไม่ต้องเขียนโค้ด restore ซ้ำ
+  'onPositionChange();' +
   '});' +
   '</script>';
 
@@ -2262,6 +2274,11 @@ var STAFF_CSS_ = '' +
   '.reg-section-title{font-size:.8rem;font-weight:700;color:var(--navy);margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border);letter-spacing:.2px;}' +
   '.field-row-name .field-title{flex:1 1 110px;}' +
   '.field-row-name .field-first,.field-row-name .field-last{flex:2 1 140px;}' +
+  // ตำแหน่ง | ด้าน/สาขา | เลขตำแหน่งเดิม บรรทัดเดียวกันบน desktop (2026-10-07 แก้ตาม requirement จริง — เดิม
+  // ด้าน/สาขา อยู่คนละ row ทำให้ตกบรรทัดใหม่เสมอ) สัดส่วน 40:30:30 ด้วย CSS Grid ตามที่ระบุ
+  '.field-row-position{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;}' +
+  '.field-row-position .field{margin-bottom:0;}' +
+  '.field-branch select:disabled{background:#f2f4f6;color:var(--muted);}' +
   // ข้อมูลหน่วยงาน (2026-10-07, Master Data เขตสุขภาพที่ 11) — ประเภทหน่วยงาน:ชื่อหน่วยงาน สัดส่วน 30:70 บน desktop
   '.field-row-org{flex-wrap:wrap;}.field-row-org .field-org-type{flex:1 1 30%;}.field-row-org .field-org-name{flex:2 1 70%;}' +
   '.input[readonly]{background:#f2f4f6;color:var(--muted);}' +
@@ -2280,6 +2297,9 @@ var STAFF_CSS_ = '' +
   '.org-suggest-name{font-size:.86rem;font-weight:600;color:var(--text);}' +
   '.org-suggest-meta{font-size:.74rem;color:var(--muted);margin-top:1px;}' +
   '.org-suggest-empty{padding:12px;font-size:.82rem;color:var(--muted);text-align:center;}' +
+  // breakpoint 768px ตามที่ระบุเฉพาะแถว ตำแหน่ง/ด้าน-สาขา/เลขตำแหน่งเดิม (คนละ breakpoint จาก field-row อื่นๆ
+  // ที่ stack ที่ 640px — ทำตามที่ผู้ใช้ระบุไว้ตรงๆ)
+  '@media (max-width:768px){.field-row-position{grid-template-columns:1fr;}}' +
   '@media (max-width:640px){' +
   '.reg-form{padding:16px;}' +
   '.field-row{flex-wrap:wrap;}' +
