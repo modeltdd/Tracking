@@ -717,6 +717,24 @@ function renderRegistryExcelViewBody_(ss, pageResult, rp, totalAllCount, bucketC
     return '<option value="' + n + '"' + (rp.per === n ? ' selected' : '') + '>' + n + ' รายการ/หน้า</option>';
   }).join('');
 
+  // สรุป "ตัวกรองที่ใช้งาน" แบบอ่านง่าย (2026-10-07 ตามที่ผู้ใช้ขอ ข้อ 4) — ใช้ label จริงจากค่าที่เลือกไว้แล้ว
+  // (stationsMap สำหรับ state, ไม่สร้างข้อความใหม่) แสดงได้แม้ Filter จะถูกยุบอยู่
+  var activeFilterLabels = [];
+  if (rp.q) activeFilterLabels.push('ค้นหา: ' + rp.q);
+  if (rp.state) {
+    var stateSt = stationsMap[rp.state];
+    activeFilterLabels.push('State: ' + (stateSt ? stateSt.station_order + ' ' + stateSt.station_name : rp.state));
+  }
+  if (rp.resp) activeFilterLabels.push('ผู้รับผิดชอบ: ' + rp.resp);
+  if (rp.org) activeFilterLabels.push('หน่วยงาน: ' + rp.org);
+  if (rp.position) activeFilterLabels.push('ตำแหน่ง: ' + rp.position);
+  if (rp.specialty) activeFilterLabels.push('ด้าน: ' + rp.specialty);
+  if (rp.province) activeFilterLabels.push('จังหวัด: ' + rp.province);
+  if (rp.fy) activeFilterLabels.push('ปีงบ: ' + rp.fy);
+  if (rp.month) activeFilterLabels.push('เดือน: ' + (THAI_MONTHS_[Number(rp.month) - 1] || rp.month));
+  var hasActiveFilter = activeFilterLabels.length > 0;
+  var clearFilterUrl = baseUrl + '?page=registry&view=excel';
+
   var filterFormHtml = '' +
     '<form method="get" target="_top" action="' + baseUrl + '" class="excel-toolbar-form">' +
     '<input type="hidden" name="page" value="registry"><input type="hidden" name="view" value="excel">' +
@@ -857,8 +875,20 @@ function renderRegistryExcelViewBody_(ss, pageResult, rp, totalAllCount, bucketC
       (hasFilter ? ' จาก ' + totalAllCount : '') + ')</span>' + nextLink + '</div>';
   }
 
+  // ยุบ/ขยาย Filter ได้ (2026-10-07 ตามที่ผู้ใช้ขอ) — <details>/<summary> ล้วน ไม่มี JS/localStorage (ตั้งใจ
+  // ไม่จำสถานะข้ามหน้า — ตามที่ผู้ใช้บอกว่า "ไม่จำเป็น ถ้าทำให้ซับซ้อน") ปิดเป็นค่าเริ่มต้นเสมอทุกครั้งที่โหลด
+  // หน้า แม้จะมี filter ใช้งานอยู่ก็ตาม — badge/สรุปตัวกรอง + ปุ่มล้างด่วน อยู่ในแถบ summary เห็นได้แม้ยุบอยู่
+  var filterSummaryBarHtml = '' +
+    '<summary class="excel-filter-summary">' +
+    '<span class="excel-filter-summary-title">&#128269; ค้นหา / ตัวกรอง</span>' +
+    (hasActiveFilter ? '<span class="excel-filter-badge">ใช้งาน ' + activeFilterLabels.length + ' ตัวกรอง</span>' : '') +
+    '</summary>' +
+    (hasActiveFilter ? '<div class="excel-filter-active-summary">' + escapeHtml_(activeFilterLabels.join(' • ')) +
+      ' <a target="_top" class="excel-filter-quickclear" href="' + clearFilterUrl + '">ล้างตัวกรอง</a></div>' : '');
+
   return flashHtml + viewToggleHtml +
-    '<div class="excel-toolbar">' + filterFormHtml + toolbarMetaHtml + '</div>' +
+    '<details class="excel-filter-details">' + filterSummaryBarHtml + filterFormHtml + '</details>' +
+    toolbarMetaHtml +
     '<div class="excel-sheet">' + tableHtml + '</div>' +
     pagerHtml;
 }
@@ -2327,14 +2357,26 @@ var STAFF_CSS_ = '' +
   '.registry-view-btn{padding:7px 16px;border-radius:999px;border:1px solid var(--border);background:#fff;color:var(--muted);text-decoration:none;font-size:.82rem;font-weight:600;}' +
   '.registry-view-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}' +
   // Toolbar (ข้อ 2/10) — พื้นอ่อนบางๆ แยกจากตัวตารางที่ต้องขาวล้วน ไม่ใช้การ์ดหนา/เงา
-  '.excel-toolbar{background:#f7f8f9;border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;}' +
-  '.excel-toolbar-form{background:transparent;border:none;padding:0;}' +
   '.excel-toolbar-buttons{display:flex;gap:8px;align-items:center;margin-top:4px;}' +
   '.excel-toolbar-buttons .btn-primary{width:auto;flex-shrink:0;padding:9px 20px;margin-top:0;}' +
-  '.excel-toolbar-meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);font-size:.8rem;}' +
+  // แถบ "ทั้งหมด N รายการ + ปุ่ม Export" (2026-10-07 แยกเป็นแถบของตัวเองนอก Filter ที่ยุบได้ ตามที่ผู้ใช้ขอ
+  // ข้อ 6 — อยู่นอก <details> เสมอ กดดาวน์โหลดได้โดยไม่ต้องเปิด Filter) minimal: ขาว/กรอบบาง/ไม่มีสีเยอะ (ข้อ 9)
+  '.excel-toolbar-meta{display:flex;flex-wrap:wrap;gap:14px;align-items:center;background:#fff;' +
+  'border:1px solid var(--border);border-radius:11px;padding:12px 14px;margin-bottom:10px;font-size:.8rem;}' +
   '.excel-toolbar-count{font-weight:700;color:var(--navy);}' +
   '.excel-toolbar-sort{color:var(--muted);}' +
   '.excel-export-primary{width:auto;margin-top:0;padding:8px 18px;font-size:.85rem;}' +
+  // Filter ยุบ/ขยายได้ (2026-10-07 ตามที่ผู้ใช้ขอ) — <details> ล้วน ไม่มี JS ปิดเป็นค่าเริ่มต้นเสมอ
+  '.excel-filter-details{background:#fff;border:1px solid var(--border);border-radius:11px;margin-bottom:10px;overflow:hidden;}' +
+  '.excel-filter-summary{list-style:none;cursor:pointer;padding:12px 14px;display:flex;align-items:center;gap:10px;' +
+  'font-size:.88rem;font-weight:600;color:var(--navy);user-select:none;}' +
+  '.excel-filter-summary::-webkit-details-marker{display:none;}' +
+  '.excel-filter-summary::after{content:"\\25BC";margin-left:auto;font-size:.7rem;color:var(--muted);transition:transform .15s;}' +
+  '.excel-filter-details[open] .excel-filter-summary::after{transform:rotate(180deg);}' +
+  '.excel-filter-badge{font-size:.72rem;font-weight:700;color:#fff;background:var(--teal);padding:2px 9px;border-radius:999px;}' +
+  '.excel-filter-active-summary{padding:0 14px 12px;margin-top:-4px;font-size:.78rem;color:var(--muted);}' +
+  '.excel-filter-quickclear{color:var(--teal);font-weight:600;text-decoration:underline;margin-left:4px;}' +
+  '.excel-toolbar-form{background:transparent;border:none;padding:0 14px 14px;}' +
   // ตัวตารางเอง — พื้นขาวสนิท กรอบเทาบาง ไม่มีมุมโค้ง/เงาแบบการ์ด ให้ความรู้สึก "เปิดไฟล์ Excel" มากที่สุด
   '.excel-sheet{background:#fff;border:1px solid #c9ced3;border-radius:2px;}' +
   '.excel-table-scroll{overflow:auto;max-height:74vh;}' +
