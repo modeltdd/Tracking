@@ -191,8 +191,10 @@ function handleOwnerLoginSubmitPost_(ss, e, baseUrl) {
     return renderPublicPage_('เข้าสู่ระบบเจ้าของผลงาน', renderOwnerLoginFormBody_(baseUrl, ['ชื่อหรือรหัสผ่านไม่ถูกต้อง'], [], {}));
   }
 
+  // 2026-10-07 ตามที่ผู้ใช้ขอ — ข้ามหน้าระหว่างทาง "เข้าสู่ระบบสำเร็จ" ไปแสดงหน้าผลงานโดยตรงเลย (ยังสร้าง
+  // session จริงเหมือนเดิมทุกประการ แค่ไม่ต้องกดปุ่ม/รอ JS redirect อีกขั้น)
   var session = createOwnerSession_(ss, work);
-  return renderPublicPage_('เข้าสู่ระบบสำเร็จ', renderOwnerLoginBounceBody_(baseUrl, session.id));
+  return renderPublicPage_('ผลงานของฉัน', renderOwnerDashboardBody_(ss, work, baseUrl, session.id));
 }
 
 /**
@@ -240,8 +242,9 @@ function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
     return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'], [], prevValues));
   }
 
+  // 2026-10-07 ตามที่ผู้ใช้ขอ — ข้ามหน้าระหว่างทาง "เข้าสู่ระบบสำเร็จ" ไปแสดงหน้าผลงานโดยตรงเลย
   var session = createOwnerSession_(ss, matchedWork);
-  return renderPublicPage_('เข้าสู่ระบบสำเร็จ', renderOwnerLoginBounceBody_(baseUrl, session.id));
+  return renderPublicPage_('ผลงานของฉัน', renderOwnerDashboardBody_(ss, matchedWork, baseUrl, session.id));
 }
 
 // ================= Render =================
