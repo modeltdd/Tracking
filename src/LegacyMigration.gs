@@ -614,3 +614,145 @@ function cleanupDuplicateLegacyImports() {
 
 /** เครื่องหมายกำกับแถวที่มาจากการ import ข้อมูลเก่า (ใช้ใน created_by/action_by) — ค้นหา/ลบทดสอบภายหลังได้ง่าย */
 var LEGACY_IMPORT_MARKER_ = 'legacy-import@system';
+
+/**
+ * ตรวจสอบ Works.received_date ของงาน Legacy เทียบกับคอลัมน์ "วันที่ลงรับ" จริงในชีต LegacyImport (2026-10-08
+ * ตามที่ผู้ใช้ขอ — read-only ล้วน ไม่แก้อะไรเลย) ผู้ใช้รายงาน 69-176 (นางสาวปิยะภรณ์ ศรีแก้ว) แสดงวันที่รับผลงาน
+ * ผิด (24/09/2569) ทั้งที่ Excel ต้นฉบับระบุ "วันที่ลงรับ" = 12/6/2569 — ย้อนดู auditLegacyCleanupPlan()/
+ * cleanupDuplicateLegacyImports() ด้านบนพบว่าข้อมูล Legacy เคยถูก import ซ้ำหลายรอบด้วยโค้ดหลายเวอร์ชันนอก git
+ * มาก่อน (ไม่อยู่ใน git ที่ตรวจสอบได้) งานที่ "touched" (มีคน action ต่อแล้ว) ไม่ถูกลบ+import ใหม่ตอน cleanup —
+ * received_date ของบางรายการจึงอาจค้างค่าผิดจากรอบ import เก่าที่ parsing ยังไม่สมบูรณ์ ฟังก์ชันนี้ compute ค่า
+ * ที่ถูกต้องจาก LegacyImport สดด้วย correctLegacyReceivedDate_() ตัวเดียวกับที่ migrateLegacyRegistrations()
+ * ใช้เป๊ะ (ไม่สร้าง parsing logic คู่ขนาน) จับคู่ด้วย legacy_seq (key เดียวกับที่ระบบใช้ตอน migrate มาตั้งแต่ต้น
+ * ไม่ใช้เลขแถว Excel ตามที่ผู้ใช้กำชับ) แล้วเทียบกับค่าปัจจุบัน คืน { result, toFix } ให้
+ * fixReceiveDatesFromLegacyExcel() เรียกซ้ำได้ (audit/update คนละฟังก์ชัน ไม่ปนกัน)
+ */
+function auditReceiveDates() {
+  var ss = getSpreadsheet_();
+  var legacyRows = readLegacySheetRaw_(ss);
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS)).filter(function (w) {
+    return w.created_by === LEGACY_IMPORT_MARKER_ && w.legacy_seq;
+  });
+
+  // legacy_seq -> แถวดิบ LegacyImport ทั้งหมดที่ seq นี้ (เช็ค ambiguous ก่อนเชื่อ)
+  var seqToRows = {};
+  legacyRows.forEach(function (row) {
+    var seq = String(row[LEGACY_COL_.SEQ] || '').trim();
+    if (!seq) return;
+    (seqToRows[seq] = seqToRows[seq] || []).push(row);
+  });
+
+  var result = { total: works.length, correct: 0, wrong: 0, empty: 0, noMatch: 0, ambiguous: 0, badFormat: 0 };
+  var toFix = [];
+  var mismatchRows = [];
+  var problemRows = [];
+
+  works.forEach(function (w) {
+    var seq = String(w.legacy_seq);
+    var name = (w.title_name + w.first_name + ' ' + w.last_name).trim();
+    var matches = seqToRows[seq] || [];
+    var currentDate = w.received_date ? new Date(w.received_date) : null;
+    var hasCurrentDate = currentDate && !isNaN(currentDate.getTime());
+    var currentStr = hasCurrentDate ? formatDateTh_(currentDate) : '(ว่าง)';
+
+    if (!matches.length) {
+      result.noMatch++;
+      problemRows.push(w.tracking_no + ' ' + name + ': ไม่พบ legacy_seq="' + seq + '" ใน LegacyImport');
+      return;
+    }
+    if (matches.length > 1) {
+      result.ambiguous++;
+      problemRows.push(w.tracking_no + ' ' + name + ': legacy_seq="' + seq + '" ซ้ำใน LegacyImport (' + matches.length + ' แถว) — ไม่แก้อัตโนมัติ');
+      return;
+    }
+
+    var correctDate = correctLegacyReceivedDate_(matches[0][LEGACY_COL_.RECEIVED]);
+    if (!correctDate) {
+      result.badFormat++;
+      problemRows.push(w.tracking_no + ' ' + name + ': วันที่ใน Excel แปลงไม่ได้ (' + JSON.stringify(matches[0][LEGACY_COL_.RECEIVED]) + ')');
+      return;
+    }
+
+    var excelStr = formatDateTh_(correctDate);
+    var sameDay = hasCurrentDate && currentDate.getFullYear() === correctDate.getFullYear() &&
+      currentDate.getMonth() === correctDate.getMonth() && currentDate.getDate() === correctDate.getDate();
+    if (sameDay) {
+      result.correct++;
+      return;
+    }
+    if (!hasCurrentDate) result.empty++; else result.wrong++;
+    toFix.push({ work_id: w.work_id, tracking_no: w.tracking_no, name: name, old: currentStr, newDate: correctDate });
+    mismatchRows.push(w.tracking_no + ' ' + name + ' | ปัจจุบัน: ' + currentStr + ' | Excel: ' + excelStr + ' | ควรเป็น: ' + excelStr);
+  });
+
+  Logger.log('=== auditReceiveDates สรุป === งาน Legacy ทั้งหมด: ' + result.total +
+    ' | ตรงอยู่แล้ว: ' + result.correct + ' | ผิด (ต้องแก้): ' + result.wrong +
+    ' | ว่าง (ต้องแก้): ' + result.empty + ' | ไม่พบใน LegacyImport: ' + result.noMatch +
+    ' | legacy_seq ซ้ำใน LegacyImport (ambiguous): ' + result.ambiguous +
+    ' | วันที่ใน Excel แปลงไม่ได้: ' + result.badFormat);
+  Logger.log('รายการที่ต้องแก้ (' + toFix.length + ' รายการ) ตัวอย่าง 30 แรก:');
+  mismatchRows.slice(0, 30).forEach(function (line) { Logger.log(' - ' + line); });
+  if (mismatchRows.length > 30) Logger.log('... และอีก ' + (mismatchRows.length - 30) + ' รายการ (ตัดแสดงแค่ 30 แรก)');
+  if (problemRows.length) {
+    Logger.log('รายการที่ match ไม่ได้/ambiguous/format ผิด (' + problemRows.length + ' รายการ) ตัวอย่าง 30 แรก:');
+    problemRows.slice(0, 30).forEach(function (line) { Logger.log(' - ' + line); });
+  }
+
+  return { result: result, toFix: toFix };
+}
+
+/**
+ * Bulk-fix Works.received_date ของงาน Legacy ตามคอลัมน์ "วันที่ลงรับ" ใน LegacyImport (2026-10-08 ตามที่ผู้ใช้
+ * ขอ) — เรียก auditReceiveDates() ซ้ำเพื่อหา toFix list เดียวกันเป๊ะ (ห้าม logic คู่ขนาน, audit/update แยก
+ * ฟังก์ชันกันตามที่ผู้ใช้ขอ) แก้เฉพาะ Works.received_date เท่านั้น ห้ามแตะ StatusHistory เด็ดขาด (คนละความหมาย
+ * กันตามที่ผู้ใช้กำชับ — StatusHistory.action_date/created_at ไม่ใช่วันที่ลงรับครั้งแรก) backup ค่าเดิมลงชีต
+ * "ReceiveDateFixBackup" ก่อนเขียนทับทุกครั้ง (append-only ไม่ลบของเดิม รันกี่รอบก็ย้อนดูได้ครบ) เขียนด้วย
+ * batch setValues() ครั้งเดียว (อ่านทั้งชีตมาแก้ในหน่วยความจำแล้วเขียนกลับทีเดียว) ไม่ loop setValue ทีละเซลล์
+ * ปลอดภัยรันซ้ำได้ (idempotent — รอบสอง audit จะรายงาน "ตรงอยู่แล้ว" ทั้งหมด ไม่มีอะไรให้แก้) รันเองเท่านั้น
+ * ห้าม auto-run
+ */
+function fixReceiveDatesFromLegacyExcel() {
+  var ss = getSpreadsheet_();
+  var audit = auditReceiveDates();
+  var toFix = audit.toFix;
+  if (!toFix.length) {
+    Logger.log('=== fixReceiveDatesFromLegacyExcel: ไม่มีรายการต้องแก้ (received_date ตรงกับ LegacyImport หมดแล้ว) ===');
+    return;
+  }
+
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var headers = worksSheet.getRange(1, 1, 1, worksSheet.getLastColumn()).getValues()[0];
+  var workIdCol = headers.indexOf('work_id');
+  var receivedCol = headers.indexOf('received_date');
+  var lastRow = worksSheet.getLastRow();
+  var data = worksSheet.getRange(2, 1, lastRow - 1, worksSheet.getLastColumn()).getValues();
+
+  var rowByWorkId = {};
+  data.forEach(function (row, i) { rowByWorkId[row[workIdCol]] = i; });
+
+  // backup ค่าเดิมก่อนแก้ (append-only — ไม่เคยลบ/เขียนทับชีตนี้)
+  var backupSheet = ss.getSheetByName('ReceiveDateFixBackup');
+  if (!backupSheet) {
+    backupSheet = ss.insertSheet('ReceiveDateFixBackup');
+    backupSheet.appendRow(['fixed_at', 'work_id', 'tracking_no', 'name', 'old_received_date', 'new_received_date']);
+    backupSheet.getRange(1, 1, 1, 6).setFontWeight('bold');
+  }
+  var nowTs = now_();
+  var backupRows = toFix.map(function (f) {
+    return [nowTs, f.work_id, f.tracking_no, f.name, f.old, formatDateTh_(f.newDate)];
+  });
+  backupSheet.getRange(backupSheet.getLastRow() + 1, 1, backupRows.length, 6).setValues(backupRows);
+
+  // แก้ในหน่วยความจำก่อน แล้วเขียนกลับทั้งก้อนทีเดียว (batch — ไม่ loop setValue ทีละแถว)
+  var fixed = 0;
+  toFix.forEach(function (f) {
+    var rowIdx = rowByWorkId[f.work_id];
+    if (rowIdx === undefined) return; // ไม่ควรเกิด (audit อ่านจาก Works เหมือนกัน) กันพังไว้เฉยๆ
+    data[rowIdx][receivedCol] = f.newDate;
+    fixed++;
+  });
+  worksSheet.getRange(2, 1, data.length, headers.length).setValues(data);
+
+  Logger.log('=== fixReceiveDatesFromLegacyExcel เสร็จ === แก้ received_date ' + fixed +
+    ' รายการ (backup ค่าเดิมไว้ที่ชีต "ReceiveDateFixBackup" แล้ว) — StatusHistory ไม่ถูกแตะเลย');
+}
