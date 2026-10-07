@@ -563,6 +563,133 @@ function migrateAddState33() {
 }
 
 /**
+ * ตรวจสอบว่า state 3.3 ถูกใช้งานจริงบนชีตจริงหรือไม่ (2026-10-07 ก่อนปิด/ลบ 3.3 ตามที่ผู้ใช้ขอ) — เช็คครบ 4 จุด:
+ * Works.current_station_key, StatusHistory.from_station/to_station, WorkflowTransitions ที่ชี้ไป/จาก 3.3
+ * รันจาก Editor ก่อนเสมอ แล้วดู Log — ไม่ว่าผลจะเจอหรือไม่เจอ migrateAddState3Hub() จะ "ปิด active" เท่านั้น
+ * ไม่ลบแถวทิ้งอยู่ดี (ปลอดภัยกว่า ไม่เสี่ยง Timeline/ประวัติเก่าพังแม้ปัจจุบันจะยังไม่มีงานใดอ้างอิงก็ตาม)
+ */
+function auditState33Usage() {
+  var ss = getSpreadsheet_();
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var worksOn33 = works.filter(function (w) { return w.current_station_key === 's3_3'; });
+  Logger.log('1) Works ที่ current_station_key = s3_3 อยู่ตอนนี้: ' + worksOn33.length + ' รายการ' +
+    (worksOn33.length ? ' (tracking_no: ' + worksOn33.map(function (w) { return w.tracking_no; }).join(', ') + ')' : ''));
+
+  var history = readSheetAsObjects_(ss.getSheetByName(SHEET.STATUS_HISTORY));
+  var historyOn33 = history.filter(function (h) { return h.from_station === 's3_3' || h.to_station === 's3_3'; });
+  Logger.log('2) StatusHistory ที่อ้างอิง s3_3 (from หรือ to): ' + historyOn33.length + ' แถว');
+
+  var transitions = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_TRANSITIONS));
+  var transOn33 = transitions.filter(function (t) { return t.from_state === 's3_3' || t.to_state === 's3_3'; });
+  Logger.log('3) WorkflowTransitions ที่ชี้ไป/จาก s3_3: ' + transOn33.map(function (t) { return t.transition_id + '(active=' + t.active + ')'; }).join(', '));
+
+  Logger.log('=== สรุป: ' + (worksOn33.length || historyOn33.length
+    ? 'มีข้อมูลจริงอ้างอิง s3_3 อยู่ — ห้ามลบแถว state ทิ้ง ต้องปิด active เท่านั้น (migrateAddState3Hub() ทำแบบนี้อยู่แล้ว)'
+    : 'ไม่พบข้อมูลจริงอ้างอิง s3_3 เลยตอนนี้ — แต่ migrateAddState3Hub() ยังเลือกปิด active แทนการลบอยู่ดี เพื่อความปลอดภัยสูงสุด (กันกรณี StatusHistory เก่าที่อาจตกหล่นจากการตรวจ หรือมีงานในอนาคตที่อ้างอิงย้อนหลัง)') + ' ===');
+}
+
+/**
+ * เพิ่ม state "3" เป็นขั้นตอนจริงคั่นกลางระหว่าง 2 กับ 3.1/3.2 (2026-10-07 ตามที่ผู้ใช้ขอ) — เดิม 2 แตกสายตรงไป
+ * 3.1/3.2 เลย (ยืนยันกับผู้ใช้แล้วว่าต้องการให้เป็นขั้นตอนจริงที่เจ้าหน้าที่กดส่งเอกสารเข้า 3 ก่อน แยกเป็นคนละ
+ * action กับการตัดสินครบถ้วน/ไม่ครบถ้วน เหมือน pattern ของ state 7 ที่มีอยู่แล้ว: 6->7(bare)->แตกสาย 7.1-7.4)
+ *
+ * ทำ 3 อย่าง (idempotent รันซ้ำได้ปลอดภัย):
+ *  1. เพิ่ม state "3" (ถ้ายังไม่มี)
+ *  2. ปิด active ของ s2_s3_1/s2_s3_2 เดิม (ไม่ลบ) + เพิ่ม s2_s3, s3_s3_1, s3_s3_2 ใหม่
+ *  3. ปิด active ของ s3_3 + s3_2_s3_3/s3_3_s2 (เลิกใช้) + เปิด active ของ s3_2_s2 เดิมกลับมา (เส้นทางที่มีอยู่
+ *     แล้วก่อนเพิ่ม 3.3 ครั้งก่อน — reuse ของเดิม ไม่ใช่เส้นทางใหม่ที่เดาขึ้นเอง ตามที่ผู้ใช้กำชับ)
+ *
+ * ห้าม renumber state 4 เป็นต้นไป (ไม่แตะเลย) ห้ามเปลี่ยน code 3.1/3.2 (คงเดิมทุกตัวอักษร) ไม่ลบประวัติย้อนหลัง
+ * (ปิด active เท่านั้นทุกจุด) รันเองจาก Apps Script Editor แนะนำให้รัน auditState33Usage() ดูก่อนเสมอ
+ */
+function migrateAddState3Hub() {
+  var ss = getSpreadsheet_();
+  var statesSheet = ss.getSheetByName(SHEET.WORKFLOW_STATES);
+  var transSheet = ss.getSheetByName(SHEET.WORKFLOW_TRANSITIONS);
+  if (!statesSheet || !transSheet) {
+    Logger.log('ไม่พบชีต WorkflowStates/WorkflowTransitions — ต้องรัน migrateToWorkflowStates() ก่อน');
+    return;
+  }
+
+  // 1) เพิ่ม state "3"
+  var states = readSheetAsObjects_(statesSheet);
+  if (states.some(function (s) { return s.station_key === 's3'; })) {
+    Logger.log('มีขั้นตอน "3" อยู่แล้ว — ข้าม (idempotent)');
+  } else {
+    var stateHeaders = SHEET_HEADERS[SHEET.WORKFLOW_STATES];
+    appendRowByHeader_(statesSheet, stateHeaders, {
+      station_key: 's3', station_order: '3', station_name: 'ส่งเอกสารให้เลขาคณะกรรมการฯ',
+      org: 'สนง เขต', standard_days: 1, public_status: 'checking', receive_role: '', approve_role: '',
+      notify_method: '', active: true, public_hint: '',
+    });
+    // station_order เป็นสตริงตัวเลขล้วน ("3") — บังคับ setNumberFormat('@') กัน Sheets auto-detect เป็น Number
+    // ตอน appendRow (บั๊กคลาสเดียวกับที่เจอมาแล้วหลายรอบในโปรเจกต์นี้ — station_order/tracking_no/team_no)
+    var orderCol = stateHeaders.indexOf('station_order') + 1;
+    statesSheet.getRange(statesSheet.getLastRow(), orderCol).setNumberFormat('@').setValue('3');
+    Logger.log('เพิ่มขั้นตอน "3" "ส่งเอกสารให้เลขาคณะกรรมการฯ" (org=สนง เขต, standard_days=1) เรียบร้อย');
+  }
+
+  var transitions = readSheetAsObjects_(transSheet);
+  var transHeaders = SHEET_HEADERS[SHEET.WORKFLOW_TRANSITIONS];
+  var byId = {};
+  transitions.forEach(function (t) { byId[t.transition_id] = t; });
+
+  function isActive(t) { return !!t && t.active !== false && String(t.active) !== 'false'; }
+
+  // 2) ปิดเส้นทางเดิม 2->3.1/3.2 ตรงๆ (ไม่ลบ) + เพิ่มเส้นทางใหม่ผ่าน "3"
+  ['s2_s3_1', 's2_s3_2'].forEach(function (id) {
+    if (isActive(byId[id])) {
+      updateSheetRowByKey_(transSheet, 'transition_id', id, { active: false });
+      Logger.log('ปิดเส้นทางเดิม ' + id + ' (active=false, ไม่ลบทิ้ง) — แทนที่ด้วยเส้นทางผ่าน state "3" ใหม่');
+    }
+  });
+  if (!byId['s2_s3']) {
+    appendRowByHeader_(transSheet, transHeaders, {
+      transition_id: 's2_s3', from_state: 's2', to_state: 's3',
+      button_label: 'ส่งเอกสารให้เลขาคณะกรรมการฯ', requires_note: false, result_value: '', active: true,
+    });
+    Logger.log('เพิ่มเส้นทาง s2 -> s3 ("ส่งเอกสารให้เลขาคณะกรรมการฯ") เรียบร้อย');
+  }
+  if (!byId['s3_s3_1']) {
+    appendRowByHeader_(transSheet, transHeaders, {
+      transition_id: 's3_s3_1', from_state: 's3', to_state: 's3_1',
+      button_label: 'ครบถ้วน → ส่งเลขา', requires_note: false, result_value: '', active: true,
+    });
+    Logger.log('เพิ่มเส้นทาง s3 -> s3_1 ("ครบถ้วน → ส่งเลขา") เรียบร้อย');
+  }
+  if (!byId['s3_s3_2']) {
+    appendRowByHeader_(transSheet, transHeaders, {
+      transition_id: 's3_s3_2', from_state: 's3', to_state: 's3_2',
+      button_label: 'ไม่ครบถ้วน → ส่งคืนหน่วยงาน', requires_note: true, result_value: '', active: true,
+    });
+    Logger.log('เพิ่มเส้นทาง s3 -> s3_2 ("ไม่ครบถ้วน → ส่งคืนหน่วยงาน") เรียบร้อย');
+  }
+
+  // 3) เลิกใช้ 3.3 — ปิด active ของ state 3.3 เอง + transition เข้า/ออก 3.3 + คืนเส้นทางเดิม 3.2->2 ตรงๆ กลับมา
+  var state33 = states.filter(function (s) { return s.station_key === 's3_3'; })[0];
+  if (state33 && state33.active !== false && String(state33.active) !== 'false') {
+    updateSheetRowByKey_(statesSheet, 'station_key', 's3_3', { active: false });
+    Logger.log('ปิด active ของ state 3.3 "ไม่ครบถ้วน-รอเจ้าของผลงานแก้ไข" (ไม่ลบแถวทิ้ง — เก็บไว้เพื่อ Audit/History)');
+  } else if (!state33) {
+    Logger.log('ไม่พบ state s3_3 ในชีต — ข้าม (อาจยังไม่เคยรัน migrateAddState33() มาก่อน)');
+  }
+  ['s3_2_s3_3', 's3_3_s2'].forEach(function (id) {
+    if (isActive(byId[id])) {
+      updateSheetRowByKey_(transSheet, 'transition_id', id, { active: false });
+      Logger.log('ปิดเส้นทาง ' + id + ' (เลิกใช้ 3.3 แล้ว, ไม่ลบทิ้ง)');
+    }
+  });
+  if (byId['s3_2_s2'] && !isActive(byId['s3_2_s2'])) {
+    updateSheetRowByKey_(transSheet, 'transition_id', 's3_2_s2', { active: true });
+    Logger.log('เปิดเส้นทางเดิม s3_2_s2 (3.2 -> 2 ตรงๆ) กลับมาใช้งาน — คืนสภาพก่อนเพิ่ม 3.3 ตามที่ผู้ใช้ขอ (reuse เส้นทางเดิม ไม่สร้างใหม่)');
+  } else if (!byId['s3_2_s2']) {
+    Logger.log('=== คำเตือน: ไม่พบ transition s3_2_s2 เดิมในชีตเลย (อาจไม่เคยมี/ถูกลบไปจริงๆ) ต้องสร้างเส้นทาง 3.2->2 เองด้วยมือผ่านหน้า Admin > จัดการ Workflow ===');
+  }
+
+  Logger.log('=== migrateAddState3Hub เสร็จ — ตรวจสอบผลที่หน้า Admin > จัดการ Workflow (2 ควรเห็นปุ่มเดียว "ส่งเอกสารให้เลขาคณะกรรมการฯ" ไปที่ 3, แล้ว 3 ควรเห็น 2 ปุ่มแตกสายไป 3.1/3.2) ===');
+}
+
+/**
  * ลบงานทดสอบที่ลงทะเบียนต่อจากของจริง 244 รายการสุดท้าย (2026-09-25 ผู้ใช้ขอ — ยืนยันแล้วว่าข้อมูลจริงมี
  * exactly 244 รายการ ของปีปัจจุบัน) หา Works ที่เลขทะเบียนปีปัจจุบันมีเลขลำดับ > 244 (เช่น "69-245" เป็นต้นไป)
  * ถือว่าเป็นข้อมูลทดสอบที่เกินมา ลบทั้ง Works + StatusHistory ที่ match แล้วปรับ Settings last_seq_<ปีเต็ม>
