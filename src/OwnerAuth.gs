@@ -287,7 +287,7 @@ function renderOwnerLoginDirectFormBody_(baseUrl, errors, notices, prevValues) {
     '<div class="owner-pass-boxes">' + boxesHtml + '</div>' +
     '<button type="button" id="owner-pass-toggle" class="owner-pass-toggle-btn">แสดงรหัส</button>' +
     '</div>' +
-    '<button class="btn-primary" type="submit">เข้าสู่ระบบ</button>' +
+    '<button class="btn-primary" type="submit" data-loading-text="กำลังเข้าสู่ระบบ...">เข้าสู่ระบบ</button>' +
     '</form>' +
     '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?mode=search">ค้นหาสถานะแบบเดิม</a></p>' +
     '<div class="qr-scan-divider"><span>หรือ</span></div>' +
@@ -407,17 +407,24 @@ function renderOwnerLoginCandidatesBody_(candidates, baseUrl, sessionToken, erro
 
 /** หน้าระหว่างทางหลัง login สำเร็จ — เด้งไป URL แบบ GET ที่มี ?osession= ติดไปด้วย (ข้อ 8/10) ใช้ JS redirect
  *  เล็กๆ เพราะ Apps Script doPost ไม่มี HTTP redirect จริงให้ใช้ ตรวจ session ฝั่ง server อีกครั้งตอนโหลดหน้านั้น
- *  อยู่ดี (renderOwnerDashboardRoute_) จึงไม่ใช่จุดอ่อนด้านความปลอดภัย แค่ช่วยให้ refresh หน้าใช้ URL ที่ถูกต้อง */
+ *  อยู่ดี (renderOwnerDashboardRoute_) จึงไม่ใช่จุดอ่อนด้านความปลอดภัย แค่ช่วยให้ refresh หน้าใช้ URL ที่ถูกต้อง
+ *
+ * 2026-10-07 รอบ 2 — ผู้ใช้ขอตัดหน้า "เข้าสู่ระบบสำเร็จ..." + ปุ่ม "ไปที่หน้าผลงานของฉัน" ออก ไม่ให้ต้องกด:
+ * ตัดข้อความ/ปุ่มที่โชว์ตลอดออก เหลือ redirect อัตโนมัติด้วย JS ตัวเดิมเป๊ะ (top.location.replace ก่อนเสมอ ตกไป
+ * location.replace ธรรมดาเฉพาะเข้าถึง top ไม่ได้จริงๆ — กลไกเดิมที่แก้บั๊ก resubmit ไว้แล้ว ไม่แตะ) คง fallback link
+ * ไว้เป็น safety net เท่านั้น (ซ่อนด้วย display:none ไม่โชว์ตอนปกติ) โผล่ให้กดเองเฉพาะกรณี redirect ไม่สำเร็จจริงๆ
+ * ภายใน 3 วิ (เช่น popup blocker/เบราว์เซอร์แปลกบล็อก JS navigate) กันผู้ใช้ค้างหน้าเปล่าแบบกู้คืนทางไม่ได้เลย */
 function renderOwnerLoginBounceBody_(baseUrl, sessionId) {
   var url = baseUrl + '?page=owner-dashboard&osession=' + encodeURIComponent(sessionId);
-  // 2026-10-07 ใช้ location.replace() แทน location.href — แทนที่หน้าผลลัพธ์ของ POST นี้ใน browser history
-  // เลย (ไม่เพิ่ม entry ใหม่) กัน refresh/กดย้อนกลับ ไปเจอ POST เดิมแล้วถูก resubmit ซ้ำ (ต้นเหตุบั๊กจริงที่เจอ:
-  // script.google.com ปฏิเสธการเชื่อมต่อแทนที่จะถามส่งฟอร์มซ้ำตามปกติ) ต้องเป็น top-level เสมอ (ห้ามอยู่ใน
-  // iframe ซ้อน) ลอง top.location ก่อนเสมอ ตกไป location ธรรมดาเฉพาะกรณี cross-origin เข้าไม่ถึง top จริงๆ
   return '' +
-    '<div class="detail-card"><p>เข้าสู่ระบบสำเร็จ กำลังพาไปหน้าผลงานของท่าน...</p>' +
+    '<div class="detail-card" id="owner-bounce-fallback" style="display:none">' +
+    '<p>หากหน้าไม่เปลี่ยนอัตโนมัติ กรุณากดลิงก์ด้านล่าง</p>' +
     '<p><a target="_top" class="btn-primary" href="' + escapeHtml_(url) + '" style="display:inline-block;text-decoration:none;text-align:center">ไปที่หน้าผลงานของฉัน</a></p></div>' +
-    '<script>(function () { var u = ' + JSON.stringify(url) + '; try { top.location.replace(u); } catch (err) { location.replace(u); } })();</script>';
+    '<script>(function () {' +
+    'var u = ' + JSON.stringify(url) + ';' +
+    'try { top.location.replace(u); } catch (err) { try { location.replace(u); } catch (err2) {} }' +
+    'setTimeout(function () { var el = document.getElementById("owner-bounce-fallback"); if (el) el.style.display = ""; }, 3000);' +
+    '})();</script>';
 }
 
 /**

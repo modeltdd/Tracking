@@ -97,7 +97,7 @@ var LOADING_FEEDBACK_SCRIPT_ = '' +
   'document.querySelectorAll("form").forEach(function (f) {' +
   'f.addEventListener("submit", function () {' +
   'var btn = f.querySelector("button[type=submit]");' +
-  'if (btn && !btn.disabled) { btn.textContent = "กำลังดำเนินการ..."; btn.disabled = true; btn.style.opacity = "0.6"; }' +
+  'if (btn && !btn.disabled) { btn.textContent = btn.dataset.loadingText || "กำลังดำเนินการ..."; btn.disabled = true; btn.style.opacity = "0.6"; }' +
   '});' +
   '});' +
   'document.querySelectorAll("a.btn-action, a.btn-primary").forEach(function (a) {' +
