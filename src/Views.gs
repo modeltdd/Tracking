@@ -1671,6 +1671,15 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
   // 2026-10-07 — ข้อมูลหน่วยงาน Master Data เขตสุขภาพที่ 11 เดียวกัน ฝังเป็น JSON จัดกลุ่มตามประเภท (ไม่มี AJAX
   // client กรอง/เติม <datalist> เองจาก JSON ชุดนี้ตามประเภทที่เลือก — ห้ามโหลดทุกประเภทลง dropdown เดียวพร้อมกัน)
   var organizationLookup = buildOrganizationMasterLookupForRegisterForm_(ss);
+  // 2026-10-07 รอบ 2 — แจ้งเตือนบนหน้าเองถ้า OrganizationMaster ว่างเปล่า (ผู้ใช้รายงานปัญหาค้นหาหน่วยงานไม่เจอ
+  // ซ้ำหลายรอบ — เดิมต้องเปิด Apps Script Editor รัน diagnoseOrganizationSearch() ถึงจะรู้สถานะจริง ตอนนี้เห็น
+  // ได้ทันทีบนหน้าเว็บเองโดยไม่ต้องเปิด Editor) นับจากจำนวนจริงที่ embed ลงหน้านี้เป๊ะ ไม่ query ซ้ำ
+  var organizationTotalCount = 0;
+  Object.keys(organizationLookup).forEach(function (t) { organizationTotalCount += organizationLookup[t].length; });
+  var organizationMasterWarningHtml = organizationTotalCount === 0
+    ? '<div class="error-banner">⚠️ ยังไม่มีข้อมูลหน่วยงาน (OrganizationMaster) ในระบบเลย — ช่องค้นหาหน่วยงานด้านล่างจะใช้งานไม่ได้ ' +
+      'ผู้ดูแลระบบต้องรัน <b>migrateAddOrganizationMaster()</b> จาก Apps Script Editor ก่อน (ครั้งเดียว) แล้วรีเฟรชหน้านี้ใหม่</div>'
+    : '';
 
   // คำนำหน้าชื่อ (2026-09-24 รอบใหม่) — dropdown ยศทางการ + "อื่น ๆ" คู่กับช่อง custom (reuse pattern work_type_other)
   var isKnownTitle = TITLE_NAME_OPTIONS_.indexOf(values.title_name) !== -1;
@@ -1683,6 +1692,7 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
 
   return '' +
     errorHtml +
+    organizationMasterWarningHtml +
     '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" id="reg-form">' +
     '<input type="hidden" name="form_action" value="register_work">' +
 
