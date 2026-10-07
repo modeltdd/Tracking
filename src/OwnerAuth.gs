@@ -423,23 +423,27 @@ function renderOwnerLoginCandidatesBody_(candidates, baseUrl, sessionToken, erro
     '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=owner-login">&larr; ค้นหาใหม่</a></p>';
 }
 
-/** หน้าระหว่างทางหลัง login สำเร็จ — เด้งไป URL แบบ GET ที่มี ?osession= ติดไปด้วย (ข้อ 8/10) ใช้ JS redirect
- *  เล็กๆ เพราะ Apps Script doPost ไม่มี HTTP redirect จริงให้ใช้ ตรวจ session ฝั่ง server อีกครั้งตอนโหลดหน้านั้น
- *  อยู่ดี (renderOwnerDashboardRoute_) จึงไม่ใช่จุดอ่อนด้านความปลอดภัย แค่ช่วยให้ refresh หน้าใช้ URL ที่ถูกต้อง
+/** หน้าระหว่างทางหลัง login สำเร็จ — เด้งไป URL แบบ GET ที่มี ?osession= ติดไปด้วย (ข้อ 8/10) ตรวจ session ฝั่ง
+ *  server อีกครั้งตอนโหลดหน้านั้นอยู่ดี (renderOwnerDashboardRoute_) จึงไม่ใช่จุดอ่อนด้านความปลอดภัย
  *
- * 2026-10-07 รอบ 2 — ผู้ใช้ขอตัดหน้า "เข้าสู่ระบบสำเร็จ..." + ปุ่ม "ไปที่หน้าผลงานของฉัน" ออก ไม่ให้ต้องกด:
- * ตัดข้อความ/ปุ่มที่โชว์ตลอดออก เหลือ redirect อัตโนมัติด้วย JS ตัวเดิมเป๊ะ (top.location.replace ก่อนเสมอ ตกไป
- * location.replace ธรรมดาเฉพาะเข้าถึง top ไม่ได้จริงๆ — กลไกเดิมที่แก้บั๊ก resubmit ไว้แล้ว ไม่แตะ) คง fallback link
- * ไว้เป็น safety net เท่านั้น (ซ่อนด้วย display:none ไม่โชว์ตอนปกติ) โผล่ให้กดเองเฉพาะกรณี redirect ไม่สำเร็จจริงๆ
- * ภายใน 3 วิ (เช่น popup blocker/เบราว์เซอร์แปลกบล็อก JS navigate) กันผู้ใช้ค้างหน้าเปล่าแบบกู้คืนทางไม่ได้เลย */
+ * 2026-10-07 รอบ 3 — ผู้ใช้ส่ง DevTools Console log จริงมาให้ดู (หลังรอบ 2 ที่ซ่อนปุ่มไว้) พิสูจน์ root cause ชัดเจน:
+ * "Unsafe attempt to initiate navigation for frame ... sandboxed with the 'allow-top-navigation-by-user-
+ * activation' flag, but has no user activation (gesture)" — Apps Script web app เนื้อหาจริงรันอยู่ใน iframe
+ * ข้าม origin (googleusercontent.com) ภายใต้ script.google.com เสมอ (ไม่มีทางหนีออกได้) Chrome บล็อก
+ * top.location.replace() ที่ยิงเองจาก <script> อัตโนมัติไม่มี user gesture เสมอ ไม่ว่าจะ try/catch ยังไงก็ตาม —
+ * fallback location.replace() (navigate เฉพาะ iframe ตัวเอง) ก็ถูก X-Frame-Options:sameorigin ของ
+ * script.google.com เองปฏิเสธอีกทอด เป็น hard platform limitation ของ Apps Script Web App ไม่ใช่บั๊กที่แก้
+ * ด้วยโค้ดได้ — <a target="_top"> ที่ใช้ทั่วทั้งระบบนี้ทำงานได้เพราะมาจาก click จริง (มี user gesture) เท่านั้น
+ * สรุป: "redirect อัตโนมัติแบบไม่ต้องกด" ทำไม่ได้จริงในสถาปัตยกรรมนี้ — ของที่ทำได้ดีที่สุดคือลดเหลือกดแค่ 1 ครั้ง
+ * (ปุ่มโชว์ทันที ไม่ซ่อน ไม่หน่วง 3 วิเหมือนรอบก่อน เพราะรู้แล้วว่า auto-redirect แทบไม่มีทางสำเร็จ) auto-focus
+ * ปุ่มให้กด Enter/เว้นวรรคต่อได้ทันทีโดยไม่ต้องเล็งเมาส์ ยังลอง top.location.replace() ก่อนเสมอ (ฟรี เผื่อ
+ * deployment/browser บางแบบอนุญาต) ไม่ตัดทิ้งไปเลย */
 function renderOwnerLoginBounceBody_(baseUrl, sessionId) {
   var url = baseUrl + '?page=owner-dashboard&osession=' + encodeURIComponent(sessionId);
-  // 2026-10-07 รอบ 2 — เพิ่ม console.log/console.error ตามข้อ 7 ที่ผู้ใช้ขอ (เปิด DevTools Console ตอน repro
-  // จะเห็นชัดว่า current URL/target URL คืออะไร และ top.location.replace สำเร็จหรือตกไป fallback)
   return '' +
-    '<div class="detail-card" id="owner-bounce-fallback" style="display:none">' +
-    '<p>หากหน้าไม่เปลี่ยนอัตโนมัติ กรุณากดลิงก์ด้านล่าง</p>' +
-    '<p><a target="_top" class="btn-primary" href="' + escapeHtml_(url) + '" style="display:inline-block;text-decoration:none;text-align:center">ไปที่หน้าผลงานของฉัน</a></p></div>' +
+    '<div class="detail-card" id="owner-bounce-fallback">' +
+    '<p>เข้าสู่ระบบสำเร็จ</p>' +
+    '<p><a target="_top" class="btn-primary" id="owner-bounce-link" href="' + escapeHtml_(url) + '" style="display:inline-block;text-decoration:none;text-align:center">ไปที่หน้าผลงานของฉัน</a></p></div>' +
     '<script>(function () {' +
     'var u = ' + JSON.stringify(url) + ';' +
     'console.log("[OwnerLoginBounce] current URL =", location.href);' +
@@ -448,14 +452,10 @@ function renderOwnerLoginBounceBody_(baseUrl, sessionId) {
     'top.location.replace(u);' +
     'console.log("[OwnerLoginBounce] top.location.replace() เรียกสำเร็จ");' +
     '} catch (err) {' +
-    'console.error("[OwnerLoginBounce] top.location.replace() ล้มเหลว:", err);' +
-    'try { location.replace(u); console.log("[OwnerLoginBounce] fallback location.replace() เรียกสำเร็จ"); }' +
-    'catch (err2) { console.error("[OwnerLoginBounce] fallback location.replace() ก็ล้มเหลว:", err2); }' +
+    'console.error("[OwnerLoginBounce] top.location.replace() ล้มเหลว (ข้อจำกัดของ iframe sandbox ใน Apps Script Web App ไม่มี user gesture):", err);' +
     '}' +
-    'setTimeout(function () {' +
-    'var el = document.getElementById("owner-bounce-fallback");' +
-    'if (el) { el.style.display = ""; console.warn("[OwnerLoginBounce] redirect ไม่สำเร็จภายใน 3 วิ โชว์ fallback link แล้ว"); }' +
-    '}, 3000);' +
+    'var link = document.getElementById("owner-bounce-link");' +
+    'if (link) link.focus();' +
     '})();</script>';
 }
 
