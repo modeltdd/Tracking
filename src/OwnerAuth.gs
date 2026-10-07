@@ -566,8 +566,9 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   // (หน้าสาธารณะ/หน้ารายละเอียดเจ้าหน้าที่ยังมีเหมือนเดิม ไม่แตะ) + เปลี่ยน Timeline เป็น "เส้นทางจริง" แบบ
   // รองรับ Branching Workflow (ไม่ใช่ backbone คงที่ 1-10 เหมือนหน้าอื่น — เฉพาะหน้านี้)
   var ownerPathTimeline = buildOwnerActualPathTimeline_(data.steps, data.stationsMap, work);
+  // 2026-10-07 ตามที่ผู้ใช้ขอ — ตัดกล่อง "ⓘ ข้อมูลเดิม" ออกเฉพาะหน้า Owner Dashboard (หน้าสาธารณะ/หน้า
+  // รายละเอียดเจ้าหน้าที่ยังมีเหมือนเดิม ไม่แตะ renderPubLegacyInfoBox_ เอง)
   var timelineHtml = renderOwnerTimelineSection_(ownerPathTimeline);
-  if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
   var noteHtml = '';
   if (work.current_status_public === 'need_revision' && data.revisionInfo) {
