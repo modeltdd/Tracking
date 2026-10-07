@@ -619,6 +619,23 @@ function renderOwnerNowNextSummary_(currentStation, stationsMap, steps) {
 /** หน้า "ผลงานของฉัน" หลัง login — reuse buildPublicResultData_/renderPub* เดิมทั้งหมด (ข้อ 12 — ใช้ layout
  *  เดิมของหน้าเจ้าของผลงานที่พัฒนาไว้) ต่างจากหน้าสาธารณะ 3 จุด: ไม่ mask ชื่อ (เป็นเจ้าของจริง) + Timeline
  *  เส้นทางจริง (ไม่ใช่ backbone คงที่ 1-10) + ปุ่ม "ออกจากระบบ" แทน "ตรวจสอบรายการอื่น" */
+/** "วันที่รับผลงาน" เฉพาะหน้า Owner Dashboard (2026-10-08) — รูปแบบเดียวกับ formatDateThShort_ ทั่วระบบ
+ *  ("24 ก.ย. 2569 เวลา 10.15 น.") แต่ซ่อนส่วนเวลาถ้าค่าจริงไม่มีเวลา (เที่ยงคืนพอดี 00:00 ถือว่าไม่มีเวลา —
+ *  แยกฟังก์ชันเองจาก formatDateThShort_ เดิม ไม่แตะของเดิมที่หน้าอื่นทั่วระบบใช้แสดงเวลาเสมอ) */
+function formatOwnerReceivedDate_(date) {
+  if (!date) return '-';
+  var d = new Date(date);
+  if (isNaN(d.getTime())) return '-';
+  var day = d.getDate();
+  var month = THAI_MONTHS_SHORT_[d.getMonth()];
+  var year = getBuddhistYear_(d);
+  var hasTime = d.getHours() !== 0 || d.getMinutes() !== 0;
+  if (!hasTime) return day + ' ' + month + ' ' + year;
+  var hh = padLeft_(d.getHours(), 2);
+  var mm = padLeft_(d.getMinutes(), 2);
+  return day + ' ' + month + ' ' + year + ' เวลา ' + hh + '.' + mm + ' น.';
+}
+
 function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   var ownerName = ((work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')).trim();
   var data = buildPublicResultData_(ss, work);
@@ -628,6 +645,11 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
     '<div class="pub-name-owner">' + escapeHtml_(ownerName || '-') + '</div>' +
     '<div class="pub-name-tracking">เลขทะเบียน ' + escapeHtml_(work.tracking_no) + '</div>' +
     '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
+    // 2026-10-08 ผู้ใช้ขอเพิ่ม "วันที่รับผลงาน" ใต้ชื่อผลงาน เฉพาะหน้า Owner Dashboard — ใช้ work.received_date
+    // จริง (field เดียวกับที่หน้าอื่นทั่วระบบใช้แสดง "รับเรื่องเมื่อ"/"วันที่ลงรับ" อยู่แล้ว คือวันที่เขตรับเรื่อง
+    // เข้าระบบจริง ตรวจจาก Constants.gs/Register.gs แล้ว ไม่เดา) ใช้ formatOwnerReceivedDate_ ของตัวเองแยกจาก
+    // formatDateThShort_ เดิม (ไม่แตะของเดิมที่หน้าอื่นใช้อยู่) เพราะต้องซ่อนเวลาถ้าไม่มีเวลาจริง (ข้อ 6)
+    '<div class="pub-name-received">วันที่รับผลงาน: ' + escapeHtml_(formatOwnerReceivedDate_(work.received_date)) + '</div>' +
     '</div>';
 
   // friendlyMode=true (2026-10-07 ตามที่ผู้ใช้ขอ) — เฉพาะหน้า Owner Dashboard: ซ่อน "ขั้นตอนที่ N" และเลข

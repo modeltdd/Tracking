@@ -2534,6 +2534,9 @@ var PUBLIC_CSS_ = '' +
   '.pub-name-owner{font-weight:700;font-size:1.2rem;color:var(--navy);line-height:1.25;word-wrap:break-word;}' +
   '.pub-name-tracking{font-size:.8rem;font-weight:500;color:var(--muted);margin-top:2px;}' +
   '.pub-name-title{font-size:.82rem;font-weight:500;color:var(--text);margin-top:3px;line-height:1.35;word-wrap:break-word;}' +
+  // 2026-10-08 "วันที่รับผลงาน" ใต้ชื่อผลงาน เฉพาะหน้า Owner Dashboard — ตัวรองเหมือน .pub-name-tracking
+  // (เล็ก/สีเทา) ไม่ให้เด่นกว่าการ์ด "สถานะปัจจุบัน" ที่อยู่ถัดไป ตามที่ผู้ใช้ขอ
+  '.pub-name-received{font-size:.8rem;font-weight:500;color:var(--muted);margin-top:3px;}' +
   // "Compact Status Card" — hero เตี้ยลง (2026-09-24) ตัดบรรทัด "ขณะนี้ผลงานอยู่ขั้นตอนนี้" ออก (ซ้ำความหมายกับ
   // label "สถานะปัจจุบัน" ด้านบนอยู่แล้ว) เหลือ label/ค่าเด่น/คำอธิบายย่อย/อัปเดตล่าสุด ตามตัวอย่างข้อ 5 พอดี
   '.pub-hero{border-radius:14px;padding:14px 16px 12px;margin-bottom:10px;border:1px solid var(--border);background:var(--bg);}' +
