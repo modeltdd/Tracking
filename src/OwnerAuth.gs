@@ -556,7 +556,9 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
     '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
     '</div>';
 
-  var heroHtml = renderPubHero_(work, data.currentStation, data.stationsMap, data.steps);
+  // friendlyMode=true (2026-10-07 ตามที่ผู้ใช้ขอ) — เฉพาะหน้า Owner Dashboard: ซ่อน "ขั้นตอนที่ N" และเลข
+  // state ย่อย (7.1/7.4) ออกจากกรอบสถานะปัจจุบัน ใช้คำเต็มอ่านง่ายแทน หน้าสาธารณะ/เจ้าหน้าที่ยังเหมือนเดิม
+  var heroHtml = renderPubHero_(work, data.currentStation, data.stationsMap, data.steps, true);
 
   var actionHtml = work.next_step_text
     ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'

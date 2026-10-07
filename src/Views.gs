@@ -1229,20 +1229,27 @@ function renderPubInfoGrid_(items) {
  * ผู้รับผิดชอบ -> วันที่-เวลาอัปเดตล่าสุด (รูปแบบไทยย่อ) -> ขั้นตอนถัดไป (ไม่เดา — ไม่มีให้แสดงถ้าจุดแตกสาย/จบแล้ว)
  * buildHeroDisplayInfo_/findNextStepDisplay_ (PublicTrack.gs) หา "สถานะหลัก" จากข้อมูลจริงเสมอ ไม่ hardcode
  */
-function renderPubHero_(work, currentStation, stationsMap, steps) {
+function renderPubHero_(work, currentStation, stationsMap, steps, friendlyMode) {
   var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
   var info = buildHeroDisplayInfo_(currentStation, stationsMap || {});
 
   var bodyHtml = '' +
-    '<div class="pub-hero-step-label">ขั้นตอนที่ ' + escapeHtml_(info.stepOrder) + '</div>' +
+    (friendlyMode ? '' : '<div class="pub-hero-step-label">ขั้นตอนที่ ' + escapeHtml_(info.stepOrder) + '</div>') +
     '<div class="pub-hero-main">' + escapeHtml_(info.stepSplit.main) + '</div>' +
     (info.stepSplit.desc ? '<div class="pub-hero-desc">' + escapeHtml_(info.stepSplit.desc) + '</div>' : '');
   if (info.isSub) {
+    // 2026-10-07 friendlyMode (หน้า Owner Dashboard เท่านั้น) — ซ่อนเลข state ย่อย (7.1/7.4 ฯลฯ) ออกจากบรรทัด
+    // "ผลการพิจารณา" และใช้คำเต็มจากชื่อ state จริง (ส่วนในวงเล็บ) แทนคำสั้นๆ "ผ่าน"/"ไม่ผ่าน" ที่กำกวม —
+    // "ผ่านการประเมิน"/"ไม่ผ่านการประเมิน" มาจาก station_name จริงในชีต WorkflowStates เอง (ไม่ได้เดา/สร้างคำใหม่)
+    var subLabelText = friendlyMode
+      ? ((info.subSplit.main === 'ผ่าน' || info.subSplit.main === 'ไม่ผ่าน') && info.subSplit.desc
+        ? info.subSplit.desc : info.subSplit.main)
+      : (info.subOrder + ' ' + info.subSplit.main);
     bodyHtml += '' +
       '<div class="pub-hero-sub-row"><span class="pub-hero-sub-label">ผลการพิจารณา</span>' +
       '<span class="pub-hero-sub-badge pub-hero-sub-' + info.subTone + '">' +
-      escapeHtml_(info.subOrder) + ' ' + escapeHtml_(info.subSplit.main) + '</span></div>' +
-      (info.subSplit.desc ? '<div class="pub-hero-desc">' + escapeHtml_(info.subSplit.desc) + '</div>' : '');
+      escapeHtml_(subLabelText) + '</span></div>' +
+      (!friendlyMode && info.subSplit.desc ? '<div class="pub-hero-desc">' + escapeHtml_(info.subSplit.desc) + '</div>' : '');
   }
 
   var ownerText = work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-');
