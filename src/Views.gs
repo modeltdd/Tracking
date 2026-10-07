@@ -1733,13 +1733,10 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '<div class="org-suggest" id="reg-org-suggest" role="listbox"></div>' +
     '</div></div>' +
     '<div class="field field-org-province"><label>จังหวัด</label><input class="input" name="reg_province" id="reg-org-province" value="' + v('province') + '" readonly placeholder="เติมอัตโนมัติเมื่อเลือกหน่วยงาน"></div>' +
+    // 2026-10-07 รอบ 3 — ย้ายเบอร์โทรมาอยู่แถวเดียวกับข้อมูลหน่วยงาน ตัด section "ข้อมูลติดต่อ" แยกทิ้ง (เหลือ field เดียวไม่จำเป็นต้องแยก section)
+    '<div class="field field-org-phone"><label>เบอร์โทร</label><input class="input" name="reg_phone" value="' + v('phone') + '"></div>' +
     '</div>' +
     '<input type="hidden" name="reg_organization_id" id="reg-org-id" value="' + v('organization_id') + '">' +
-    '</div>' +
-
-    // 2026-10-07 ผู้ใช้ขอเอาช่องอีเมลออก + ตัดคำว่า "(ถ้ามี)" ออกจาก label ทุกจุดในหน้านี้
-    '<div class="reg-section"><div class="reg-section-title">ข้อมูลติดต่อ</div>' +
-    '<div class="field"><label>เบอร์โทร</label><input class="input" name="reg_phone" value="' + v('phone') + '"></div>' +
     '</div>' +
 
     '<button class="btn-primary" type="submit">บันทึกและออกเลขติดตาม</button>' +
@@ -2289,7 +2286,7 @@ var STAFF_CSS_ = '' +
   // ประเภทหน่วยงาน | ชื่อหน่วยงาน | จังหวัด บรรทัดเดียวกันบน desktop (2026-10-07 รอบ 2 แก้ตาม requirement จริง —
   // เดิมจังหวัดอยู่คนละ row) สัดส่วน 25:50:25 ด้วย CSS Grid ตามที่ระบุ (relative position ของ .org-suggest ต้อง
   // อยู่ใน grid item เดียวกับช่องชื่อหน่วยงาน ไม่กระทบ — .org-suggest-wrap อยู่ชั้นในไม่ใช่ grid item เอง)
-  '.field-row-org{display:grid;grid-template-columns:1fr 2fr 1fr;gap:10px;}' +
+  '.field-row-org{display:grid;grid-template-columns:1fr 1.4fr 0.8fr 0.8fr;gap:10px;}' +
   '.field-row-org .field{margin-bottom:0;}' +
   '@media (max-width:768px){.field-row-org{grid-template-columns:1fr;}}' +
   '.input[readonly]{background:#f2f4f6;color:var(--muted);}' +
