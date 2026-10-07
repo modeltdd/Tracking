@@ -616,6 +616,54 @@ function cleanupDuplicateLegacyImports() {
 var LEGACY_IMPORT_MARKER_ = 'legacy-import@system';
 
 /**
+ * Debug เจาะจง 1 แถว LegacyImport ตาม legacy_seq (2026-10-08, read-only ล้วน ไม่แก้อะไรเลย) — ผู้ใช้รันแก้ไป
+ * แล้ว (fixReceiveDatesFromLegacyExcel) แต่ 69-176 กลับได้ "6 ธ.ค. 2569" แทน "12 มิ.ย. 2569" ที่ถูกต้อง — สลับ
+ * วัน/เดือนกันตรงๆ (6/12 แทน 12/6) ต้องสงสัยว่า correctLegacyReceivedDate_() สาขา "serial instanceof Date"
+ * (เมื่อเซลล์ถูก Sheets จัดรูปแบบเป็นวันที่แล้ว) เชื่อ Date.getMonth()/getDate() ตรงๆ โดยไม่ตรวจว่า Google
+ * Sheets ตีความ "12/6/2569" เป็น mm/dd (locale US) แทน dd/mm จริงหรือไม่ — ฟังก์ชันนี้ log ค่าดิบทุกมุมมอง
+ * (serial/ประเภทข้อมูล/ข้อความที่ Sheets แสดงจริงด้วย getDisplayValues()/locale ของ spreadsheet) เทียบกับค่าที่
+ * correctLegacyReceivedDate_() คำนวณได้ตอนนี้ ให้เห็นหลักฐานชัดก่อนตัดสินใจแก้ parsing (กระทบข้อมูล Legacy
+ * ทั้งหมดถ้าแก้ผิดอีกรอบ ห้ามเดาซ้ำ)
+ */
+function diagnoseLegacyReceivedDateRaw(legacySeq) {
+  var ss = getSpreadsheet_();
+  var sheet = findSheetLoose_(ss, LEGACY_SHEET_NAME_);
+  if (!sheet) { Logger.log('ไม่พบชีต "' + LEGACY_SHEET_NAME_ + '"'); return; }
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2) { Logger.log('ชีต LegacyImport ไม่มีข้อมูล'); return; }
+  var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  var displays = sheet.getRange(2, 1, lastRow - 1, lastCol).getDisplayValues();
+
+  var seq = String(legacySeq).trim();
+  var rowIdx = -1;
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][LEGACY_COL_.SEQ] || '').trim() === seq) { rowIdx = i; break; }
+  }
+  if (rowIdx === -1) { Logger.log('ไม่พบ legacy_seq="' + seq + '" ใน LegacyImport'); return; }
+
+  var rawValue = values[rowIdx][LEGACY_COL_.RECEIVED];
+  var displayValue = displays[rowIdx][LEGACY_COL_.RECEIVED];
+  var isDate = rawValue instanceof Date;
+
+  Logger.log('=== diagnoseLegacyReceivedDateRaw legacy_seq="' + seq + '" (' + values[rowIdx][LEGACY_COL_.NAME] + ') ===');
+  Logger.log('spreadsheet locale: ' + ss.getSpreadsheetLocale());
+  Logger.log('raw value (getValues): ' + JSON.stringify(rawValue) + ' | typeof=' + typeof rawValue + ' | isDate=' + isDate +
+    (isDate ? (' | ISOString=' + rawValue.toISOString() + ' | getDate()=' + rawValue.getDate() +
+      ' | getMonth()+1=' + (rawValue.getMonth() + 1) + ' | getFullYear()=' + rawValue.getFullYear()) : ''));
+  Logger.log('display value (getDisplayValues, ตามที่ตาเห็นจริงในชีต): "' + displayValue + '"');
+  Logger.log('correctLegacyReceivedDate_() คำนวณได้ตอนนี้: ' + correctLegacyReceivedDate_(rawValue));
+
+  var worksMatch = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS)).filter(function (w) { return String(w.legacy_seq) === seq; })[0];
+  Logger.log('Works.received_date ปัจจุบัน (หลัง fix ที่รันไปแล้ว ถ้ามี): ' + (worksMatch ? worksMatch.received_date : '(ไม่พบใน Works)'));
+  var backupSheet = ss.getSheetByName('ReceiveDateFixBackup');
+  if (backupSheet) {
+    var backupRow = readSheetAsObjects_(backupSheet).filter(function (r) { return r.tracking_no === (worksMatch && worksMatch.tracking_no); }).pop();
+    Logger.log('ค่าก่อนแก้ (จาก ReceiveDateFixBackup, กู้คืนได้ถ้าต้องย้อนกลับ): ' + (backupRow ? backupRow.old_received_date : '(ไม่มี backup แถวนี้)'));
+  }
+}
+
+/**
  * ตรวจสอบ Works.received_date ของงาน Legacy เทียบกับคอลัมน์ "วันที่ลงรับ" จริงในชีต LegacyImport (2026-10-08
  * ตามที่ผู้ใช้ขอ — read-only ล้วน ไม่แก้อะไรเลย) ผู้ใช้รายงาน 69-176 (นางสาวปิยะภรณ์ ศรีแก้ว) แสดงวันที่รับผลงาน
  * ผิด (24/09/2569) ทั้งที่ Excel ต้นฉบับระบุ "วันที่ลงรับ" = 12/6/2569 — ย้อนดู auditLegacyCleanupPlan()/
