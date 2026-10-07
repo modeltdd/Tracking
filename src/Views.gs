@@ -1697,9 +1697,11 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
       return '<option' + (t === values.organization_type ? ' selected' : '') + '>' + escapeHtml_(t) + '</option>';
     }).join('') + '</select></div>' +
     '<div class="field field-org-name"><label>ชื่อหน่วยงาน</label>' +
-    '<input class="input" name="reg_org_from" id="reg-org-name" list="reg-org-datalist" autocomplete="off" value="' + v('org_from') + '"' +
+    '<div class="org-suggest-wrap">' +
+    '<input class="input" name="reg_org_from" id="reg-org-name" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" value="' + v('org_from') + '"' +
     (values.organization_type ? '' : ' disabled placeholder="กรุณาเลือกประเภทหน่วยงานก่อน"') + '>' +
-    '<datalist id="reg-org-datalist"></datalist></div>' +
+    '<div class="org-suggest" id="reg-org-suggest" role="listbox"></div>' +
+    '</div></div>' +
     '</div>' +
     '<div class="field"><label>จังหวัด</label><input class="input" name="reg_province" id="reg-org-province" value="' + v('province') + '" readonly placeholder="เติมอัตโนมัติเมื่อเลือกหน่วยงาน"></div>' +
     '<input type="hidden" name="reg_organization_id" id="reg-org-id" value="' + v('organization_id') + '">' +
@@ -1788,45 +1790,83 @@ var REG_COMMITTEE_SCRIPT_ = '' +
   '</script>';
 
 /**
- * ข้อมูลหน่วยงาน Master Data เขตสุขภาพที่ 11 (2026-10-07) — เลือกประเภทหน่วยงานก่อน (เปิดช่องชื่อหน่วยงาน +
- * เติม <datalist> เฉพาะประเภทนั้น ไม่โหลดทุกประเภทพร้อมกัน) พิมพ์/เลือกชื่อหน่วยงานแล้วจับคู่ตรงตัวกับ
- * REG_ORG_LOOKUP_[ประเภท] เพื่อเติมจังหวัดอัตโนมัติ + hidden organization_id (ฝั่ง server ตรวจซ้ำเสมอที่
- * registerNewWork_ ไม่เชื่อค่าที่ client เติมมาเลย) เปลี่ยนประเภทหน่วยงาน = ล้างชื่อ/จังหวัด/id เดิมทิ้งหมด
- * (กันข้อมูลค้างข้ามประเภท) vanilla JS ล้วน ไม่มี framework/AJAX ตาม pattern เดียวกับ REG_COMMITTEE_SCRIPT_
+ * ข้อมูลหน่วยงาน Master Data เขตสุขภาพที่ 11 (2026-10-07 รอบ 2 — custom searchable autocomplete) — เลือก
+ * ประเภทหน่วยงานก่อน (เปิดช่องชื่อหน่วยงาน) พิมพ์อย่างน้อย 2 ตัวอักษร กรอง REG_ORG_LOOKUP_[ประเภท] แบบ
+ * partial-match (substring, case-insensitive) จาก organization_name/organization_full_name/district/province
+ * พร้อมกัน ไม่ใช่ exact match เหมือน <datalist> เดิม แสดง suggestion สูงสุด 20 รายการ (ชื่อ + อำเภอ/จังหวัด)
+ * รองรับ Arrow Up/Down/Enter/Esc เลือก suggestion แล้วเก็บ organization_id/code + เติมจังหวัด (ฝั่ง server
+ * ตรวจซ้ำเสมอที่ registerNewWork_ ไม่เชื่อค่าที่ client เติมมาเลย) แก้ข้อความหลังเลือกแล้ว = ล้าง
+ * organization_id ทันที (ข้อ "ห้ามบันทึกข้อความที่พิมพ์เองโดยไม่ได้เลือกจาก Master") ไม่พบผลลัพธ์ = แสดง
+ * "ไม่พบหน่วยงานที่ตรงกับคำค้น" ไม่สร้างหน่วยงานใหม่เอง — vanilla JS ล้วน ไม่มี framework/AJAX (ข้อมูลทั้งหมด
+ * ฝังมาครั้งเดียวตอนโหลดหน้า กรอง/ค้นหาฝั่ง client ทั้งหมด)
  */
 var REG_ORG_SCRIPT_ = '' +
   '<script>' +
   'document.addEventListener("DOMContentLoaded", function () {' +
   'var typeSel = document.getElementById("reg-org-type");' +
   'var nameInput = document.getElementById("reg-org-name");' +
-  'var datalist = document.getElementById("reg-org-datalist");' +
+  'var suggestBox = document.getElementById("reg-org-suggest");' +
   'var idField = document.getElementById("reg-org-id");' +
   'var provinceField = document.getElementById("reg-org-province");' +
-  'if (!typeSel || !nameInput || !datalist) return;' +
-  'function rebuildDatalist(type) {' +
-  'datalist.innerHTML = "";' +
-  'var list = REG_ORG_LOOKUP_[type] || [];' +
-  'list.forEach(function (o) { var opt = document.createElement("option"); opt.value = o.name; datalist.appendChild(opt); });' +
-  '}' +
-  'function findMatch(type, name) {' +
-  'var list = REG_ORG_LOOKUP_[type] || [];' +
-  'for (var i = 0; i < list.length; i++) { if (list[i].name === name) return list[i]; }' +
-  'return null;' +
-  '}' +
+  'if (!typeSel || !nameInput || !suggestBox) return;' +
+  'var MIN_CHARS = 2, MAX_RESULTS = 20;' +
+  'var currentResults = []; var activeIndex = -1;' +
+  'function norm(s) { return String(s || "").trim().toLowerCase(); }' +
   'function clearSelection() { idField.value = ""; if (provinceField) provinceField.value = ""; }' +
-  'typeSel.addEventListener("change", function () {' +
-  'nameInput.value = ""; clearSelection();' +
-  'if (typeSel.value) {' +
-  'nameInput.disabled = false; nameInput.placeholder = "พิมพ์ชื่อหน่วยงาน..."; rebuildDatalist(typeSel.value);' +
-  '} else {' +
-  'nameInput.disabled = true; nameInput.placeholder = "กรุณาเลือกประเภทหน่วยงานก่อน"; datalist.innerHTML = "";' +
+  'function closeSuggest() { suggestBox.classList.remove("open"); suggestBox.innerHTML = ""; currentResults = []; activeIndex = -1; nameInput.setAttribute("aria-expanded", "false"); }' +
+  'function searchOrgs(type, keyword) {' +
+  'var list = REG_ORG_LOOKUP_[type] || []; var kw = norm(keyword); var out = [];' +
+  'for (var i = 0; i < list.length && out.length < MAX_RESULTS; i++) {' +
+  'var o = list[i];' +
+  'if (norm(o.name).indexOf(kw) !== -1 || norm(o.fullName).indexOf(kw) !== -1 || norm(o.district).indexOf(kw) !== -1 || norm(o.province).indexOf(kw) !== -1) out.push(o);' +
   '}' +
+  'return out;' +
+  '}' +
+  'function renderActive() {' +
+  'var items = suggestBox.querySelectorAll(".org-suggest-item");' +
+  'items.forEach(function (el, i) { el.classList.toggle("active", i === activeIndex); });' +
+  'if (activeIndex >= 0 && items[activeIndex]) items[activeIndex].scrollIntoView({ block: "nearest" });' +
+  '}' +
+  'function selectOrg(o) {' +
+  'nameInput.value = o.name; idField.value = o.id; if (provinceField) provinceField.value = o.province;' +
+  'closeSuggest();' +
+  '}' +
+  'function renderResults(results) {' +
+  'suggestBox.innerHTML = ""; activeIndex = -1;' +
+  'if (!results.length) {' +
+  'var empty = document.createElement("div"); empty.className = "org-suggest-empty"; empty.textContent = "ไม่พบหน่วยงานที่ตรงกับคำค้น";' +
+  'suggestBox.appendChild(empty); suggestBox.classList.add("open"); nameInput.setAttribute("aria-expanded", "true"); return;' +
+  '}' +
+  'results.forEach(function (o) {' +
+  'var item = document.createElement("div"); item.className = "org-suggest-item"; item.setAttribute("role", "option");' +
+  'var nameEl = document.createElement("div"); nameEl.className = "org-suggest-name"; nameEl.textContent = o.name;' +
+  'var metaEl = document.createElement("div"); metaEl.className = "org-suggest-meta"; metaEl.textContent = (o.district ? "อ." + o.district + " \\u2022 " : "") + o.province;' +
+  'item.appendChild(nameEl); item.appendChild(metaEl);' +
+  'item.addEventListener("mousedown", function (ev) { ev.preventDefault(); selectOrg(o); });' +
+  'suggestBox.appendChild(item);' +
+  '});' +
+  'suggestBox.classList.add("open"); nameInput.setAttribute("aria-expanded", "true");' +
+  '}' +
+  'typeSel.addEventListener("change", function () {' +
+  'nameInput.value = ""; clearSelection(); closeSuggest();' +
+  'if (typeSel.value) { nameInput.disabled = false; nameInput.placeholder = "พิมพ์ชื่อหน่วยงาน (อย่างน้อย 2 ตัวอักษร)..."; }' +
+  'else { nameInput.disabled = true; nameInput.placeholder = "กรุณาเลือกประเภทหน่วยงานก่อน"; }' +
   '});' +
   'nameInput.addEventListener("input", function () {' +
-  'var match = findMatch(typeSel.value, nameInput.value.trim());' +
-  'if (match) { idField.value = match.id; if (provinceField) provinceField.value = match.province; } else { clearSelection(); }' +
+  'clearSelection();' + // แก้ข้อความ = ล้าง organization_id เดิมทันที จนกว่าจะเลือกใหม่
+  'var kw = nameInput.value.trim();' +
+  'if (!typeSel.value || kw.length < MIN_CHARS) { closeSuggest(); return; }' +
+  'currentResults = searchOrgs(typeSel.value, kw);' +
+  'renderResults(currentResults);' +
   '});' +
-  'if (typeSel.value) rebuildDatalist(typeSel.value);' + // re-render หลัง validate ไม่ผ่าน — เติม datalist ให้ตรงประเภทเดิม
+  'nameInput.addEventListener("keydown", function (ev) {' +
+  'if (!suggestBox.classList.contains("open")) return;' +
+  'if (ev.key === "ArrowDown") { ev.preventDefault(); if (currentResults.length) { activeIndex = (activeIndex + 1) % currentResults.length; renderActive(); } }' +
+  'else if (ev.key === "ArrowUp") { ev.preventDefault(); if (currentResults.length) { activeIndex = (activeIndex - 1 + currentResults.length) % currentResults.length; renderActive(); } }' +
+  'else if (ev.key === "Enter") { if (activeIndex >= 0 && currentResults[activeIndex]) { ev.preventDefault(); selectOrg(currentResults[activeIndex]); } }' +
+  'else if (ev.key === "Escape") { closeSuggest(); }' +
+  '});' +
+  'document.addEventListener("click", function (ev) { if (ev.target !== nameInput && !suggestBox.contains(ev.target)) closeSuggest(); });' +
   '});' +
   '</script>';
 
@@ -2195,6 +2235,21 @@ var STAFF_CSS_ = '' +
   // ข้อมูลหน่วยงาน (2026-10-07, Master Data เขตสุขภาพที่ 11) — ประเภทหน่วยงาน:ชื่อหน่วยงาน สัดส่วน 30:70 บน desktop
   '.field-row-org{flex-wrap:wrap;}.field-row-org .field-org-type{flex:1 1 30%;}.field-row-org .field-org-name{flex:2 1 70%;}' +
   '.input[readonly]{background:#f2f4f6;color:var(--muted);}' +
+  // Searchable autocomplete ชื่อหน่วยงาน (2026-10-07 รอบ 2) — custom dropdown เอง (ไม่ใช้ <datalist> เดิม เพราะ
+  // ต้อง partial-match หลาย field + โชว์จังหวัด/อำเภอใต้ชื่อ + keyboard nav ซึ่ง datalist ทำไม่ได้) vanilla JS
+  // ล้วน ไม่มี framework กรองจาก REG_ORG_LOOKUP_ ที่ฝังมาครั้งเดียวเหมือนเดิม
+  '.org-suggest-wrap{position:relative;}' +
+  '.org-suggest{position:absolute;left:0;right:0;top:calc(100% + 2px);z-index:30;background:#fff;' +
+  'border:1px solid var(--border);border-radius:10px;max-height:280px;overflow-y:auto;' +
+  'box-shadow:0 6px 18px rgba(20,30,40,.12);display:none;}' +
+  '.org-suggest.open{display:block;}' +
+  '.org-suggest-item{min-height:44px;padding:8px 12px;display:flex;flex-direction:column;justify-content:center;' +
+  'cursor:pointer;border-bottom:1px solid var(--border);}' +
+  '.org-suggest-item:last-child{border-bottom:none;}' +
+  '.org-suggest-item.active,.org-suggest-item:hover{background:#eaf6f6;}' +
+  '.org-suggest-name{font-size:.86rem;font-weight:600;color:var(--text);}' +
+  '.org-suggest-meta{font-size:.74rem;color:var(--muted);margin-top:1px;}' +
+  '.org-suggest-empty{padding:12px;font-size:.82rem;color:var(--muted);text-align:center;}' +
   '@media (max-width:640px){' +
   '.reg-form{padding:16px;}' +
   '.field-row{flex-wrap:wrap;}' +
