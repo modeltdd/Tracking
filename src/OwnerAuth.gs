@@ -607,9 +607,6 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   // รายละเอียดเจ้าหน้าที่ยังมีเหมือนเดิม ไม่แตะ renderPubLegacyInfoBox_ เอง)
   var timelineHtml = renderOwnerTimelineSection_(ownerPathTimeline);
 
-  // 2026-10-07 redesign ตามที่ผู้ใช้ขอ (ข้อ 5) — การ์ดสรุป "ตอนนี้ / ถัดไป" แบบ compact
-  var nowNextHtml = renderOwnerNowNextSummary_(data.currentStation, data.stationsMap, data.steps);
-
   var noteHtml = '';
   if (work.current_status_public === 'need_revision' && data.revisionInfo) {
     noteHtml = '' +
@@ -625,11 +622,12 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
 
   var logoutUrl = baseUrl + '?page=owner-login&logout=1&osession=' + encodeURIComponent(sessionId);
 
-  // ลำดับหน้าใหม่ (2026-10-07 redesign ตามที่ผู้ใช้ขอ): A.ข้อมูลเจ้าของผลงาน -> B.สถานะปัจจุบัน ->
-  // สิ่งที่ต้องดำเนินการ (ถ้ามี) -> C.ตอนนี้/ถัดไป -> D.Timeline เส้นทาง -> หมายเหตุ (ถ้ามี) -> E.ออกจากระบบ
+  // ลำดับหน้าใหม่ (2026-10-07 รอบ 2 ตามที่ผู้ใช้ขอ — ตัดการ์ด "ตอนนี้/ถัดไป" ออกทั้งหมด เพราะข้อมูลซ้ำกับกรอบ
+  // สถานะปัจจุบัน + Timeline อยู่แล้ว "หนึ่งข้อมูลสำคัญ แสดงเพียงหนึ่งครั้ง"): ข้อมูลเจ้าของผลงาน -> สถานะ
+  // ปัจจุบัน -> สิ่งที่ต้องดำเนินการ (ถ้ามี) -> Timeline เส้นทาง -> หมายเหตุ (ถ้ามี) -> ออกจากระบบ
   return '' +
     '<div class="pub-compact">' +
-    nameBlockHtml + heroHtml + actionHtml + nowNextHtml + timelineHtml + noteHtml +
+    nameBlockHtml + heroHtml + actionHtml + timelineHtml + noteHtml +
     '<p class="pub-back-link"><a target="_top" href="' + logoutUrl + '">ออกจากระบบ &rarr;</a></p>' +
     '</div>';
 }
