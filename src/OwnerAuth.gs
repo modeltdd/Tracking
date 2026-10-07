@@ -289,14 +289,10 @@ function renderOwnerLoginDirectFormBody_(baseUrl, errors, notices, prevValues) {
     '</div>' +
     '<button class="btn-primary" type="submit" data-loading-text="กำลังเข้าสู่ระบบ...">เข้าสู่ระบบ</button>' +
     '</form>' +
-    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?mode=search">ค้นหาสถานะแบบเดิม</a></p>' +
-    '<div class="qr-scan-divider"><span>หรือ</span></div>' +
-    '<input type="file" accept="image/*" capture="environment" id="qr-photo-input" data-base-url="' + escapeHtml_(baseUrl) + '" style="display:none">' +
-    '<button type="button" id="qr-photo-btn" class="btn-action btn-action-secondary" style="display:none">' +
-    'ถ่ายรูป / เลือกรูป QR เพื่อค้นหา</button>' +
-    '<p id="qr-photo-msg" class="hint" style="display:none"></p>' +
+    // 2026-10-07 ผู้ใช้ขอตัดลิงก์ "ค้นหาสถานะแบบเดิม" + ปุ่มสแกน QR ออกจากหน้า Login ให้เหลือแค่ Username/
+    // Password/ปุ่มเข้าสู่ระบบ (ตัดเฉพาะ UI หน้านี้ — ฟังก์ชันค้นหาเดิม/QR ยังอยู่ปกติที่ ?mode=search, Views.gs)
     '</div>' +
-    QR_PHOTO_SCAN_SCRIPT_ + OWNER_LOGIN_PASSWORD_SCRIPT_;
+    OWNER_LOGIN_PASSWORD_SCRIPT_;
 }
 
 /** พฤติกรรมช่อง password แยกทีละตัว — auto-advance/backspace ย้อนกลับ/ลูกศรซ้าย-ขวา/paste กระจายอัตโนมัติ/
