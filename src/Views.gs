@@ -1253,8 +1253,13 @@ function renderPubHero_(work, currentStation, stationsMap, steps, friendlyMode) 
   }
 
   var ownerText = work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-');
-  bodyHtml += '<div class="pub-hero-meta-row"><span class="pub-hero-meta-label">ผู้รับผิดชอบ</span>' +
-    '<span class="pub-hero-meta-value">' + escapeHtml_(ownerText) + '</span></div>';
+  // 2026-10-07 friendlyMode (หน้า Owner Dashboard เท่านั้น) — เปลี่ยนจาก label/value แยกฝั่งซ้าย-ขวา เป็น
+  // บรรทัดเดียว "ผู้รับผิดชอบ :: ค่า" (ตัวหนา) ตามที่ผู้ใช้ขอ แสดง work.current_owner_org จริงตรงๆ ไม่แก้ field/
+  // logic ใดๆ หน้าสาธารณะ/เจ้าหน้าที่ยังเป็น layout เดิม (label ซ้าย/value ขวา)
+  bodyHtml += friendlyMode
+    ? '<div class="pub-hero-meta-row pub-hero-meta-inline">ผู้รับผิดชอบ :: <b class="pub-hero-meta-value-inline">' + escapeHtml_(ownerText) + '</b></div>'
+    : '<div class="pub-hero-meta-row"><span class="pub-hero-meta-label">ผู้รับผิดชอบ</span>' +
+      '<span class="pub-hero-meta-value">' + escapeHtml_(ownerText) + '</span></div>';
   bodyHtml += '<div class="pub-hero-updated">อัปเดตล่าสุด ' + escapeHtml_(formatDateThShort_(work.updated_at)) + '</div>';
 
   var nextStep = findNextStepDisplay_(steps, stationsMap || {});
@@ -2369,6 +2374,9 @@ var PUBLIC_CSS_ = '' +
   '.pub-hero-meta-value{font-size:.82rem;font-weight:600;color:var(--text);text-align:right;}' +
   '.pub-hero-next-value{font-size:.82rem;font-weight:600;color:var(--muted);text-align:right;}' +
   '.pub-hero-next-row{padding-top:6px;border-top:1px dashed var(--border);}' +
+  // บรรทัด "ผู้รับผิดชอบ :: ค่า" แบบบรรทัดเดียว (Owner Dashboard friendlyMode เท่านั้น, 2026-10-07)
+  '.pub-hero-meta-inline{display:block;font-size:.82rem;color:var(--muted);}' +
+  '.pub-hero-meta-value-inline{font-weight:700;color:var(--navy);}' +
   // กล่อง "สิ่งที่ต้องดำเนินการ" — เด่นรองจากสถานะ พื้นสีอ่อนโทนเดียวกับ revision กันความสับสน
   '.pub-action-box{background:#fff8ec;border:1px solid #f0e0ab;border-radius:12px;padding:10px 14px;margin-bottom:10px;}' +
   '.pub-action-title{font-weight:700;color:var(--revision);font-size:.78rem;margin:0 0 4px;}' +
