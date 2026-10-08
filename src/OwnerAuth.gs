@@ -814,13 +814,10 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
     (work.work_title ? summaryItem('&#128221;', 'ชื่อผลงาน', work.work_title) : '') +
     '</div></div>';
 
-  // 3/4. RESULT CARD + NEXT STEP CARD (2 คอลัมน์ desktop, เรียงล่าง mobile)
-  var nextStep = findNextStepDisplay_(data.steps, data.stationsMap || {});
-  var splitGridHtml = '' +
-    '<div class="owner-split-grid">' +
-    renderOwnerResultCard_(work, info, data.currentStation) +
-    renderOwnerNextStepCard_(nextStep) +
-    '</div>';
+  // 3. RESULT CARD — เต็มความกว้าง (2026-10-08 รอบ 6 ตามที่ผู้ใช้ขอ) ตัดการ์ด "ขั้นตอนถัดไป" ออกแล้ว ไม่แบ่ง
+  // layout 70/30 อีกต่อไป — Timeline ด้านล่าง (buildOwnerActualPathTimeline_) เป็นตัวบอกขั้นตอนถัดไปแทน (ข้อมูล
+  // next state ไม่ได้ถูกลบออกจากระบบ ยังคำนวณอยู่ใน Timeline เหมือนเดิมทุกประการ แค่ไม่ render เป็นการ์ดแยกแล้ว)
+  var resultCardHtml = renderOwnerResultCard_(work, info, data.currentStation);
 
   // 5/6. TIMELINE — กลับมาใช้ Timeline แนวตั้งตามเส้นทางจริง (2026-10-08 รอบ 5 ตามที่ผู้ใช้ขอ) ข้ามสาย 8/9
   // อัตโนมัติอยู่แล้วตาม actual path + ปุ่มขยายดูรายละเอียดครบ 10 ขั้นตอนด้านล่าง (ของเดิม ยังเก็บไว้)
@@ -847,6 +844,6 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   // เท่านั้น ไม่แก้ .pub-compact{max-width:860px} เดิมที่หน้า scan/public result อื่นยังใช้ร่วมกันอยู่
   return '' +
     '<div class="pub-compact owner-page-wrap">' +
-    headerHtml + summaryHtml + splitGridHtml + timelineHtml + noteHtml +
+    headerHtml + summaryHtml + resultCardHtml + timelineHtml + noteHtml +
     '</div>';
 }

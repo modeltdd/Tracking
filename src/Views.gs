@@ -2859,8 +2859,10 @@ var PUBLIC_CSS_ = '' +
   '@media (min-width:900px){.owner-split-grid{flex-direction:row;align-items:stretch;}' +
   '.owner-split-grid>div:first-child{flex:0 0 70%;max-width:70%;}' +
   '.owner-split-grid>div:last-child{flex:0 0 calc(30% - 16px);max-width:calc(30% - 16px);}}' +
+  // 2026-10-08 รอบ 6 — เพิ่ม margin-bottom ตรงนี้เอง (เดิมพึ่ง .owner-split-grid{margin-bottom:16px} ที่ครอบอยู่
+  // ตอนมี 2 การ์ด ตอนนี้การ์ดนี้เต็มความกว้างเดี่ยวๆ ไม่มี wrapper ครอบแล้ว ต้องมีระยะห่างของตัวเองกับ Timeline ด้านล่าง)
   '.owner-result-card{background:#eef9f0;border:1px solid #cfe8d8;border-radius:16px;padding:18px;' +
-  'box-shadow:0 1px 3px rgba(31,59,84,.05);}' +
+  'margin-bottom:16px;box-shadow:0 1px 3px rgba(31,59,84,.05);}' +
   '.owner-result-title{font-size:.8rem;font-weight:700;color:var(--navy);margin-bottom:10px;}' +
   '.owner-result-head{display:flex;align-items:center;gap:12px;margin-bottom:6px;}' +
   '.owner-result-icon{flex-shrink:0;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;' +
