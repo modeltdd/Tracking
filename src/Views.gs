@@ -2828,47 +2828,87 @@ var PUBLIC_CSS_ = '' +
   '@media (min-width:600px){.pub-compact{max-width:860px;}}' +
   // 2026-10-08 — redesign หน้า "ผลการติดตามสถานะ" (Owner Dashboard) ตาม mockup ที่ผู้ใช้ขอ สโคปเฉพาะ class
   // ใหม่ทั้งหมด (owner-*) ไม่แตะ .pub-*/.wf-* เดิมที่หน้าอื่นใช้ร่วมกันเลย (Admin/Staff/Search/Login ไม่กระทบ)
-  '.owner-page-header{margin-bottom:14px;}' +
-  '.owner-back-link{display:inline-block;color:var(--muted);font-size:.8rem;text-decoration:none;margin-bottom:8px;}' +
-  '.owner-page-title{font-size:1.25rem;font-weight:700;color:var(--navy);line-height:1.3;}' +
-  '.owner-page-subtitle{font-size:.82rem;color:var(--muted);margin-top:2px;}' +
+  // 2026-10-08 รอบ 2 — ปรับตาม mockup รูปจริงที่ผู้ใช้ส่งมา (เดิมมีแค่ข้อความ spec ไม่มีรูป): header มีปุ่มขวาบน,
+  // การ์ดสรุปมี icon วงกลม, การ์ดผลการพิจารณา/ขั้นตอนถัดไปจัด layout icon+หัวข้อแนวนอน, Timeline แสดงครบ 1-10
+  // เสมอ (ขั้นที่ข้ามจริงแสดงจางๆ + ป้าย "(ถ้ามี)" แทนการซ่อนไปเลย) — ตัดปุ่ม "แก้ไข"/ไอคอนแชร์ลอยมุมล่างออก
+  // ตามที่ยืนยันกับผู้ใช้แล้ว (ขัดกับสถาปัตยกรรม Owner Dashboard ที่เป็น Read-Only ล้วน)
+  '.owner-page-wrap{max-width:860px;}' +
+  '@media (min-width:1100px){.owner-page-wrap.pub-compact{max-width:1200px;}}' +
+  '.owner-page-header{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;' +
+  'background:linear-gradient(135deg,#f4f9fa,#eef4f6);border:1px solid var(--border);border-radius:16px;' +
+  'padding:16px 18px;margin-bottom:16px;}' +
+  '.owner-back-link{flex-shrink:0;display:inline-flex;align-items:center;gap:4px;color:var(--navy);font-size:.78rem;' +
+  'font-weight:600;text-decoration:none;border:1px solid var(--border);border-radius:999px;padding:7px 14px;' +
+  'background:#fff;white-space:nowrap;}' +
+  '.owner-page-title{font-size:1.3rem;font-weight:700;color:var(--navy);line-height:1.3;}' +
+  '.owner-page-subtitle{font-size:.82rem;color:var(--muted);margin-top:3px;}' +
+  '@media (max-width:480px){.owner-page-header{flex-direction:column;}}' +
   '.owner-summary-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px;' +
   'margin-bottom:16px;box-shadow:0 1px 3px rgba(31,59,84,.05);}' +
-  '.owner-summary-grid{display:flex;flex-direction:column;gap:14px;}' +
+  '.owner-summary-grid{display:flex;flex-direction:column;gap:16px;}' +
+  '.owner-summary-item{display:flex;align-items:center;gap:10px;}' +
+  '.owner-summary-icon{flex-shrink:0;width:38px;height:38px;border-radius:10px;background:var(--bg);' +
+  'display:flex;align-items:center;justify-content:center;font-size:1.05rem;}' +
   '.owner-summary-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;}' +
   '.owner-summary-value{font-size:.95rem;font-weight:700;color:var(--navy);word-wrap:break-word;}' +
-  '@media (min-width:640px){.owner-summary-grid{flex-direction:row;}.owner-summary-grid>div{flex:1;}}' +
+  '@media (min-width:640px){.owner-summary-grid{flex-direction:row;}.owner-summary-item{flex:1;' +
+  'padding-right:14px;border-right:1px solid var(--border);}.owner-summary-item:last-child{border-right:none;}}' +
   '.owner-split-grid{display:flex;flex-direction:column;gap:16px;margin-bottom:16px;}' +
   '@media (min-width:900px){.owner-split-grid{flex-direction:row;align-items:stretch;}.owner-split-grid>div{flex:1;}}' +
   '.owner-result-card{background:#eef9f0;border:1px solid #cfe8d8;border-radius:16px;padding:18px;' +
   'box-shadow:0 1px 3px rgba(31,59,84,.05);}' +
-  '.owner-result-icon{font-size:2.1rem;line-height:1;margin-bottom:6px;}' +
-  '.owner-result-icon-done{color:var(--done);}.owner-result-icon-danger{color:var(--danger);}' +
-  '.owner-result-icon-revision{color:var(--revision);}.owner-result-icon-pending{color:var(--muted);}' +
-  '.owner-result-main{font-size:1.05rem;font-weight:700;color:var(--navy);margin-bottom:4px;}' +
+  '.owner-result-title{font-size:.8rem;font-weight:700;color:var(--navy);margin-bottom:10px;}' +
+  '.owner-result-head{display:flex;align-items:center;gap:12px;margin-bottom:6px;}' +
+  '.owner-result-icon{flex-shrink:0;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;' +
+  'justify-content:center;font-size:1.15rem;color:#fff;}' +
+  '.owner-result-icon-done{background:var(--done);}.owner-result-icon-danger{background:var(--danger);}' +
+  '.owner-result-icon-revision{background:var(--revision);}.owner-result-icon-pending{background:var(--muted);}' +
+  '.owner-result-main{font-size:1.1rem;font-weight:700;color:var(--navy);}' +
   '.owner-result-desc{font-size:.82rem;color:var(--text);line-height:1.55;margin-bottom:12px;}' +
   '.owner-result-divider{border-top:1px solid #cfe8d8;margin:12px 0;}' +
-  '.owner-result-row{margin-bottom:10px;}.owner-result-row:last-child{margin-bottom:0;}' +
-  '.owner-result-row-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;}' +
-  '.owner-result-row-value{font-size:.88rem;color:var(--text);font-weight:600;line-height:1.4;}' +
+  '.owner-result-grid{display:flex;flex-direction:column;gap:10px;}' +
+  '@media (min-width:560px){.owner-result-grid{flex-direction:row;}.owner-result-grid>div{flex:1;}}' +
+  '.owner-result-row{display:flex;align-items:flex-start;gap:8px;}' +
+  '.owner-result-row-icon{flex-shrink:0;width:26px;height:26px;border-radius:8px;background:#fff;' +
+  'border:1px solid #cfe8d8;display:flex;align-items:center;justify-content:center;font-size:.78rem;}' +
+  '.owner-result-row-label{font-size:.7rem;color:var(--muted);margin-bottom:2px;}' +
+  '.owner-result-row-value{font-size:.85rem;color:var(--text);font-weight:600;line-height:1.4;}' +
   '.owner-next-card{background:#eaf4fb;border:1px solid #cfe3f3;border-radius:16px;padding:18px;' +
   'box-shadow:0 1px 3px rgba(31,59,84,.05);}' +
-  '.owner-next-title{font-size:.85rem;font-weight:700;color:var(--navy);margin-bottom:10px;}' +
+  '.owner-next-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}' +
+  '.owner-next-icon{flex-shrink:0;width:34px;height:34px;border-radius:50%;background:var(--teal);color:#fff;' +
+  'display:flex;align-items:center;justify-content:center;font-size:1rem;}' +
+  '.owner-next-title{font-size:.85rem;font-weight:700;color:var(--navy);}' +
   '.owner-next-text{font-size:.92rem;font-weight:600;color:var(--text);line-height:1.5;margin-bottom:14px;}' +
-  '.owner-next-noaction{display:flex;align-items:center;gap:6px;color:var(--done);font-weight:700;font-size:.85rem;margin-bottom:4px;}' +
+  '.owner-next-noaction{display:inline-flex;align-items:center;gap:6px;color:var(--done);font-weight:700;' +
+  'font-size:.8rem;background:#e3f6e8;border-radius:10px;padding:8px 12px;margin-bottom:8px;}' +
   '.owner-next-subtext{font-size:.78rem;color:var(--muted);line-height:1.6;}' +
   '.owner-next-empty{font-size:.88rem;color:var(--muted);}' +
   '.owner-tl-section-title{font-size:.95rem;font-weight:700;color:var(--navy);margin-bottom:2px;}' +
   '.owner-tl-section-sub{font-size:.78rem;color:var(--muted);margin-bottom:10px;}' +
-  // Timeline เส้นทางจริง — แนวนอนบน desktop (reuse .pub-tl-item/.pub-timeline เดิมทั้งสี/icon แค่ปรับ layout
-  // ผ่าน wrapper class นี้เท่านั้น สโคปแค่หน้านี้ ไม่กระทบ .pub-timeline ที่หน้าอื่นใช้)
+  // แถบ Timeline 10 ขั้นตอนเสมอ (2026-10-08 รอบ 2 ตาม mockup จริง) — มือถือ: แนวตั้ง (ห้าม horizontal scroll
+  // ตามข้อ 13 ของ spec) เดสก์ท็อป (>=900px): แนวนอนแถวเดียว เส้นเชื่อมสลับทิศทางด้วย media query เดียวกัน
+  '.owner-tlc-track{display:flex;flex-direction:column;}' +
+  '.owner-tlc-item{display:flex;align-items:flex-start;gap:12px;text-align:left;position:relative;' +
+  'padding-bottom:20px;}' +
+  '.owner-tlc-item::after{content:"";position:absolute;left:17px;top:36px;bottom:0;width:2px;background:var(--border);}' +
+  '.owner-tlc-item:last-child::after{display:none;}' +
+  '.owner-tlc-item:last-child{padding-bottom:0;}' +
+  '.owner-tlc-circle{flex-shrink:0;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;' +
+  'justify-content:center;font-size:.82rem;font-weight:700;background:#fff;border:2px solid var(--border);' +
+  'color:var(--muted);position:relative;z-index:1;}' +
+  '.owner-tlc-label{font-size:.78rem;color:var(--text);line-height:1.4;padding-top:7px;}' +
+  '.owner-tlc-tag{font-size:.7rem;color:var(--muted);font-style:italic;}' +
+  '.owner-tlc-done .owner-tlc-circle{background:var(--done);border-color:var(--done);color:#fff;}' +
+  '.owner-tlc-done.owner-tlc-item::after{background:var(--done);}' +
+  '.owner-tlc-current .owner-tlc-circle{background:var(--navy);border-color:var(--navy);color:#fff;}' +
+  '.owner-tlc-current .owner-tlc-label{color:var(--navy);font-weight:700;}' +
+  '.owner-tlc-skip .owner-tlc-circle{opacity:.55;}.owner-tlc-skip .owner-tlc-label{color:var(--muted);opacity:.7;}' +
   '@media (min-width:900px){' +
-  '.owner-timeline-h .pub-timeline{display:flex;align-items:flex-start;padding:20px 12px 14px;overflow-x:auto;}' +
-  '.owner-timeline-h .pub-tl-item{flex:1 1 0;min-width:92px;flex-direction:column;align-items:center;text-align:center;padding-bottom:0;gap:6px;}' +
-  '.owner-timeline-h .pub-tl-item::before{left:50%;right:-50%;top:10px;bottom:auto;width:auto;height:1px;}' +
-  '.owner-timeline-h .pub-tl-text{padding-top:2px;max-width:150px;}' +
-  '.owner-timeline-h .pub-tl-badge{display:block;margin:4px auto 0;width:fit-content;}' +
-  '.owner-timeline-h .pub-tl-sub-row{display:block;}' +
+  '.owner-tlc-track{flex-direction:row;padding:16px 4px 4px;}' +
+  '.owner-tlc-item{flex:1 1 0;flex-direction:column;align-items:center;text-align:center;padding-bottom:0;gap:0;}' +
+  '.owner-tlc-item::after{left:50%;right:-50%;top:17px;bottom:auto;width:auto;height:2px;}' +
+  '.owner-tlc-label{text-align:center;max-width:94px;padding-top:6px;}' +
   '}' +
   // ปุ่ม "ดูรายละเอียดทั้ง 10 ขั้นตอน" / "ซ่อนรายละเอียด" สลับข้อความตามสถานะเปิด/ปิดด้วย CSS ล้วน (ไม่มี JS,
   // ไม่ reload หน้า — <details>/<summary> มาตรฐาน)

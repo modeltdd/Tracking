@@ -599,18 +599,35 @@ function renderOwnerTimelineItem_(entry) {
 }
 
 /**
- * หัวข้อ Timeline ภาษาคน (2026-10-08 redesign ตาม mockup) — "เส้นทางการดำเนินงาน" + หัวข้อรอง ตามที่ผู้ใช้ขอ
- * แนวนอนบน desktop/แนวตั้งบนมือถือผ่าน wrapper class .owner-timeline-h เดียว (CSS media query ล้วน Views.gs)
- * ต่อท้ายด้วยปุ่ม "ดูรายละเอียดทั้ง 10 ขั้นตอน" (renderOwnerFullDetailSection_, <details> แยกอีกชั้น ไม่ reload หน้า)
+ * หัวข้อ Timeline ภาษาคน (2026-10-08 รอบ 2 ตาม mockup รูปจริงที่ผู้ใช้ส่งมา) — "เส้นทางการดำเนินงาน" + หัวข้อรอง
+ * แถบ 10 ขั้นตอนแนวนอนเสมอ (ไม่ซ่อน 8/9 ไปเลยเหมือนรอบก่อน — mockup จริงแสดงเลขกำกับครบ 1-10 ตลอด ขั้นที่ถูก
+ * ข้ามจริงแสดงจางๆ + ป้าย "(ถ้ามี)" กำกับแทน) ต่อท้ายด้วยปุ่ม "ดูรายละเอียดทั้ง 10 ขั้นตอน" (รายละเอียดเต็ม
+ * ผู้รับผิดชอบ/วันที่ต่อขั้นตอน, <details> ไม่ reload หน้า) ใช้ fullWithSkips ชุดเดียวกันทั้ง 2 จุด
  */
-function renderOwnerTimelineSection_(pathData, fullWithSkips) {
-  if (!pathData) return '';
+function renderOwnerTimelineSection_(fullWithSkips) {
+  if (!fullWithSkips) return '';
   return '' +
     '<div class="owner-tl-section-title">เส้นทางการดำเนินงาน</div>' +
     '<div class="owner-tl-section-sub">แสดงภาพรวมขั้นตอนการพิจารณาผลงานของท่าน</div>' +
-    '<div class="owner-timeline-h"><div class="pub-timeline">' +
-    pathData.path.map(renderOwnerTimelineItem_).join('') + '</div></div>' +
+    '<div class="owner-tlc-track">' + fullWithSkips.map(renderOwnerCompactTimelineItem_).join('') + '</div>' +
     renderOwnerFullDetailSection_(fullWithSkips);
+}
+
+/**
+ * รายการเดียวในแถบ Timeline แนวนอนแบบ compact (2026-10-08 รอบ 2) — วงกลมเลข 1-10 เสมอ: ผ่านแล้ว=เขียว+✓,
+ * ปัจจุบัน=navy+เลข, ถูกข้ามจริง(skipped)=เทาจาง+เลข+ป้าย "(ถ้ามี)" ใต้ชื่อ, ยังไม่ถึงปกติ=เทาอ่อน+เลข ป้ายชื่อ
+ * ใต้วงกลมใช้ owner label เดียวกับทุกจุดในหน้านี้ (ไม่มีเลข state ทศนิยมปนแน่นอน — fullWithSkips ผ่าน
+ * ownerMainStepLabelFor_ มาแล้วจาก buildOwnerFullWorkflowWithSkips_)
+ */
+function renderOwnerCompactTimelineItem_(entry) {
+  var stateClass = entry.skipped ? 'skip' : entry.state;
+  var circleContent = entry.state === 'done' ? '&#10003;' : escapeHtml_(entry.order);
+  return '' +
+    '<div class="owner-tlc-item owner-tlc-' + stateClass + '">' +
+    '<div class="owner-tlc-circle">' + circleContent + '</div>' +
+    '<div class="owner-tlc-label">' + escapeHtml_(entry.split.main) + '</div>' +
+    (entry.skipped ? '<div class="owner-tlc-tag">(ถ้ามี)</div>' : '') +
+    '</div>';
 }
 
 /**
@@ -677,8 +694,10 @@ function renderOwnerResultCard_(work, info, currentStation) {
     var tone = info.subTone;
     var resultLabel = ownerLabelForStation_(info.subStation);
     headerHtml = '' +
+      '<div class="owner-result-head">' +
       '<div class="owner-result-icon owner-result-icon-' + tone + '">' + iconByTone[tone] + '</div>' +
       '<div class="owner-result-main">' + escapeHtml_(resultLabel) + '</div>' +
+      '</div>' +
       (descByTone[tone] ? '<div class="owner-result-desc">' + escapeHtml_(descByTone[tone]) + '</div>' : '') +
       '<div class="owner-result-divider"></div>';
   }
@@ -689,16 +708,21 @@ function renderOwnerResultCard_(work, info, currentStation) {
   var currentLabel = ownerLabelForStation_(info.isSub ? info.parentStation : currentStation);
   var ownerOrgText = work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-');
 
+  function miniRow(icon, label, value) {
+    return '<div class="owner-result-row"><div class="owner-result-row-icon">' + icon + '</div>' +
+      '<div><div class="owner-result-row-label">' + escapeHtml_(label) + '</div>' +
+      '<div class="owner-result-row-value">' + escapeHtml_(value) + '</div></div></div>';
+  }
+
   return '' +
     '<div class="owner-result-card">' +
+    '<div class="owner-result-title">ผลการพิจารณา</div>' +
     headerHtml +
-    '<div class="owner-result-row"><div class="owner-result-row-label">สถานะปัจจุบัน</div>' +
-    '<div class="owner-result-row-value">' + escapeHtml_(currentLabel) + '</div></div>' +
-    '<div class="owner-result-row"><div class="owner-result-row-label">ผู้รับผิดชอบ</div>' +
-    '<div class="owner-result-row-value">' + escapeHtml_(ownerOrgText) + '</div></div>' +
-    '<div class="owner-result-row"><div class="owner-result-row-label">อัปเดตล่าสุด</div>' +
-    '<div class="owner-result-row-value">' + escapeHtml_(formatDateThShort_(work.updated_at)) + '</div></div>' +
-    '</div>';
+    '<div class="owner-result-grid">' +
+    miniRow('&#128196;', 'สถานะปัจจุบัน', currentLabel) +
+    miniRow('&#128100;', 'ผู้รับผิดชอบ', ownerOrgText) +
+    miniRow('&#128336;', 'อัปเดตล่าสุด', formatDateThShort_(work.updated_at)) +
+    '</div></div>';
 }
 
 /**
@@ -717,7 +741,8 @@ function renderOwnerNextStepCard_(nextStep) {
 
   return '' +
     '<div class="owner-next-card">' +
-    '<div class="owner-next-title">ขั้นตอนถัดไป</div>' +
+    '<div class="owner-next-head"><div class="owner-next-icon">&#8599;</div>' +
+    '<div class="owner-next-title">ขั้นตอนถัดไป</div></div>' +
     bodyHtml +
     '</div>';
 }
@@ -776,19 +801,24 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   // "ออกจากระบบ" เดิมที่ท้ายหน้ามารวมเป็นจุดเดียวตรงนี้แทน (กันมีทางออกซ้ำ 2 จุด)
   var headerHtml = '' +
     '<div class="owner-page-header">' +
+    '<div><div class="owner-page-title">ผลการติดตามสถานะ</div>' +
+    '<div class="owner-page-subtitle">ตรวจสอบความคืบหน้าและขั้นตอนถัดไปของผลงาน</div></div>' +
     '<a class="owner-back-link" target="_top" href="' + escapeHtml_(logoutUrl) + '">&larr; กลับหน้าหลัก</a>' +
-    '<div class="owner-page-title">ผลการติดตามสถานะ</div>' +
-    '<div class="owner-page-subtitle">ตรวจสอบความคืบหน้าและขั้นตอนถัดไปของผลงาน</div>' +
     '</div>';
 
   // 2. OWNER SUMMARY CARD — 3 ช่องตามที่ผู้ใช้ขอ (เจ้าของผลงาน/เลขทะเบียน/วันที่รับผลงาน) ไม่มีชื่อผลงานในการ์ด
   // นี้เลย (ข้อกำหนด: ถ้าไม่มีชื่อผลงาน ห้ามแสดง "ชื่อผลงาน: -") — โชว์เป็นช่องที่ 4 เสริมเฉพาะตอนมีค่าจริงเท่านั้น
+  function summaryItem(icon, label, value) {
+    return '<div class="owner-summary-item"><div class="owner-summary-icon">' + icon + '</div>' +
+      '<div><div class="owner-summary-label">' + escapeHtml_(label) + '</div>' +
+      '<div class="owner-summary-value">' + escapeHtml_(value) + '</div></div></div>';
+  }
   var summaryHtml = '' +
     '<div class="owner-summary-card"><div class="owner-summary-grid">' +
-    '<div><div class="owner-summary-label">เจ้าของผลงาน</div><div class="owner-summary-value">' + escapeHtml_(ownerName || '-') + '</div></div>' +
-    '<div><div class="owner-summary-label">เลขทะเบียน</div><div class="owner-summary-value">' + escapeHtml_(work.tracking_no) + '</div></div>' +
-    '<div><div class="owner-summary-label">วันที่รับผลงาน</div><div class="owner-summary-value">' + escapeHtml_(formatOwnerReceivedDate_(work.received_date)) + '</div></div>' +
-    (work.work_title ? '<div><div class="owner-summary-label">ชื่อผลงาน</div><div class="owner-summary-value">' + escapeHtml_(work.work_title) + '</div></div>' : '') +
+    summaryItem('&#128100;', 'เจ้าของผลงาน', ownerName || '-') +
+    summaryItem('&#128196;', 'เลขทะเบียน', work.tracking_no) +
+    summaryItem('&#128197;', 'วันที่รับผลงาน', formatOwnerReceivedDate_(work.received_date)) +
+    (work.work_title ? summaryItem('&#128221;', 'ชื่อผลงาน', work.work_title) : '') +
     '</div></div>';
 
   // 3/4. RESULT CARD + NEXT STEP CARD (2 คอลัมน์ desktop, เรียงล่าง mobile)
@@ -799,10 +829,11 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
     renderOwnerNextStepCard_(nextStep) +
     '</div>';
 
-  // 5/6. TIMELINE เส้นทางจริง (ข้ามสาย 8/9 อัตโนมัติอยู่แล้วตาม actual path) + ปุ่มขยายดูครบ 10 ขั้นตอน
-  var ownerPathTimeline = buildOwnerActualPathTimeline_(data.steps, data.stationsMap, work);
+  // 5/6. TIMELINE — แถบ 10 ขั้นตอนแนวนอนเสมอ (เลขกำกับทุกวงกลม ขั้นที่ถูกข้ามจริงแสดงจางๆ + ป้าย "(ถ้ามี)" แทน
+  // การซ่อนไปเลย ตาม mockup ล่าสุด) + ปุ่มขยายดูรายละเอียดครบ (ผู้รับผิดชอบ/วันที่ต่อขั้นตอน) ด้านล่าง ใช้ข้อมูล
+  // ชุดเดียวกัน (buildOwnerFullWorkflowWithSkips_) ทั้ง 2 จุด ไม่คำนวณซ้ำซ้อน
   var fullWithSkips = buildOwnerFullWorkflowWithSkips_(data.steps, data.stationsMap, work);
-  var timelineHtml = renderOwnerTimelineSection_(ownerPathTimeline, fullWithSkips);
+  var timelineHtml = renderOwnerTimelineSection_(fullWithSkips);
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
   var noteHtml = '';
@@ -818,8 +849,10 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
       '<div class="pub-note-box"><div class="pub-note-title">หมายเหตุจากผู้รับผิดชอบ</div><p>' + escapeHtml_(data.latestNote) + '</p></div>';
   }
 
+  // wrapper กว้างกว่า .pub-compact เดิม (1200-1400px ตาม mockup) — scope เฉพาะ class .owner-page-wrap นี้
+  // เท่านั้น ไม่แก้ .pub-compact{max-width:860px} เดิมที่หน้า scan/public result อื่นยังใช้ร่วมกันอยู่
   return '' +
-    '<div class="pub-compact">' +
+    '<div class="pub-compact owner-page-wrap">' +
     headerHtml + summaryHtml + splitGridHtml + timelineHtml + noteHtml +
     '</div>';
 }
