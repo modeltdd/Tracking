@@ -2948,4 +2948,18 @@ var PUBLIC_CSS_ = '' +
   '.owner-tl-wrap .pub-tl-item{padding-bottom:22px;}' +
   // 2026-10-08 รอบ 9 — ผู้ใช้ขอ shadow อ่อนให้การ์ด Timeline (ข้อ 8) สโคปเฉพาะหน้า Owner (.owner-tl-wrap) ไม่แก้
   // .pub-timeline ฐานที่หน้าสาธารณะ/เจ้าหน้าที่ใช้ร่วมกัน (กันกระทบหน้าอื่นที่ไม่ได้ขอ)
-  '.owner-tl-wrap .pub-timeline{box-shadow:0 1px 3px rgba(31,59,84,.06);}';
+  '.owner-tl-wrap .pub-timeline{box-shadow:0 1px 3px rgba(31,59,84,.06);}' +
+  // 2026-10-08 รอบ 10 — ยุบ/ขยายส่วน "เส้นทางการดำเนินงาน" ได้ (ข้อ 5: แถบ minimal ไม่ใช่ card ใหญ่, ข้อ 6:
+  // transition สั้นๆ ตอนเปิด, ข้อ 8: focus state ชัดเจน) ปิดเป็นค่าเริ่มต้นเสมอ (ไม่มี [open] attribute ใน HTML)
+  '.owner-tl-toggle{background:#fff;border:1px solid var(--border);border-radius:12px;margin-bottom:16px;overflow:hidden;}' +
+  '.owner-tl-toggle-summary{cursor:pointer;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;' +
+  'gap:10px;list-style:none;}' +
+  '.owner-tl-toggle-summary::-webkit-details-marker{display:none;}' +
+  '.owner-tl-toggle-summary:focus-visible{outline:2px solid var(--teal);outline-offset:-2px;}' +
+  '.owner-tl-toggle-text{display:flex;flex-direction:column;gap:2px;min-width:0;}' +
+  '.owner-tl-toggle .owner-tl-section-title{margin-bottom:0;}' +
+  '.owner-tl-toggle-sub{font-size:.78rem;color:var(--muted);}' +
+  '.owner-tl-toggle-arrow{font-size:.7rem;color:var(--muted);flex-shrink:0;transition:transform .2s ease;}' +
+  '.owner-tl-toggle[open] .owner-tl-toggle-arrow{transform:rotate(180deg);}' +
+  '.owner-tl-toggle .owner-tl-wrap{padding:0 14px 14px;animation:ownerTlToggleFadeIn .2s ease;}' +
+  '@keyframes ownerTlToggleFadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}';

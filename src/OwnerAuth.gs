@@ -611,19 +611,35 @@ function renderOwnerTimelineItem_(entry) {
 }
 
 /**
- * หัวข้อ Timeline ภาษาคน + รายการ Timeline แนวตั้งครบ 1-10 ขั้นตอน (2026-10-08 รอบ 9 ตามที่ผู้ใช้ขอ) — Timeline
+ * หัวข้อ Timeline ภาษาคน + รายการ Timeline แนวตั้งครบ 1-10 ขั้นตอน (2026-10-08 รอบ 10 ตามที่ผู้ใช้ขอ) — Timeline
  * ชุดเดียวของหน้านี้ ใช้ buildOwnerFullWorkflowWithSkips_ (PublicTrack.gs, backbone คงที่ 1-10 เหมือนหน้า
  * สาธารณะ + flag .skipped/.isNextAfterSkip) เป็นแหล่งข้อมูลเดียว แสดงขั้นตอนทั้ง 1-10 เสมอไม่ว่าจะข้ามสาย
- * 8/9 หรือไม่ (ผู้ใช้ขอให้เห็นภาพรวมกระบวนการทั้งหมด) อยู่ใน card สีขาวใบเดียว (.pub-timeline เดิม)
+ * 8/9 หรือไม่ (ผู้ใช้ขอให้เห็นภาพรวมกระบวนการทั้งหมด) อยู่ใน card สีขาวใบเดียว (.pub-timeline เดิม ไม่แก้)
  * buildOwnerActualPathTimeline_/renderOwnerTimelineItem_ (เส้นทางจริงเท่านั้น ไม่โชว์ 8/9 ที่ถูกข้าม) เลิกใช้
  * ในหน้านี้แล้ว — ไม่ได้ลบไฟล์ทิ้ง (เผื่อใช้ที่อื่นภายหลัง)
+ *
+ * 2026-10-08 รอบ 10 — ผู้ใช้ขอให้ส่วนนี้ยุบ/ขยายได้ (ค่าเริ่มต้นยุบ ให้หน้ากระชับ เห็นผลการพิจารณาก่อน) ใช้
+ * <details>/<summary> มาตรฐานตามข้อ 9 ของ requirement (กระทบโค้ดเดิมน้อยที่สุด ไม่ต้องเขียน JS ไม่ reload หน้า
+ * รองรับ keyboard Enter/Space + focus state + aria-expanded ให้เองโดย browser เป็น native semantics ของ
+ * <details>/<summary> อยู่แล้ว) ไม่มี "open" attribute เลย = ปิดเป็นค่าเริ่มต้นเสมอทั้ง desktop/mobile (ข้อ 1/7)
+ * Timeline แนวตั้งเดิมข้างใน (.owner-tl-wrap/.pub-timeline/renderOwnerFullDetailItem_) ไม่ได้แก้ logic อะไร
+ * เลย แค่ย้ายเข้าไปอยู่ใน <details> เป็น wrapper เฉยๆ (ข้อ 4 — ไม่กระทบ Workflow/current_state/StatusHistory/
+ * owner label/branching logic ใดๆ) ยังใช้ class .owner-tl-section-title เดิมสำหรับหัวข้อ (ตำแหน่งเดียวกันใน
+ * markup เทียบกับก่อนรอบนี้ — ไม่กระทบเทส/โค้ดอื่นที่อ้าง class นี้)
  */
 function renderOwnerTimelineSection_(fullWithSkips) {
   if (!fullWithSkips) return '';
   return '' +
-    '<div class="owner-tl-section-title">เส้นทางการดำเนินงาน</div>' +
+    '<details class="owner-tl-toggle">' +
+    '<summary class="owner-tl-toggle-summary">' +
+    '<span class="owner-tl-toggle-text">' +
+    '<span class="owner-tl-section-title">เส้นทางการดำเนินงาน</span>' +
+    '<span class="owner-tl-toggle-sub">ดูขั้นตอนทั้งหมดของผลงาน</span>' +
+    '</span><span class="owner-tl-toggle-arrow">&#9660;</span>' +
+    '</summary>' +
     '<div class="owner-tl-wrap"><div class="pub-timeline">' +
-    fullWithSkips.map(renderOwnerFullDetailItem_).join('') + '</div></div>';
+    fullWithSkips.map(renderOwnerFullDetailItem_).join('') + '</div></div>' +
+    '</details>';
 }
 
 /**
