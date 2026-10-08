@@ -590,7 +590,7 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
   }).join('');
 
   var filterFormHtml = '' +
-    '<form method="get" target="_top" action="' + baseUrl + '" class="reg-form" style="margin-bottom:12px;">' +
+    '<form method="get" target="_top" action="' + baseUrl + '" class="excel-toolbar-form">' +
     '<input type="hidden" name="page" value="registry">' +
     '<div class="field-row">' +
     '<div class="field"><label>ค้นหา</label><input class="input" type="text" name="q" value="' + escapeHtml_(rp.q) +
@@ -607,8 +607,33 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
     '<div class="field-row">' +
     '<div class="field"><label>แสดง</label><select class="input" name="per">' + perOptions + '</select></div>' +
     '</div>' +
+    '<div class="excel-toolbar-buttons">' +
     '<button class="btn-primary" type="submit">ค้นหา/กรอง</button>' +
+    '<a class="btn-outline" target="_top" href="' + baseUrl + '?page=registry">ล้างตัวกรอง</a>' +
+    '</div>' +
     '</form>';
+
+  // 2026-10-08 ตามที่ผู้ใช้ขอ — ยุบ/ขยาย Filter ได้ (reuse component เดียวกับมุมมอง Excel .excel-filter-details
+  // เป๊ะ ไม่สร้าง CSS/JS คู่ขนาน) ปิดเป็นค่าเริ่มต้นเสมอทุกครั้งที่โหลดหน้า แม้มี filter ใช้งานอยู่ก็ตาม (ข้อกำหนด:
+  // ห้าม reset filter เมื่อยุบ — ค่าที่เลือกไว้ยังอยู่ใน query string/ฟอร์มเดิมเป๊ะ แค่ไม่โชว์ผืนที่เฉยๆ)
+  var activeFilterLabels = [];
+  if (rp.q) activeFilterLabels.push('ค้นหา: ' + rp.q);
+  if (rp.state) {
+    var stateStCard = stationsMap[rp.state];
+    activeFilterLabels.push('สถานะ: ' + (stateStCard ? stateStCard.station_order + ' ' + stateStCard.station_name : rp.state));
+  }
+  if (rp.resp) activeFilterLabels.push('ผู้รับผิดชอบ: ' + rp.resp);
+  if (rp.org) activeFilterLabels.push('หน่วยงาน: ' + rp.org);
+  if (rp.result) activeFilterLabels.push('ผลการพิจารณา: ' + rp.result);
+  var hasActiveFilter = activeFilterLabels.length > 0;
+  var clearFilterUrl = baseUrl + '?page=registry';
+  var filterSummaryBarHtml = '' +
+    '<summary class="excel-filter-summary">' +
+    '<span class="excel-filter-summary-title">&#128269; ค้นหา / ตัวกรอง</span>' +
+    (hasActiveFilter ? '<span class="excel-filter-badge">ใช้งาน ' + activeFilterLabels.length + ' ตัวกรอง</span>' : '') +
+    '</summary>' +
+    (hasActiveFilter ? '<div class="excel-filter-active-summary">' + escapeHtml_(activeFilterLabels.join(' • ')) +
+      ' <a target="_top" class="excel-filter-quickclear" href="' + clearFilterUrl + '">ล้างตัวกรอง</a></div>' : '');
 
   var rows = pageResult.items.map(function (w) {
     var ownerName = (w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '');
@@ -654,8 +679,9 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
       (hasFilter ? ' จาก ' + totalAllCount : '') + ')</span>' + nextLink + '</div>';
   }
 
-  return flashHtml + viewToggleHtml + tilesHtml + filterFormHtml +
-    '<p class="hint" style="margin:0 0 10px">คลิก "ดูรายละเอียด/จัดการ" — เห็นได้ทุกรายการ แก้สถานะได้เฉพาะที่หน่วยงานตนรับผิดชอบ ณ สถานะปัจจุบันเท่านั้น</p>' +
+  return flashHtml + viewToggleHtml + tilesHtml +
+    '<details class="excel-filter-details">' + filterSummaryBarHtml + filterFormHtml + '</details>' +
+    '<p class="hint" style="margin:10px 0">คลิก "ดูรายละเอียด/จัดการ" — เห็นได้ทุกรายการ แก้สถานะได้เฉพาะที่หน่วยงานตนรับผิดชอบ ณ สถานะปัจจุบันเท่านั้น</p>' +
     '<section class="metric-card">' + tableHtml + pagerHtml + '</section>';
 }
 
