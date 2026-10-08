@@ -365,34 +365,37 @@ function buildFixedMainTimeline_(steps, stationsMap, work) {
 /**
  * "ดูรายละเอียดทั้ง 10 ขั้นตอน" เฉพาะหน้า Owner Dashboard (2026-10-08 ตามที่ผู้ใช้ขอ) — reuse
  * buildFixedMainTimeline_ เดิม (backbone คงที่ 1-10 ตัวเดียวกับหน้าสาธารณะ ไม่สร้าง logic คู่ขนาน) แต่เติม
- * flag .skipped ให้ขั้นตอนที่ไม่ได้อยู่บนเส้นทางจริงของงานนี้ (เช่น 8/9 ตอนที่ state 7 ผล "ผ่าน" ข้ามตรงไป 10)
- * วิธีตรวจ: main step N ถือว่า "ข้าม" ก็ต่อเมื่อไม่มี step จริงใดๆ (done/current/upcoming จาก buildPublicDetailedSteps_)
- * อยู่ในกลุ่ม N เลย แต่มี main step ที่ "มากกว่า" N อยู่บนเส้นทางจริงแล้ว (แปลว่าเส้นทางเดินข้าม N ไปจริง ไม่ใช่
- * แค่ยังไปไม่ถึง) — ไม่ต้องเดา ใช้ข้อมูลจริงจาก steps ล้วนๆ
+ * flag .skipped ให้ขั้นตอนที่ไม่ได้อยู่บนเส้นทางจริงของงานนี้ (8/9 ตอนที่ state 7 ผล "ผ่าน/ไม่ผ่าน" ข้ามตรงไป 10)
+ *
+ * 2026-10-08 รอบ 2 แก้บั๊กจริง (เจอจากภาพที่ผู้ใช้ส่งมา — state 1-6 ถูกตีว่า "ถูกข้าม" ผิดๆ ไปด้วย): เดิมเช็คจาก
+ * "ไม่มี step จริงอยู่ในกลุ่ม N" ซึ่งพังกับงาน legacy import (มี StatusHistory แถวเดียว ไม่มีประวัติทีละขั้นของ
+ * 1-6 เลย ทำให้ 1-6 ไม่อยู่ใน steps จริงเหมือนกัน แต่ "ไม่ได้ถูกข้าม" จริงๆ) และพังอีกแบบกับงานที่เดินไปถึง state
+ * 10 แล้ว (currentMainStep=10 ทำให้ buildFixedMainTimeline_ มาร์ค 8/9 เป็น "done" ตามตำแหน่งเลขเฉยๆ ไม่ใช่
+ * "upcoming" อีกต่อไป) — ตอนนี้เปลี่ยนมาเช็คจากสัญญาณจริงโดยตรงแทน: state 7 เป็นจุดแตกสายจริงจุดเดียวในระบบ
+ * (ยืนยันจาก WORKFLOW_TRANSITIONS_SEED, ดูคอมเมนต์ buildOwnerActualPathTimeline_ ด้านบน) ถ้า StatusHistory
+ * จริงมีแถว 7.1/7.4 (ผ่าน/ไม่ผ่าน) อยู่แล้ว แปลว่า 8/9 ถูกข้ามจริงแน่นอนไม่ว่า currentMainStep จะอยู่ตรงไหนก็ตาม
+ * ถ้าเป็น 7.2/7.3 (แก้ไข) ไม่ข้าม 8/9 เลย (เข้าสู่ 8 จริง) — ไม่เดา ใช้ผลจริงจาก StatusHistory ของ state 7 เท่านั้น
  */
 function buildOwnerFullWorkflowWithSkips_(steps, stationsMap, work) {
   var fixed = buildFixedMainTimeline_(steps, stationsMap, work);
   if (!fixed || !steps) return fixed;
 
-  var realMainSteps = {};
-  steps.forEach(function (s) { realMainSteps[parentStepOrder_(s.order)] = true; });
-  var maxRealMain = 0;
-  Object.keys(realMainSteps).forEach(function (k) {
-    var num = parseInt(k, 10);
-    if (!isNaN(num)) maxRealMain = Math.max(maxRealMain, num);
-  });
-
-  // หาเหตุผลข้าม จาก step 7 ที่ resolve แล้ว (จุดแตกสายจริงจุดเดียวในระบบที่ทำให้ข้าม 8/9 ได้ — ถ้ามี)
+  // จุดแตกสายจริงจุดเดียวในระบบ: step 7 resolve เป็น 7.1/7.4 (ผ่าน/ไม่ผ่าน) -> ข้าม 8/9 ตรงไป 10, 7.2/7.3
+  // (แก้ไข) -> ไม่ข้าม เข้าสู่ 8 จริง
   var step7Resolved = steps.filter(function (s) { return parentStepOrder_(s.order) === '7' && s.order !== '7'; })[0] || null;
   var skipReasonText = '';
+  var skippedMainSteps = {};
   if (step7Resolved) {
     var resolvedLabel = OWNER_STATE_LABELS_[step7Resolved.key] || step7Resolved.name;
     var staysForRevision = step7Resolved.name.indexOf('แก้ไข') !== -1;
-    skipReasonText = staysForRevision ? '' : (resolvedLabel + ' → ข้ามขั้นตอนแก้ไข');
+    if (!staysForRevision) {
+      skipReasonText = resolvedLabel + ' → ข้ามขั้นตอนแก้ไข';
+      skippedMainSteps['8'] = true;
+      skippedMainSteps['9'] = true;
+    }
   }
 
   fixed.forEach(function (entry) {
-    var n = parseInt(entry.order, 10);
     // owner label แทน station_name ภายใน (buildFixedMainTimeline_ ใช้ mainStepNameFor_ ภายในเสมอ — ต้อง
     // override ทุก entry ที่นี่ ไม่งั้นชื่อ internal จะหลุดเข้าหน้า Owner Dashboard)
     entry.split = ownerMainStepLabelFor_(entry.order, stationsMap);
@@ -403,9 +406,9 @@ function buildOwnerFullWorkflowWithSkips_(steps, stationsMap, work) {
       }
       entry.sub = { split: { main: ownerLabelForStation_(subStationForEntry), desc: '' }, tone: entry.sub.tone };
     }
-    if (!realMainSteps[entry.order] && n < maxRealMain) {
+    if (skippedMainSteps[entry.order]) {
       entry.skipped = true;
-      entry.skipReason = skipReasonText || 'ไม่ใช้ในเส้นทางนี้';
+      entry.skipReason = skipReasonText;
     }
   });
   return fixed;

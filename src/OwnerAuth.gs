@@ -630,7 +630,10 @@ function renderOwnerTimelineSection_(pathData, fullWithSkips) {
  * แสดงข้อความเหตุผลที่ข้าม แทน "รอดำเนินการ" เฉยๆ — ห้ามบอกว่า "รอดำเนินการ" เพราะไม่จริง (ข้ามไปแล้วจริงๆ)
  */
 function renderOwnerFullDetailItem_(entry) {
-  var icon = entry.state === 'current' ? '●' : (entry.state === 'done' ? '✓' : '○');
+  // 2026-10-08 แก้บั๊กจริง — entry.skipped ต้องชนะ entry.state เสมอ (state อาจยังเป็น "done" จาก
+  // buildFixedMainTimeline_ ที่มาร์คตามตำแหน่งเลขเฉยๆ ถ้างานเดินผ่าน state 10 ไปแล้ว ทั้งที่ 8/9 ไม่เคยถูกเดิน
+  // ผ่านจริง ไอคอนต้องเป็น ○ (ยังไม่ถึง) ไม่ใช่ ✓ (เสร็จแล้ว) สำหรับ state ที่ถูกข้าม)
+  var icon = entry.skipped ? '○' : (entry.state === 'current' ? '●' : (entry.state === 'done' ? '✓' : '○'));
   var stateClass = entry.skipped ? 'upcoming owner-tl-skip' : entry.state;
 
   var metaHtml;
