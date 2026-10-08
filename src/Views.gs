@@ -589,20 +589,48 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
     return '<option value="' + n + '"' + sel + '>' + n + ' รายการ/หน้า</option>';
   }).join('');
 
+  // 2026-10-08 ตามที่ผู้ใช้ขอ — เพิ่มตัวกรองตำแหน่ง/จังหวัด/เดือน-ปีที่รับเรื่อง เข้ามุมมองนี้ด้วย (reuse
+  // filterRegistryWorks_ เดิมที่รองรับ rp.position/rp.province/rp.fy/rp.month อยู่แล้วจากมุมมอง Excel ไม่ได้
+  // เขียน logic กรองใหม่ แค่เพิ่ม input ในฟอร์มนี้ให้ตรงกับคอลัมน์ใหม่ที่โชว์)
+  var distinctPositionCard = distinctValues_(allWorks, 'position');
+  var positionOptionsCard = '<option value="">ทุกตำแหน่ง</option>' + distinctPositionCard.map(function (o) {
+    return '<option value="' + escapeHtml_(o) + '"' + (rp.position === o ? ' selected' : '') + '>' + escapeHtml_(o) + '</option>';
+  }).join('');
+  var provinceListCard = getSettingList_(ss, 'district11_provinces', ['นครศรีธรรมราช', 'กระบี่', 'พังงา', 'ภูเก็ต', 'สุราษฎร์ธานี', 'ระนอง', 'ชุมพร']);
+  var provinceOptionsCard = '<option value="">ทุกจังหวัด</option>' + provinceListCard.map(function (p) {
+    return '<option value="' + escapeHtml_(p) + '"' + (rp.province === p ? ' selected' : '') + '>' + escapeHtml_(p) + '</option>';
+  }).join('');
+  var fyOptionsCard = distinctValues_(allWorks.map(function (w) { return { fy: String(fiscalYearOfDate_(w.received_date)) }; }), 'fy').sort().reverse();
+  var fyOptionsCardHtml = '<option value="">ทุกปีงบประมาณ</option>' + fyOptionsCard.map(function (fy) {
+    return '<option value="' + escapeHtml_(fy) + '"' + (rp.fy === fy ? ' selected' : '') + '>' + escapeHtml_(fy) + '</option>';
+  }).join('');
+  var monthOptionsCard = '<option value="">ทุกเดือน</option>' + THAI_MONTHS_.map(function (name, i) {
+    var val = String(i + 1);
+    return '<option value="' + val + '"' + (rp.month === val ? ' selected' : '') + '>' + escapeHtml_(name) + '</option>';
+  }).join('');
+
   var filterFormHtml = '' +
     '<form method="get" target="_top" action="' + baseUrl + '" class="excel-toolbar-form">' +
     '<input type="hidden" name="page" value="registry">' +
     '<div class="field-row">' +
     '<div class="field"><label>ค้นหา</label><input class="input" type="text" name="q" value="' + escapeHtml_(rp.q) +
-    '" placeholder="เลขทะเบียน / ชื่อเจ้าของผลงาน / ชื่อผลงาน / หน่วยงาน"></div>' +
+    '" placeholder="เลขทะเบียน / ชื่อเจ้าของผลงาน / ชื่อผลงาน / หน่วยงาน / ทีม"></div>' +
     '</div>' +
     '<div class="field-row">' +
     '<div class="field"><label>สถานะ</label><select class="input" name="state">' + stateOptions + '</select></div>' +
+    '<div class="field"><label>ตำแหน่ง</label><select class="input" name="position">' + positionOptionsCard + '</select></div>' +
+    '</div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>จังหวัด</label><select class="input" name="province">' + provinceOptionsCard + '</select></div>' +
     '<div class="field"><label>ผู้รับผิดชอบ</label><select class="input" name="resp">' + respOptions + '</select></div>' +
     '</div>' +
     '<div class="field-row">' +
     '<div class="field"><label>หน่วยงาน</label><select class="input" name="org">' + orgOptions + '</select></div>' +
     '<div class="field"><label>ผลการพิจารณา</label><select class="input" name="result">' + resultOptions + '</select></div>' +
+    '</div>' +
+    '<div class="field-row">' +
+    '<div class="field"><label>ปีงบประมาณ</label><select class="input" name="fy">' + fyOptionsCardHtml + '</select></div>' +
+    '<div class="field"><label>เดือนที่รับเรื่อง</label><select class="input" name="month">' + monthOptionsCard + '</select></div>' +
     '</div>' +
     '<div class="field-row">' +
     '<div class="field"><label>แสดง</label><select class="input" name="per">' + perOptions + '</select></div>' +
@@ -622,9 +650,13 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
     var stateStCard = stationsMap[rp.state];
     activeFilterLabels.push('สถานะ: ' + (stateStCard ? stateStCard.station_order + ' ' + stateStCard.station_name : rp.state));
   }
+  if (rp.position) activeFilterLabels.push('ตำแหน่ง: ' + rp.position);
+  if (rp.province) activeFilterLabels.push('จังหวัด: ' + rp.province);
   if (rp.resp) activeFilterLabels.push('ผู้รับผิดชอบ: ' + rp.resp);
   if (rp.org) activeFilterLabels.push('หน่วยงาน: ' + rp.org);
   if (rp.result) activeFilterLabels.push('ผลการพิจารณา: ' + rp.result);
+  if (rp.fy) activeFilterLabels.push('ปีงบ: ' + rp.fy);
+  if (rp.month) activeFilterLabels.push('เดือน: ' + (THAI_MONTHS_[Number(rp.month) - 1] || rp.month));
   var hasActiveFilter = activeFilterLabels.length > 0;
   var clearFilterUrl = baseUrl + '?page=registry';
   var filterSummaryBarHtml = '' +
@@ -635,39 +667,65 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
     (hasActiveFilter ? '<div class="excel-filter-active-summary">' + escapeHtml_(activeFilterLabels.join(' • ')) +
       ' <a target="_top" class="excel-filter-quickclear" href="' + clearFilterUrl + '">ล้างตัวกรอง</a></div>' : '');
 
-  var rows = pageResult.items.map(function (w) {
-    var ownerName = (w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '');
-    var state = stationsMap[w.current_station_key];
+  // 2026-10-08 ตามที่ผู้ใช้ขอ — เปลี่ยนคอลัมน์ของมุมมองหลัก (การ์ด) ให้เป็น 8 คอลัมน์ตามทะเบียน Excel เดิม:
+  // ลำดับ/ชื่อ-สกุล/ตำแหน่ง/ด้าน/จังหวัด/วันที่ลงรับ/ทีม/สถานะ (เลขทะเบียน/ชื่อผลงาน/หน่วยงาน/ผู้รับผิดชอบ ยัง
+  // อยู่ในฐานข้อมูลครบ แค่ไม่แสดงในตารางนี้ — ยังกรอง/sort ได้ผ่านฟอร์มด้านบนตามปกติ) mapping ฟิลด์จริงแบบ
+  // explicit ทุกคอลัมน์ (ห้ามเดา/ไม่ใช้ Object.values):
+  //   ลำดับ = เลขลำดับแถวจริงตามหน้า (startIndex+i+1, คำนวณจาก pageResult เหมือนมุมมอง Excel ไม่ใช่ field ในชีต)
+  //   ชื่อ-สกุล = title_name+first_name+last_name (เหมือนทุกจุดในระบบ)
+  //   ตำแหน่ง = w.position, ด้าน = w.specialty, จังหวัด = w.province, ทีม = w.legacy_team (ยืนยัน field จริงจาก
+  //   มุมมอง Excel ที่ map แบบเดียวกันอยู่แล้ว), วันที่ลงรับ = w.received_date
+  //   สถานะ = อ่านจาก WorkflowStates (stationsMap[current_station_key]) ไม่ใช่เลข state ดิบ ถ้าเป็น state ย่อย
+  //   ทศนิยมจริง (station_order มีจุด เช่น 7.1) ให้ใช้ส่วนผลลัพธ์ในวงเล็บ (เช่น "ผ่านการประเมิน" จาก
+  //   "ผ่าน (ผ่านการประเมิน)") ถ้าเป็น state หลักไม่มีจุด ตัดวงเล็บออก ใช้ชื่อหลักเฉยๆ (เช่น "แจ้งผลหน่วยงาน (ผ่าน/
+  //   ไม่ผ่าน)" -> "แจ้งผลหน่วยงาน") — ใช้ splitStationNameDesc_ เดิม (PublicTrack.gs) ไม่สร้าง logic ใหม่
+  function registryStateDisplayText_(station) {
+    if (!station) return '-';
+    var split = splitStationNameDesc_(station.station_name);
+    var hasDot = String(station.station_order || '').indexOf('.') !== -1;
+    return (hasDot ? (split.desc || split.main) : split.main) || '-';
+  }
+
+  var startIndexCard = (pageResult.page - 1) * pageResult.perPage;
+  var rows = pageResult.items.map(function (w, i) {
+    var ownerName = ((w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '')).trim();
+    var station = stationsMap[w.current_station_key];
+    // วันที่ลงรับ — ใช้ formatOwnerReceivedDate_ (OwnerAuth.gs) ไม่ใช่ formatDateTh_ ปกติ เพราะ formatDateTh_
+    // แสดงปี ค.ศ.+เวลา 00:00 เสมอ (ไม่ตรงข้อกำหนด: ต้องปี พ.ศ. "12 มิ.ย. 2569" และห้ามแสดงเวลา 00:00 ถ้าไม่มีเวลาจริง)
     return '<tr>' +
-      '<td>' + escapeHtml_(w.tracking_no) + '</td>' +
-      '<td>' + escapeHtml_(ownerName) + '</td>' +
-      '<td>' + escapeHtml_(w.work_title || '-') + '</td>' +
-      '<td>' + escapeHtml_(w.org_from || '-') + '</td>' +
-      '<td>' + escapeHtml_(state ? state.station_name : w.current_station_key) + '</td>' +
-      '<td>' + escapeHtml_(w.current_owner_org || '-') + '</td>' +
-      '<td>' + formatDateTh_(w.updated_at) + '</td>' +
-      '<td><a class="btn-action btn-action-primary btn-action-sm" target="_top" href="' + baseUrl +
+      '<td class="reg-main-col-seq">' + (startIndexCard + i + 1) + '</td>' +
+      '<td class="reg-main-col-name">' + escapeHtml_(ownerName || '-') + '</td>' +
+      '<td class="reg-main-col-position">' + escapeHtml_(w.position || '-') + '</td>' +
+      '<td class="reg-main-col-specialty">' + escapeHtml_(w.specialty || '-') + '</td>' +
+      '<td class="reg-main-col-province">' + escapeHtml_(w.province || '-') + '</td>' +
+      '<td class="reg-main-col-date">' + escapeHtml_(formatOwnerReceivedDate_(w.received_date)) + '</td>' +
+      '<td class="reg-main-col-team">' + escapeHtml_(w.legacy_team || '-') + '</td>' +
+      '<td class="reg-main-col-state">' + escapeHtml_(registryStateDisplayText_(station)) + '</td>' +
+      '<td class="reg-main-col-action"><a class="btn-action btn-action-primary btn-action-sm" target="_top" href="' + baseUrl +
       '?page=scan&t=' + encodeURIComponent(w.qr_token) + '">ดูรายละเอียด/จัดการ</a></td>' +
       '</tr>';
   }).join('');
 
   // หัวตารางกดเรียงได้ (2026-09-24 ตามที่ผู้ใช้ขอ) — คลิกครั้งแรกเรียง asc, คลิกซ้ำสลับ desc/asc คอลัมน์เดิม
+  // ตำแหน่ง/จังหวัด/ทีม เป็น sort key ใหม่ (เพิ่มเข้า REGISTRY_SORTABLE_COLUMNS_ แล้ว, Registry.gs) ด้าน/ลำดับ/
+  // จัดการ ไม่ sort (ด้านไม่อยู่ในรายการ sort ที่ผู้ใช้ขอ, ลำดับ/จัดการ ไม่ใช่ field ของข้อมูลจริง)
   var theadHtml = '<tr>' +
-    registrySortHeaderHtml_('เลขทะเบียน', 'tracking_no', rp, baseUrl) +
-    registrySortHeaderHtml_('เจ้าของผลงาน', 'owner', rp, baseUrl) +
-    registrySortHeaderHtml_('ชื่อผลงาน', 'work_title', rp, baseUrl) +
-    registrySortHeaderHtml_('หน่วยงาน', 'org_from', rp, baseUrl) +
-    registrySortHeaderHtml_('สถานะปัจจุบัน', 'state', rp, baseUrl) +
-    registrySortHeaderHtml_('ผู้รับผิดชอบ', 'current_owner_org', rp, baseUrl) +
-    registrySortHeaderHtml_('วันที่อัปเดตล่าสุด', 'updated_at', rp, baseUrl) +
-    '<th>จัดการ</th></tr>';
+    '<th class="reg-main-col-seq">ลำดับ</th>' +
+    '<th class="reg-main-col-name">' + registrySortHeaderInnerHtml_('ชื่อ - สกุล', 'owner', rp, baseUrl) + '</th>' +
+    '<th class="reg-main-col-position">' + registrySortHeaderInnerHtml_('ตำแหน่ง', 'position', rp, baseUrl) + '</th>' +
+    '<th class="reg-main-col-specialty">ด้าน</th>' +
+    '<th class="reg-main-col-province">' + registrySortHeaderInnerHtml_('จังหวัด', 'province', rp, baseUrl) + '</th>' +
+    '<th class="reg-main-col-date">' + registrySortHeaderInnerHtml_('วันที่ลงรับ', 'received_date', rp, baseUrl) + '</th>' +
+    '<th class="reg-main-col-team">' + registrySortHeaderInnerHtml_('ทีม', 'legacy_team', rp, baseUrl) + '</th>' +
+    '<th class="reg-main-col-state">' + registrySortHeaderInnerHtml_('สถานะ', 'state', rp, baseUrl) + '</th>' +
+    '<th class="reg-main-col-action">จัดการ</th></tr>';
   var tableHtml = pageResult.items.length
-    ? '<div class="table-scroll"><table class="admin-table"><thead>' + theadHtml + '</thead><tbody>' + rows + '</tbody></table></div>'
+    ? '<div class="excel-table-scroll"><table class="excel-table reg-main-table"><thead>' + theadHtml + '</thead><tbody>' + rows + '</tbody></table></div>'
     : '<div class="empty">ไม่พบรายการที่ตรงกับเงื่อนไข</div>';
 
   var pagerHtml = '';
   if (pageResult.totalItems > 0) {
-    var hasFilter = rp.q || rp.state || rp.resp || rp.org || rp.result || rp.bucket;
+    var hasFilter = rp.q || rp.state || rp.resp || rp.org || rp.result || rp.bucket || rp.position || rp.province || rp.fy || rp.month;
     var prevLink = pageResult.page > 1
       ? '<a target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { p: pageResult.page - 1 }) + '">&larr; ก่อนหน้า</a>'
       : '<span class="muted-link">&larr; ก่อนหน้า</span>';
@@ -682,7 +740,7 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
   return flashHtml + viewToggleHtml + tilesHtml +
     '<details class="excel-filter-details">' + filterSummaryBarHtml + filterFormHtml + '</details>' +
     '<p class="hint" style="margin:10px 0">คลิก "ดูรายละเอียด/จัดการ" — เห็นได้ทุกรายการ แก้สถานะได้เฉพาะที่หน่วยงานตนรับผิดชอบ ณ สถานะปัจจุบันเท่านั้น</p>' +
-    '<section class="metric-card">' + tableHtml + pagerHtml + '</section>';
+    '<div class="excel-sheet">' + tableHtml + '</div>' + pagerHtml;
 }
 
 /** ปุ่มสลับ [มุมมองการ์ด] [มุมมอง Excel] (2026-09-25 ตามที่ผู้ใช้ขอข้อ 10) — ข้อมูล/filter/permission ชุดเดียวกัน
@@ -2547,6 +2605,18 @@ var STAFF_CSS_ = '' +
   '.excel-col-no{text-align:center;color:var(--muted);}' +
   '.excel-col-wide{white-space:normal;min-width:160px;}' +
   '.excel-col-month{text-align:center;min-width:56px;}' +
+  // 2026-10-08 ตามที่ผู้ใช้ขอ — ความกว้างคอลัมน์ของมุมมองการ์ด (.reg-main-table, 8 คอลัมน์ใหม่) ตามที่ผู้ใช้
+  // ระบุ (ข้อ 7) white-space:normal เฉพาะคอลัมน์ข้อความยาว (ชื่อ-สกุล/ตำแหน่ง/ด้าน/สถานะ) กันข้อความล้นคอลัมน์
+  '.reg-main-col-seq{width:70px;text-align:center;color:var(--muted);}' +
+  '.reg-main-col-name{width:260px;white-space:normal;}' +
+  '.reg-main-col-position{width:180px;white-space:normal;}' +
+  '.reg-main-col-specialty{width:180px;white-space:normal;}' +
+  '.reg-main-col-province{width:130px;}' +
+  '.reg-main-col-date{width:130px;}' +
+  '.reg-main-col-team{width:90px;text-align:center;}' +
+  '.reg-main-col-state{width:220px;white-space:normal;}' +
+  '.reg-main-col-action{width:140px;}' +
+  '.reg-main-table{table-layout:fixed;}' +
   '.excel-state-empty{color:var(--muted);}' +
   // State — ใช้แค่ text color/badge เล็กๆ (ข้อ 9 "อย่าให้ทั้งแถวมีสีจัด") reuse .pub-hero-sub-* tone เดิมเป๊ะ
   '.excel-state-badge{display:inline-block;padding:1px 7px;border-radius:999px;font-weight:700;font-size:.72rem;}' +

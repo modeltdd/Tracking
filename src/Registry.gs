@@ -90,7 +90,10 @@ function filterRegistryWorks_(works, rp, overdueIds) {
 /** คอลัมน์ที่หัวตารางทะเบียนกดเรียงได้ (2026-09-24 ตามที่ผู้ใช้ขอ) — 'owner'/'state' ไม่ใช่ field ตรงๆ ของ Works
  *  คำนวณ key เปรียบเทียบเองใน sortRegistryWorks_ (owner จาก title_name+first_name+last_name จริง, state จาก
  *  station_order จริงใน WorkflowStates ไม่ใช่เรียงตามตัวอักษรชื่อ state ซึ่งไม่ตรงลำดับ workflow จริง) */
-var REGISTRY_SORTABLE_COLUMNS_ = ['tracking_no', 'work_title', 'org_from', 'owner', 'state', 'current_owner_org', 'updated_at', 'received_date'];
+// 2026-10-08 ตามที่ผู้ใช้ขอ — เพิ่ม 'position'/'province'/'legacy_team' ให้ sort ได้ (คอลัมน์ "ตำแหน่ง"/"จังหวัด"/
+// "ทีม" ของมุมมองการ์ด) เป็น field ตรงๆ ของ Works อยู่แล้ว ใช้ fallback เดิมใน keyOf (String(w[rp.sort]||'')) ได้
+// ทันทีไม่ต้องเพิ่ม case พิเศษ
+var REGISTRY_SORTABLE_COLUMNS_ = ['tracking_no', 'work_title', 'org_from', 'owner', 'state', 'current_owner_org', 'updated_at', 'received_date', 'position', 'province', 'legacy_team'];
 
 /** เรียงผลลัพธ์ทะเบียนตาม rp.sort/rp.dir (ไม่มี rp.sort = ไม่เรียง คงลำดับเดิมจาก getAllWorksForRegistry_
  *  คือ received_date desc) เรียกหลัง filterRegistryWorks_ ก่อนแบ่งหน้าเสมอ */
