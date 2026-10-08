@@ -34,7 +34,14 @@ function findSheetLoose_(ss, targetName) {
   return match || null;
 }
 
-/** อ่านชีต LegacyImport ทั้งชีตเป็น array of array (ดิบ ไม่ผ่าน readSheetAsObjects_ เพราะ header ไม่ตรงชื่อ field ในระบบ) */
+/**
+ * อ่านชีต LegacyImport ทั้งชีตเป็น array of array (ดิบ ไม่ผ่าน readSheetAsObjects_ เพราะ header ไม่ตรงชื่อ field
+ * ในระบบ) คืนค่าเป็น array ปกติ (เรียกตรงๆ, ไม่ breaking change กับจุดเรียกเดิมทุกจุด) แต่แปะ .displayRows ไว้
+ * เป็น property เสริม (array เป็น object ได้ใน JS — pattern เดียวกับ steps.reachedTerminal ใน
+ * buildPublicDetailedSteps_, PublicTrack.gs) เก็บ getDisplayValues() คู่ขนานแถวต่อแถว (ลำดับ/จำนวนตรงกับแถว
+ * หลักเป๊ะ ก่อนตัดแถวว่าง) — ใช้แก้บั๊กสลับวัน/เดือนของ correctLegacyReceivedDate_() (2026-10-08, ดู docstring
+ * ของฟังก์ชันนั้น) จุดที่ยังไม่อัปเดตให้ส่ง displayRow ต่อ ยังทำงานได้ปกติ (fallback เดิม)
+ */
 function readLegacySheetRaw_(ss) {
   var sheet = findSheetLoose_(ss, LEGACY_SHEET_NAME_);
   if (!sheet) {
@@ -46,8 +53,16 @@ function readLegacySheetRaw_(ss) {
   var lastRow = sheet.getLastRow();
   var lastCol = sheet.getLastColumn();
   if (lastRow < 2) return [];
-  return sheet.getRange(2, 1, lastRow - 1, lastCol).getValues()
-    .filter(function (r) { return String(r[LEGACY_COL_.NAME] || '').trim(); }); // ตัดแถวว่าง
+  var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  var displays = sheet.getRange(2, 1, lastRow - 1, lastCol).getDisplayValues();
+  var displayRows = [];
+  var rows = values.filter(function (r, i) {
+    var keep = String(r[LEGACY_COL_.NAME] || '').trim();
+    if (keep) displayRows.push(displays[i]);
+    return keep;
+  }); // ตัดแถวว่าง (ซิงค์ displayRows ให้ตรงลำดับ/จำนวนกับ rows เป๊ะ)
+  rows.displayRows = displayRows;
+  return rows;
 }
 
 /** แปลง Excel date serial (numFmtId=14, ยืนยันแล้วว่าเป็น date จริง) เป็น Date object — ไม่ปรับปี */
@@ -56,33 +71,42 @@ function excelSerialToDate_(serial) {
   return new Date(utcDays * 86400 * 1000);
 }
 
-/** แก้ปี พ.ศ. ที่พิมพ์ผิดลงช่องวันที่ตรงๆ (ยืนยันกับผู้ใช้แล้ว — ดู docstring บนสุดของไฟล์) ลบ 543 ปีออก คง
- *  เดือน/วันเดิมไว้ทุกประการ คืน null ถ้า serial ไม่ใช่ตัวเลข/วันที่ที่ใช้ได้ (กันข้อมูลเสียพัง)
- *  รองรับ 3 รูปแบบ input เท่าที่เจอจริงในชีต LegacyImport ของผู้ใช้ (ทุกแบบมาจากข้อมูล 244 แถวเดียวกัน แค่
- *  paste/format แต่ละแถวเข้า Google Sheets ไม่เหมือนกัน — ยืนยันจากภาพจริงทุกกรณี):
+/**
+ * แก้ปี พ.ศ. ที่พิมพ์ผิดลงช่องวันที่ตรงๆ (ยืนยันกับผู้ใช้แล้ว — ดู docstring บนสุดของไฟล์) ลบ 543 ปีออก คง
+ * เดือน/วันเดิมไว้ทุกประการ คืน null ถ้า serial ไม่ใช่ตัวเลข/วันที่ที่ใช้ได้ (กันข้อมูลเสียพัง)
+ * รองรับ 3 รูปแบบ input เท่าที่เจอจริงในชีต LegacyImport ของผู้ใช้ (ทุกแบบมาจากข้อมูล 244 แถวเดียวกัน แค่
+ * paste/format แต่ละแถวเข้า Google Sheets ไม่เหมือนกัน — ยืนยันจากภาพจริงทุกกรณี):
  *   1) JS Date object — เมื่อเซลล์ถูก Sheets จัดรูปแบบเป็นวันที่ (2026-09-21 เจอจริง คอลัมน์ F แสดง "21/8/2569")
  *   2) ข้อความ "D/M/YYYY" ล้วนๆ — เมื่อเซลล์ยังเป็น plain text (2026-09-21 เจอจริงจาก LegacyPreview.issues
  *      รายงาน "วันที่ลงรับไม่ใช่ตัวเลข/แปลงไม่ได้: '20/8/2569'" ทำให้ ~173/244 แถวถูกบล็อกไปก่อนแก้จุดนี้)
- *   3) เลข serial ดิบแบบ Excel (เช่น 244123) — เมื่ออ่านจากไฟล์ .xlsx ตรงๆ ไม่ผ่าน Google Sheets paste เลย */
-function correctLegacyReceivedDate_(serial) {
+ *   3) เลข serial ดิบแบบ Excel (เช่น 244123) — เมื่ออ่านจากไฟล์ .xlsx ตรงๆ ไม่ผ่าน Google Sheets paste เลย
+ *
+ * 2026-10-08 แก้บั๊กจริง (ยืนยันจาก diagnoseLegacyReceivedDateRaw() บนชีตจริง): spreadsheet locale ของผู้ใช้
+ * เป็น en_US — เมื่อเคสที่ 1 (เซลล์เป็น Date object) ถูกพิมพ์เป็น "12/6/2569" (ผู้กรอกคิดแบบไทย dd/mm ตั้งใจ
+ * ให้เป็น 12 มิ.ย.) Google Sheets ตีความตาม locale เป็น mm/dd แทน (เดือน=12,วัน=6 = 6 ธ.ค.) ทั้งที่ข้อความที่
+ * แสดงจริงในตาราง (getDisplayValues()) ยังเป็น "12/6/2569" ถูกต้องเสมอไม่ว่า locale จะตีความยังไง — โค้ดเดิม
+ * เชื่อ Date.getDate()/getMonth() ตรงๆ ทำให้ได้ค่าผิดเฉพาะกรณีวัน<=12 ที่กำกวม (วัน>12 ไม่กำกวม Sheets ตีความ
+ * ถูกอยู่แล้วเหมือนเดิม ไม่กระทบ) ตอนนี้รับ displayText เพิ่ม (ทางเลือก, จุดเรียกเดิมที่ยังไม่อัปเดตจะ fallback
+ * ไปใช้ Date object เหมือนเดิม) ถ้ามีและ parse เป็น D/M/YYYY ได้ ให้เชื่อ displayText เสมอ (ตรงกับที่ตาเห็นจริง
+ * ในชีต ไม่เดา mm/dd vs dd/mm จาก Date object อีกต่อไป)
+ */
+function correctLegacyReceivedDate_(serial, displayText) {
   if (!serial) return null;
   var d;
-  if (serial instanceof Date) {
+  var textSource = serial instanceof Date ? String(displayText || '').trim() : String(serial).trim();
+  var textMatch = textSource.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (textMatch) {
+    var day = Number(textMatch[1]), month = Number(textMatch[2]), year = Number(textMatch[3]);
+    d = new Date(year, month - 1, day);
+    // new Date() ปัดเดือน/วันเกินขอบเขตข้ามไปเดือนถัดไปเงียบๆ (เช่น 31/4 -> 1 พ.ค.) เช็คย้อนกลับกันข้อมูลเพี้ยน
+    if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+  } else if (serial instanceof Date) {
     if (isNaN(serial.getTime())) return null;
-    d = new Date(serial.getTime());
+    d = new Date(serial.getTime()); // ไม่มี displayText ให้เชื่อ (จุดเรียกเก่าที่ยังไม่อัปเดต) — fallback เดิม
+  } else if (!isNaN(Number(serial))) {
+    d = excelSerialToDate_(serial);
   } else {
-    var text = String(serial).trim();
-    var textMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (textMatch) {
-      var day = Number(textMatch[1]), month = Number(textMatch[2]), year = Number(textMatch[3]);
-      d = new Date(year, month - 1, day);
-      // new Date() ปัดเดือน/วันเกินขอบเขตข้ามไปเดือนถัดไปเงียบๆ (เช่น 31/4 -> 1 พ.ค.) เช็คย้อนกลับกันข้อมูลเพี้ยน
-      if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
-    } else if (!isNaN(Number(serial))) {
-      d = excelSerialToDate_(serial);
-    } else {
-      return null;
-    }
+    return null;
   }
   d.setFullYear(d.getFullYear() - 543);
   return d;
@@ -140,7 +164,7 @@ function normalizeLegacyStateCode_(raw) {
 }
 
 /** ตรวจ 1 แถวดิบจาก LegacyImport -> { mapped:{...}, issues:[...] } — issues ว่าง = พร้อม import, ไม่ว่าง = ต้องดู LegacyPreview */
-function analyzeLegacyRow_(ss, row, positionRows, stationOrderIndex, provinceList) {
+function analyzeLegacyRow_(ss, row, positionRows, stationOrderIndex, provinceList, displayRow) {
   var issues = [];
   var nameParts = splitLegacyName_(row[LEGACY_COL_.NAME]);
   if (!nameParts.splitOk) issues.push('แยกคำนำหน้า/ชื่อ/นามสกุลอัตโนมัติไม่ได้ชัดเจน (ตรวจสอบด้วยตนเอง)');
@@ -156,7 +180,7 @@ function analyzeLegacyRow_(ss, row, positionRows, stationOrderIndex, provinceLis
   var provinceRaw = String(row[LEGACY_COL_.PROVINCE] || '').trim();
   if (provinceList.indexOf(provinceRaw) === -1) issues.push('จังหวัด "' + provinceRaw + '" ไม่ตรงกับ 7 จังหวัดเขต 11 ที่ตั้งไว้ (สะกดผิด/พิมพ์ชื่อหน่วยงานแทน?)');
 
-  var receivedDate = correctLegacyReceivedDate_(row[LEGACY_COL_.RECEIVED]);
+  var receivedDate = correctLegacyReceivedDate_(row[LEGACY_COL_.RECEIVED], displayRow ? displayRow[LEGACY_COL_.RECEIVED] : undefined);
   if (!receivedDate) issues.push('วันที่ลงรับไม่ใช่ตัวเลข/แปลงไม่ได้: ' + JSON.stringify(row[LEGACY_COL_.RECEIVED]));
 
   var stateCode = normalizeLegacyStateCode_(row[LEGACY_COL_.STATE]);
@@ -253,8 +277,8 @@ function validateLegacyData() {
   var provinceList = getSettingList_(ss, 'district11_provinces', []);
 
   var clean = 0, flagged = 0;
-  rows.forEach(function (row) {
-    var result = analyzeLegacyRow_(ss, row, positionRows, stationOrderIndex, provinceList);
+  rows.forEach(function (row, i) {
+    var result = analyzeLegacyRow_(ss, row, positionRows, stationOrderIndex, provinceList, rows.displayRows[i]);
     if (result.issues.length) {
       flagged++;
       Logger.log('แถวลำดับ ' + result.legacy_seq + ' (' + row[LEGACY_COL_.NAME] + '): ' + result.issues.join(' / '));
@@ -285,8 +309,8 @@ function previewLegacyMigration() {
   previewSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
 
   var clean = 0;
-  rows.forEach(function (row) {
-    var r = analyzeLegacyRow_(ss, row, positionRows, stationOrderIndex, provinceList);
+  rows.forEach(function (row, i) {
+    var r = analyzeLegacyRow_(ss, row, positionRows, stationOrderIndex, provinceList, rows.displayRows[i]);
     if (!r.issues.length) clean++;
     previewSheet.appendRow([
       r.legacy_seq, r.title_name, r.first_name, r.last_name, r.position, r.specialty, r.province,
@@ -323,8 +347,8 @@ function migrateLegacyRegistrations() {
   var imported = 0, skippedDup = 0, skippedBlocked = 0;
   var nowTs = now_();
 
-  rows.forEach(function (row) {
-    var r = analyzeLegacyRow_(ss, row, positionRows, stationOrderIndex, provinceList);
+  rows.forEach(function (row, i) {
+    var r = analyzeLegacyRow_(ss, row, positionRows, stationOrderIndex, provinceList, rows.displayRows[i]);
     if (existingSeqs[r.legacy_seq]) { skippedDup++; return; }
     // บล็อก import เฉพาะกรณีข้อมูลจำเป็นจริงขาด/map ไม่ได้ (ตำแหน่ง, สถานะ, วันที่) — เดือน/แยกชื่อไม่ชัด/เลขาพิเศษ
     // ยัง import ได้ (แค่ต้องตรวจแก้ทีหลังในระบบ ไม่ใช่ข้อมูลเสียที่ import ไม่ได้เลย)
@@ -658,7 +682,7 @@ function diagnoseLegacyReceivedDateRaw(legacySeq) {
     (isDate ? (' | ISOString=' + rawValue.toISOString() + ' | getDate()=' + rawValue.getDate() +
       ' | getMonth()+1=' + (rawValue.getMonth() + 1) + ' | getFullYear()=' + rawValue.getFullYear()) : ''));
   Logger.log('display value (getDisplayValues, ตามที่ตาเห็นจริงในชีต): "' + displayValue + '"');
-  Logger.log('correctLegacyReceivedDate_() คำนวณได้ตอนนี้: ' + correctLegacyReceivedDate_(rawValue));
+  Logger.log('correctLegacyReceivedDate_() คำนวณได้ตอนนี้ (รวม displayText แล้ว): ' + correctLegacyReceivedDate_(rawValue, displayValue));
 
   var worksMatch = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS)).filter(function (w) { return String(w.legacy_seq) === seq; })[0];
   Logger.log('Works.received_date ปัจจุบัน (หลัง fix ที่รันไปแล้ว ถ้ามี): ' + (worksMatch ? worksMatch.received_date : '(ไม่พบใน Works)'));
@@ -688,12 +712,13 @@ function auditReceiveDates() {
     return w.created_by === LEGACY_IMPORT_MARKER_ && w.legacy_seq;
   });
 
-  // legacy_seq -> แถวดิบ LegacyImport ทั้งหมดที่ seq นี้ (เช็ค ambiguous ก่อนเชื่อ)
+  // legacy_seq -> แถวดิบ LegacyImport ทั้งหมดที่ seq นี้ (เช็ค ambiguous ก่อนเชื่อ) เก็บคู่ raw+display เสมอ
+  // (ข้อ 2026-10-08 — ต้องใช้ displayText แก้บั๊กสลับวัน/เดือน ดู correctLegacyReceivedDate_)
   var seqToRows = {};
-  legacyRows.forEach(function (row) {
+  legacyRows.forEach(function (row, i) {
     var seq = String(row[LEGACY_COL_.SEQ] || '').trim();
     if (!seq) return;
-    (seqToRows[seq] = seqToRows[seq] || []).push(row);
+    (seqToRows[seq] = seqToRows[seq] || []).push({ row: row, display: legacyRows.displayRows[i] });
   });
 
   var result = { total: works.length, correct: 0, wrong: 0, empty: 0, noMatch: 0, ambiguous: 0, badFormat: 0 };
@@ -720,10 +745,10 @@ function auditReceiveDates() {
       return;
     }
 
-    var correctDate = correctLegacyReceivedDate_(matches[0][LEGACY_COL_.RECEIVED]);
+    var correctDate = correctLegacyReceivedDate_(matches[0].row[LEGACY_COL_.RECEIVED], matches[0].display[LEGACY_COL_.RECEIVED]);
     if (!correctDate) {
       result.badFormat++;
-      problemRows.push(w.tracking_no + ' ' + name + ': วันที่ใน Excel แปลงไม่ได้ (' + JSON.stringify(matches[0][LEGACY_COL_.RECEIVED]) + ')');
+      problemRows.push(w.tracking_no + ' ' + name + ': วันที่ใน Excel แปลงไม่ได้ (' + JSON.stringify(matches[0].row[LEGACY_COL_.RECEIVED]) + ')');
       return;
     }
 
