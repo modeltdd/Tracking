@@ -493,17 +493,19 @@ function buildOwnerActualPathTimeline_(steps, stationsMap, work) {
     var lastReal = group.filter(function (s) { return s.state !== 'upcoming'; }).slice(-1)[0] || null;
 
     var entry = {
-      order: n, split: mainStepNameFor_(n, stationsMap), state: state,
+      // 2026-10-08 ตามที่ผู้ใช้ขอ — Timeline หน้า Owner ใช้ owner label ชุดเดียวกับกรอบสถานะปัจจุบัน
+      // (ownerMainStepLabelFor_/OWNER_STATE_LABELS_) ไม่ใช่ station_name ภายในอีกต่อไป
+      order: n, split: ownerMainStepLabelFor_(n, stationsMap), state: state,
       org: lastReal ? lastReal.org : '', enteredAt: lastReal ? lastReal.enteredAt : null,
       isLastStep: idx === order.length - 1 && n === '10',
     };
 
     if (isCurrent) {
       var heroInfo = buildHeroDisplayInfo_(currentStation, stationsMap);
-      if (heroInfo.isSub) entry.sub = { order: heroInfo.subOrder, split: heroInfo.subSplit, tone: heroInfo.subTone };
+      if (heroInfo.isSub) entry.sub = { split: { main: ownerLabelForStation_(heroInfo.subStation), desc: '' }, tone: heroInfo.subTone };
     }
 
-    if (n === '7') entry.branch = buildOwnerStep7BranchInfo_(group, isCurrent);
+    if (n === '7') entry.branch = buildOwnerStep7BranchInfo_(group, isCurrent, stationsMap);
     if (n === '9' && isCurrent) entry.note = 'ผลงานอยู่ระหว่างการพิจารณาครั้งที่ 2';
 
     return entry;
@@ -524,23 +526,26 @@ function buildOwnerActualPathTimeline_(steps, stationsMap, work) {
 /** branch indicator ของ state 7 (จุดตัดสินใจจริงเดียวในระบบ) — ถ้ายังไม่ถึง 7.1-7.4 (ปัจจุบันอยู่ที่ "7" เฉยๆ)
  *  แสดงตัวเลือกทั้ง 2 ทาง (ข้อ 5) ถ้าผ่านไปแล้ว แสดงผลจริงที่เกิดขึ้น (ข้อ 2/4) ที่มาของข้อความอ้างอิงจากชื่อ
  *  station จริงที่ StatusHistory บันทึกไว้ (ไม่เดา ไม่ผูกกับ work.evaluation_result เพราะอาจถูกรอบ 2 ทับค่าไปแล้ว) */
-function buildOwnerStep7BranchInfo_(group, isCurrent) {
+function buildOwnerStep7BranchInfo_(group, isCurrent, stationsMap) {
   var resolved = group.filter(function (s) { return s.order !== '7'; })[0] || null; // 7.1/7.2/7.3/7.4 ตัวที่ผ่านจริง
   if (resolved) {
     var staysForRevision = resolved.name.indexOf('แก้ไข') !== -1;
+    // 2026-10-08 ตามที่ผู้ใช้ขอ — ใช้ owner label (OWNER_STATE_LABELS_) แทน station_name ภายใน ไม่มีเลข state ปน
+    var resolvedLabel = OWNER_STATE_LABELS_[resolved.key] || resolved.name;
     return {
       resolved: true,
       text: staysForRevision
-        ? 'ผลการพิจารณา: ' + resolved.name + ' — เข้าสู่ขั้นตอนแก้ไขผลงาน'
-        : 'ผลการพิจารณา: ' + resolved.name + ' — จึงข้ามขั้นตอนการแก้ไขและเข้าสู่ขั้นตอนแจ้งผลโดยตรง',
+        ? 'ผลการพิจารณา: ' + resolvedLabel + ' — เข้าสู่ขั้นตอนแก้ไขผลงาน'
+        : 'ผลการพิจารณา: ' + resolvedLabel + ' — จึงข้ามขั้นตอนการแก้ไขและเข้าสู่ขั้นตอนแจ้งผลโดยตรง',
     };
   }
   if (isCurrent) {
+    // 2026-10-08 — ปลายทางทั้ง 2 ทางใช้ owner label ของขั้นหลัก 10/8 แทนข้อความ "ขั้นตอน N" เดิม (ห้ามมีเลข state)
     return {
       resolved: false,
       options: [
-        { label: 'ผ่าน / ไม่ผ่าน', to: 'ขั้นตอน 10 แจ้งผลหน่วยงาน' },
-        { label: 'ต้องแก้ไข', to: 'ขั้นตอน 8 แก้ไขผลงาน' },
+        { label: 'ผ่าน / ไม่ผ่าน', to: ownerMainStepLabelFor_('10', stationsMap).main },
+        { label: 'ต้องแก้ไข', to: ownerMainStepLabelFor_('8', stationsMap).main },
       ],
     };
   }
@@ -561,13 +566,13 @@ function renderOwnerTimelineItem_(entry) {
     ? '<div class="owner-tl-resp">ผู้รับผิดชอบ :: <b>' + escapeHtml_(entry.org) + '</b></div>'
     : '';
 
-  // ตัดเลข state ย่อย (7.1/7.4) ออกจากบรรทัด "ผลการพิจารณา" เหมือนกรอบสถานะปัจจุบัน (ข้อ 2/7) ใช้คำเต็มจาก
-  // station_name จริงแทนคำสั้นๆ ที่กำกวม
+  // 2026-10-08 — ตัดเลข state ย่อย (7.1/7.4) ออกจากบรรทัด "ผลการพิจารณา" เหมือนกรอบสถานะปัจจุบัน ใช้ owner
+  // label เต็มจาก OWNER_STATE_LABELS_ ตรงๆ (entry.sub.split.main ตอนนี้คือ owner label อยู่แล้ว ไม่ต้องเช็ค
+  // "ผ่าน"/"ไม่ผ่าน" แยกกรณีอีกต่อไปเหมือนตอนใช้ station_name ภายใน)
   var subHtml = entry.sub
     ? '<div class="pub-tl-sub-row"><span class="pub-tl-sub-label">ผลการพิจารณา:</span> ' +
       '<span class="pub-tl-sub-badge pub-hero-sub-' + entry.sub.tone + '">' +
-      escapeHtml_((entry.sub.split.main === 'ผ่าน' || entry.sub.split.main === 'ไม่ผ่าน') && entry.sub.split.desc
-        ? entry.sub.split.desc : entry.sub.split.main) + '</span></div>'
+      escapeHtml_(entry.sub.split.main) + '</span></div>'
     : '';
 
   var noteHtml = entry.note ? '<div class="owner-tl-note">' + escapeHtml_(entry.note) + '</div>' : '';

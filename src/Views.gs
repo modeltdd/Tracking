@@ -1263,10 +1263,15 @@ function renderPubHero_(work, currentStation, stationsMap, steps, friendlyMode) 
   var cls = STATUS_PILL_CLASS_[work.current_status_public] || 'pending';
   var info = buildHeroDisplayInfo_(currentStation, stationsMap || {});
 
+  // 2026-10-08 ตามที่ผู้ใช้ขอ — friendlyMode (หน้า Owner Dashboard เท่านั้น) ใช้ OWNER_STATE_LABELS_ แทน
+  // station_name ภายในทั้งหมด (ownerLabelForStation_, PublicTrack.gs) ไม่แสดงเลข state/ข้อความวงเล็บภายใน
+  // เลยแม้แต่น้อย — info.isSub=false ครอบคลุมทั้ง state หลักจริง (s1/s2/s4 ฯลฯ) และ state ย่อยที่ไม่มี parent
+  // บาง (s8_1..s8_6/s9_1..s9_4) เหมือนกัน ownerLabelForStation_(currentStation) จึงใช้ได้ถูกทั้ง 2 กรณี
+  var mainLabelText = friendlyMode ? ownerLabelForStation_(info.isSub ? info.parentStation : currentStation) : info.stepSplit.main;
   var bodyHtml = '' +
     (friendlyMode ? '' : '<div class="pub-hero-step-label">ขั้นตอนที่ ' + escapeHtml_(info.stepOrder) + '</div>') +
-    '<div class="pub-hero-main">' + escapeHtml_(info.stepSplit.main) + '</div>' +
-    (info.stepSplit.desc ? '<div class="pub-hero-desc">' + escapeHtml_(info.stepSplit.desc) + '</div>' : '');
+    '<div class="pub-hero-main">' + escapeHtml_(mainLabelText) + '</div>' +
+    (!friendlyMode && info.stepSplit.desc ? '<div class="pub-hero-desc">' + escapeHtml_(info.stepSplit.desc) + '</div>' : '');
   // 2026-10-07 friendlyMode — ข้อความอธิบายสถานะแบบภาษาคน (ข้อ 4) ดึงจาก WorkflowStates.public_hint ของ
   // สถานีปัจจุบันจริง (field ที่มีอยู่แล้ว Admin แก้ไขได้จากหน้า "จัดการ Workflow" โดยไม่ต้องแก้โค้ด) ไม่ได้
   // แต่งข้อความเองทุก state (ห้ามเดา — ตอนนี้มีค่าแค่บาง state ที่เกี่ยวกับการแก้ไขเอกสาร) ถ้าว่างไม่แสดงอะไรเลย
@@ -1274,13 +1279,9 @@ function renderPubHero_(work, currentStation, stationsMap, steps, friendlyMode) 
     bodyHtml += '<div class="pub-hero-hint">' + escapeHtml_(currentStation.public_hint) + '</div>';
   }
   if (info.isSub) {
-    // 2026-10-07 friendlyMode (หน้า Owner Dashboard เท่านั้น) — ซ่อนเลข state ย่อย (7.1/7.4 ฯลฯ) ออกจากบรรทัด
-    // "ผลการพิจารณา" และใช้คำเต็มจากชื่อ state จริง (ส่วนในวงเล็บ) แทนคำสั้นๆ "ผ่าน"/"ไม่ผ่าน" ที่กำกวม —
-    // "ผ่านการประเมิน"/"ไม่ผ่านการประเมิน" มาจาก station_name จริงในชีต WorkflowStates เอง (ไม่ได้เดา/สร้างคำใหม่)
-    var subLabelText = friendlyMode
-      ? ((info.subSplit.main === 'ผ่าน' || info.subSplit.main === 'ไม่ผ่าน') && info.subSplit.desc
-        ? info.subSplit.desc : info.subSplit.main)
-      : (info.subOrder + ' ' + info.subSplit.main);
+    // 2026-10-08 friendlyMode — บรรทัด "ผลการพิจารณา" ใช้ owner label ของ sub-state เอง (OWNER_STATE_LABELS_)
+    // แทนชื่อ station ภายใน ไม่มีเลข state (7.1/7.4) ปนเลยแม้แต่น้อย (ตามที่ผู้ใช้ขอรอบนี้)
+    var subLabelText = friendlyMode ? ownerLabelForStation_(info.subStation) : (info.subOrder + ' ' + info.subSplit.main);
     bodyHtml += '' +
       '<div class="pub-hero-sub-row"><span class="pub-hero-sub-label">ผลการพิจารณา</span>' +
       '<span class="pub-hero-sub-badge pub-hero-sub-' + info.subTone + '">' +
@@ -1300,9 +1301,12 @@ function renderPubHero_(work, currentStation, stationsMap, steps, friendlyMode) 
 
   var nextStep = findNextStepDisplay_(steps, stationsMap || {});
   if (nextStep) {
-    // friendlyMode (ข้อ 3/7) — ป้าย "ถัดไป" แทน "ขั้นตอนถัดไป" และไม่แสดงเลข state นำหน้าชื่อ
+    // friendlyMode (ข้อ 3/7) — ป้าย "ถัดไป" แทน "ขั้นตอนถัดไป" และไม่แสดงเลข state นำหน้าชื่อ 2026-10-08:
+    // ใช้ owner label ของ nextStep.station แทน station_name ภายใน (fallback เป็น nextStep.split.main เดิม
+    // เฉพาะกรณีไม่มี station object จริง — เคสหายากมาก ดู findNextStepDisplay_)
+    var nextLabelText = friendlyMode ? (nextStep.station ? ownerLabelForStation_(nextStep.station) : nextStep.split.main) : nextStep.split.main;
     bodyHtml += '<div class="pub-hero-next-row"><span class="pub-hero-next-label">' + (friendlyMode ? 'ถัดไป' : 'ขั้นตอนถัดไป') + '</span>' +
-      '<span class="pub-hero-next-value">' + (friendlyMode ? '' : escapeHtml_(nextStep.order) + ' ') + escapeHtml_(nextStep.split.main) + '</span></div>';
+      '<span class="pub-hero-next-value">' + (friendlyMode ? '' : escapeHtml_(nextStep.order) + ' ') + escapeHtml_(nextLabelText) + '</span></div>';
   }
 
   return '' +

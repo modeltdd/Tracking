@@ -219,6 +219,19 @@ function splitStationNameDesc_(stationName) {
 }
 
 /**
+ * ข้อความ "สถานะปัจจุบัน" แบบอ่านง่ายสำหรับเจ้าของผลงาน (2026-10-08 ตามที่ผู้ใช้ขอ) — อ่านจาก
+ * OWNER_STATE_LABELS_ (Constants.gs) ตาม station_key เท่านั้น ไม่เคยแสดงเลข state (7.1/8.3 ฯลฯ) เลย ไม่มี
+ * ใน map (เช่น state ใหม่ที่เพิ่มทีหลังยังไม่เติม owner label) fallback กลับไปใช้ station_name ภายใน (ตัด
+ * ส่วนวงเล็บออกด้วย splitStationNameDesc_) กันหน้าเปล่า/undefined — ใช้เฉพาะหน้า Owner Dashboard เท่านั้น
+ * Staff/Admin ยังอ่าน station.station_name ตรงๆ เหมือนเดิมทุกจุด ไม่ถูกแตะ
+ */
+function ownerLabelForStation_(station) {
+  if (!station) return '';
+  var label = OWNER_STATE_LABELS_[station.station_key];
+  return label || splitStationNameDesc_(station.station_name).main;
+}
+
+/**
  * แยก "สถานะหลัก" (เลขขั้นตอนหลัก+ชื่อ) จาก "สถานะย่อย/ผลการดำเนินงาน" (state ทศนิยมจริง เช่น 7.1/7.2/7.3)
  * ให้การ์ด "สถานะปัจจุบัน" (2026-09-24 ตามที่ผู้ใช้ขอ) — หลักการ: ถ้า station_order ของสถานะปัจจุบันมีจุดทศนิยม
  * (เช่น "7.1") ให้หา station อื่นที่ station_order ตรงกับเลขหน้าจุด ("7") เป็น "สถานะหลัก" จริงจากข้อมูลจริง
@@ -243,8 +256,10 @@ function buildHeroDisplayInfo_(currentStation, stationsMap) {
         stepOrder: parentOrder,
         stepSplit: splitStationNameDesc_(parent.station_name),
         parentOrder: parentOrder,
+        parentStation: parent, // 2026-10-08 — เพิ่มไว้ให้ renderPubHero_(friendlyMode) หา owner label ของ parent ได้ (ownerLabelForStation_ ต้องการ station object ไม่ใช่แค่ text ที่ split แล้ว)
         parentSplit: splitStationNameDesc_(parent.station_name),
         subOrder: order,
+        subStation: currentStation, // เช่นกัน — owner label ของ sub-state เอง
         subSplit: splitStationNameDesc_(currentStation.station_name),
         subTone: subStatusToneClass_(currentStation.station_name),
       };
@@ -266,9 +281,9 @@ function findNextStepDisplay_(steps, stationsMap) {
   var st = stationsMap[next.key];
   if (st) {
     var info = buildHeroDisplayInfo_(st, stationsMap);
-    return { order: info.stepOrder, split: info.stepSplit };
+    return { order: info.stepOrder, split: info.stepSplit, station: st };
   }
-  return { order: next.order, split: { main: next.name, desc: '' } };
+  return { order: next.order, split: { main: next.name, desc: '' }, station: null };
 }
 
 /**
@@ -289,6 +304,22 @@ function mainStepNameFor_(n, stationsMap) {
   }
   children.sort(function (a, b) { return parseFloat(a.station_order) - parseFloat(b.station_order); });
   return children.length ? splitStationNameDesc_(children[0].station_name) : { main: 'ขั้นตอนที่ ' + n, desc: '' };
+}
+
+/** เหมือน mainStepNameFor_ ทุกประการแต่คืน owner label (OWNER_STATE_LABELS_) แทน station_name ภายใน —
+ *  ใช้เฉพาะ Timeline หน้า Owner Dashboard (buildOwnerActualPathTimeline_, OwnerAuth.gs) เท่านั้น (2026-10-08) */
+function ownerMainStepLabelFor_(n, stationsMap) {
+  var bare = null;
+  for (var key in stationsMap) {
+    if (String(stationsMap[key].station_order) === String(n)) { bare = stationsMap[key]; break; }
+  }
+  if (bare) return { main: ownerLabelForStation_(bare), desc: '' };
+  var children = [];
+  for (var k2 in stationsMap) {
+    if (String(stationsMap[k2].station_order).indexOf(n + '.') === 0) children.push(stationsMap[k2]);
+  }
+  children.sort(function (a, b) { return parseFloat(a.station_order) - parseFloat(b.station_order); });
+  return { main: children.length ? ownerLabelForStation_(children[0]) : 'ขั้นตอนที่ ' + n, desc: '' };
 }
 
 /**
