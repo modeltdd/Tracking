@@ -691,10 +691,10 @@ function renderOwnerResultCard_(work, info, currentStation) {
       '<div class="owner-result-divider"></div>';
   }
 
-  // "สถานะปัจจุบัน" แสดงเสมอ (ไม่ขึ้นกับว่ามีผลย่อยหรือไม่) — มีผลย่อย (isSub) ใช้ label ของ parent (เช่น state 7),
-  // ไม่มี (isSub=false) ใช้ label ของสถานีปัจจุบันตรงๆ (ครอบคลุมทั้ง state หลักจริง และ state ย่อยที่ไม่มี parent
-  // บาง เช่น 8.3/9.2 ซึ่ง buildHeroDisplayInfo_ ก็คืน isSub=false เหมือนกัน)
-  var currentLabel = ownerLabelForStation_(info.isSub ? info.parentStation : currentStation);
+  // 2026-10-08 รอบ 4 — ผู้ใช้ขอตัดแถว "สถานะปัจจุบัน" (icon เอกสาร + ข้อความ label ของ parent state เช่น
+  // "ผลการพิจารณาถูกส่งมายังสำนักงานเขตแล้ว") ออกจากการ์ดนี้ทั้งหมด เพราะซ้ำซ้อนกับข้อความ "ผ่านการประเมิน" ที่
+  // เด่นอยู่แล้วด้านบน เหลือแค่ "ผู้รับผิดชอบ"/"อัปเดตล่าสุด" (currentStation param ยังรับไว้เผื่อใช้ภายหลัง แต่
+  // ไม่ได้ใช้คำนวณอะไรในฟังก์ชันนี้แล้วตอนนี้)
   var ownerOrgText = work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-');
 
   function miniRow(icon, label, value) {
@@ -708,7 +708,6 @@ function renderOwnerResultCard_(work, info, currentStation) {
     '<div class="owner-result-title">ผลการพิจารณา</div>' +
     headerHtml +
     '<div class="owner-result-grid">' +
-    miniRow('&#128196;', 'สถานะปัจจุบัน', currentLabel) +
     miniRow('&#128100;', 'ผู้รับผิดชอบ', ownerOrgText) +
     miniRow('&#128336;', 'อัปเดตล่าสุด', formatDateThShort_(work.updated_at)) +
     '</div></div>';

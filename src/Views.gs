@@ -2854,7 +2854,11 @@ var PUBLIC_CSS_ = '' +
   '@media (min-width:640px){.owner-summary-grid{flex-direction:row;}.owner-summary-item{flex:1;' +
   'padding-right:14px;border-right:1px solid var(--border);}.owner-summary-item:last-child{border-right:none;}}' +
   '.owner-split-grid{display:flex;flex-direction:column;gap:16px;margin-bottom:16px;}' +
-  '@media (min-width:900px){.owner-split-grid{flex-direction:row;align-items:stretch;}.owner-split-grid>div{flex:1;}}' +
+  // 2026-10-08 รอบ 4 — สัดส่วน 70/30 (ผลการพิจารณา/ขั้นตอนถัดไป) บน desktop/tablet ตามที่ผู้ใช้ขอ มือถือยัง
+  // เรียงแนวตั้งเหมือนเดิม (ผลการพิจารณาก่อน ขั้นตอนถัดไปตามหลัง — ลำดับ markup เดิมอยู่แล้ว ไม่ต้องแก้ HTML)
+  '@media (min-width:900px){.owner-split-grid{flex-direction:row;align-items:stretch;}' +
+  '.owner-split-grid>div:first-child{flex:0 0 70%;max-width:70%;}' +
+  '.owner-split-grid>div:last-child{flex:0 0 calc(30% - 16px);max-width:calc(30% - 16px);}}' +
   '.owner-result-card{background:#eef9f0;border:1px solid #cfe8d8;border-radius:16px;padding:18px;' +
   'box-shadow:0 1px 3px rgba(31,59,84,.05);}' +
   '.owner-result-title{font-size:.8rem;font-weight:700;color:var(--navy);margin-bottom:10px;}' +
