@@ -15,11 +15,12 @@ var STATUS_PILL_CLASS_ = {
   terminated: 'danger',
 };
 
+// 2026-10-08 ผู้ใช้ขอลด Bottom Navigation เหลือ 3 เมนู (หน้าแรก/ทะเบียน/ผู้ดูแล) — ตัด scan/forward/search
+// ออกจากแถบล่างเท่านั้น (route/function เดิม 'scan'/'forward'/'search' ใน routeStaffPage_ ยังอยู่ครบ ไม่ถูก
+// ลบ ยังเข้าถึงได้ตรงๆ ผ่าน URL เดิม เช่น ?page=scan จากทางอื่น เช่น QR scan จริง/ปุ่ม "ดูประวัติ" ในหน้าอื่นๆ
+// ที่ลิงก์มาที่นี่อยู่แล้ว — ตัดแค่ entry ใน array นี้ที่ใช้ render แถบเมนูล่างเท่านั้น)
 var NAV_ITEMS_ = [
   { page: 'dashboard', label: 'หน้าแรก', icon: '⌂' },
-  { page: 'scan', label: 'สแกน QR', icon: '⌗' },
-  { page: 'forward', label: 'ส่งต่อ', icon: '→' },
-  { page: 'search', label: 'ค้นหา', icon: '⌕' },
   { page: 'registry', label: 'ทะเบียน', icon: '▤', registryOnly: true },
   { page: 'admin', label: 'ผู้ดูแล', icon: '⚙', adminOnly: true },
 ];
@@ -2353,8 +2354,12 @@ var STAFF_CSS_ = '' +
   '.stub{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;text-align:center;}' +
   '.fab{position:fixed;right:18px;bottom:88px;width:52px;height:52px;border-radius:50%;background:var(--teal);color:#fff;' +
   'font-size:1.6rem;display:flex;align-items:center;justify-content:center;text-decoration:none;box-shadow:0 3px 8px rgba(20,40,55,.3);z-index:6;}' +
-  '.bottomnav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--border);z-index:5;}' +
-  '.navitem{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 0 8px;color:var(--muted);text-decoration:none;font-size:.72rem;}' +
+  // 2026-10-08 — ปรับสูงขึ้นเล็กน้อย (~64-72px) + เงาอ่อนมากด้านบน ตามที่ผู้ใช้ขอ (3 เมนูเท่านั้น .navitem{flex:1}
+  // เดิมแบ่งพื้นที่เท่ากันอัตโนมัติอยู่แล้ว ไม่ต้องแก้สัดส่วน)
+  '.bottomnav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid var(--border);' +
+  'box-shadow:0 -1px 6px rgba(20,40,55,.05);z-index:5;}' +
+  '.navitem{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;' +
+  'min-height:64px;padding:10px 0;color:var(--muted);text-decoration:none;font-size:.72rem;box-sizing:border-box;}' +
   '.navitem.active{color:var(--teal);font-weight:700;}' +
   '.navicon{font-size:1.2rem;}' +
   '.reg-form{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px 22px;}' +
