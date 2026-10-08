@@ -604,30 +604,19 @@ function renderOwnerTimelineItem_(entry) {
  * ข้ามจริงแสดงจางๆ + ป้าย "(ถ้ามี)" กำกับแทน) ต่อท้ายด้วยปุ่ม "ดูรายละเอียดทั้ง 10 ขั้นตอน" (รายละเอียดเต็ม
  * ผู้รับผิดชอบ/วันที่ต่อขั้นตอน, <details> ไม่ reload หน้า) ใช้ fullWithSkips ชุดเดียวกันทั้ง 2 จุด
  */
+/**
+ * 2026-10-08 รอบ 3 — ผู้ใช้ขอลบแถบ Timeline แนวนอน compact (วงกลมเลข 1-10 + เส้นเชื่อม + ข้อความใต้วงกลม) ออก
+ * ทั้งชุด ให้เหลือแค่หัวข้อ "เส้นทางการดำเนินงาน" เป็น label ของส่วน "ดูรายละเอียดทั้ง 10 ขั้นตอน" ที่ยังเก็บไว้
+ * ตาม requirement เดิม (ข้อ 7 — Timeline รายละเอียดที่กดเปิดดูได้) renderOwnerCompactTimelineItem_/
+ * .owner-tlc-* CSS ถูกลบออกทั้งหมด (โค้ด UI ใหม่ล้วนจาก session นี้เอง ไม่ใช่ของเดิมที่มีมาก่อน ไม่กระทบ
+ * WorkflowMaster/StatusHistory/state code ใดๆ)
+ */
 function renderOwnerTimelineSection_(fullWithSkips) {
   if (!fullWithSkips) return '';
   return '' +
     '<div class="owner-tl-section-title">เส้นทางการดำเนินงาน</div>' +
     '<div class="owner-tl-section-sub">แสดงภาพรวมขั้นตอนการพิจารณาผลงานของท่าน</div>' +
-    '<div class="owner-tlc-track">' + fullWithSkips.map(renderOwnerCompactTimelineItem_).join('') + '</div>' +
     renderOwnerFullDetailSection_(fullWithSkips);
-}
-
-/**
- * รายการเดียวในแถบ Timeline แนวนอนแบบ compact (2026-10-08 รอบ 2) — วงกลมเลข 1-10 เสมอ: ผ่านแล้ว=เขียว+✓,
- * ปัจจุบัน=navy+เลข, ถูกข้ามจริง(skipped)=เทาจาง+เลข+ป้าย "(ถ้ามี)" ใต้ชื่อ, ยังไม่ถึงปกติ=เทาอ่อน+เลข ป้ายชื่อ
- * ใต้วงกลมใช้ owner label เดียวกับทุกจุดในหน้านี้ (ไม่มีเลข state ทศนิยมปนแน่นอน — fullWithSkips ผ่าน
- * ownerMainStepLabelFor_ มาแล้วจาก buildOwnerFullWorkflowWithSkips_)
- */
-function renderOwnerCompactTimelineItem_(entry) {
-  var stateClass = entry.skipped ? 'skip' : entry.state;
-  var circleContent = entry.state === 'done' ? '&#10003;' : escapeHtml_(entry.order);
-  return '' +
-    '<div class="owner-tlc-item owner-tlc-' + stateClass + '">' +
-    '<div class="owner-tlc-circle">' + circleContent + '</div>' +
-    '<div class="owner-tlc-label">' + escapeHtml_(entry.split.main) + '</div>' +
-    (entry.skipped ? '<div class="owner-tlc-tag">(ถ้ามี)</div>' : '') +
-    '</div>';
 }
 
 /**

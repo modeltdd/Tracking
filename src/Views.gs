@@ -2886,30 +2886,8 @@ var PUBLIC_CSS_ = '' +
   '.owner-next-empty{font-size:.88rem;color:var(--muted);}' +
   '.owner-tl-section-title{font-size:.95rem;font-weight:700;color:var(--navy);margin-bottom:2px;}' +
   '.owner-tl-section-sub{font-size:.78rem;color:var(--muted);margin-bottom:10px;}' +
-  // แถบ Timeline 10 ขั้นตอนเสมอ (2026-10-08 รอบ 2 ตาม mockup จริง) — มือถือ: แนวตั้ง (ห้าม horizontal scroll
-  // ตามข้อ 13 ของ spec) เดสก์ท็อป (>=900px): แนวนอนแถวเดียว เส้นเชื่อมสลับทิศทางด้วย media query เดียวกัน
-  '.owner-tlc-track{display:flex;flex-direction:column;}' +
-  '.owner-tlc-item{display:flex;align-items:flex-start;gap:12px;text-align:left;position:relative;' +
-  'padding-bottom:20px;}' +
-  '.owner-tlc-item::after{content:"";position:absolute;left:17px;top:36px;bottom:0;width:2px;background:var(--border);}' +
-  '.owner-tlc-item:last-child::after{display:none;}' +
-  '.owner-tlc-item:last-child{padding-bottom:0;}' +
-  '.owner-tlc-circle{flex-shrink:0;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;' +
-  'justify-content:center;font-size:.82rem;font-weight:700;background:#fff;border:2px solid var(--border);' +
-  'color:var(--muted);position:relative;z-index:1;}' +
-  '.owner-tlc-label{font-size:.78rem;color:var(--text);line-height:1.4;padding-top:7px;}' +
-  '.owner-tlc-tag{font-size:.7rem;color:var(--muted);font-style:italic;}' +
-  '.owner-tlc-done .owner-tlc-circle{background:var(--done);border-color:var(--done);color:#fff;}' +
-  '.owner-tlc-done.owner-tlc-item::after{background:var(--done);}' +
-  '.owner-tlc-current .owner-tlc-circle{background:var(--navy);border-color:var(--navy);color:#fff;}' +
-  '.owner-tlc-current .owner-tlc-label{color:var(--navy);font-weight:700;}' +
-  '.owner-tlc-skip .owner-tlc-circle{opacity:.55;}.owner-tlc-skip .owner-tlc-label{color:var(--muted);opacity:.7;}' +
-  '@media (min-width:900px){' +
-  '.owner-tlc-track{flex-direction:row;padding:16px 4px 4px;}' +
-  '.owner-tlc-item{flex:1 1 0;flex-direction:column;align-items:center;text-align:center;padding-bottom:0;gap:0;}' +
-  '.owner-tlc-item::after{left:50%;right:-50%;top:17px;bottom:auto;width:auto;height:2px;}' +
-  '.owner-tlc-label{text-align:center;max-width:94px;padding-top:6px;}' +
-  '}' +
+  // 2026-10-08 รอบ 3 — ผู้ใช้ขอลบแถบ Timeline แนวนอน compact (.owner-tlc-*) ออกทั้งชุด (วงกลม/เส้นเชื่อม/
+  // ข้อความใต้วงกลม/สี completed-current-future) เหลือแค่หัวข้อ + ปุ่ม "ดูรายละเอียดทั้ง 10 ขั้นตอน" ด้านล่าง
   // ปุ่ม "ดูรายละเอียดทั้ง 10 ขั้นตอน" / "ซ่อนรายละเอียด" สลับข้อความตามสถานะเปิด/ปิดด้วย CSS ล้วน (ไม่มี JS,
   // ไม่ reload หน้า — <details>/<summary> มาตรฐาน)
   '.owner-detail-toggle summary{cursor:pointer;font-size:.8rem;font-weight:600;color:var(--teal);list-style:none;' +
