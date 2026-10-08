@@ -309,6 +309,15 @@ function mainStepNameFor_(n, stationsMap) {
 /** เหมือน mainStepNameFor_ ทุกประการแต่คืน owner label (OWNER_STATE_LABELS_) แทน station_name ภายใน —
  *  ใช้เฉพาะ Timeline หน้า Owner Dashboard (buildOwnerActualPathTimeline_, OwnerAuth.gs) เท่านั้น (2026-10-08) */
 function ownerMainStepLabelFor_(n, stationsMap) {
+  // 2026-10-08 แก้บั๊กจริง (ผู้ใช้รายงาน: "ขั้นตอนที่ 3" ขึ้น "ครบถ้วน-ส่งเลขา" ซึ่งเป็นชื่อภายในของ s3_1 ไม่ใช่
+  // owner label เลย) — main step 1,2,3,4,5,6,7,10 ทุกตัวมี station_key ตรงรูปแบบ "s"+เลข เสมอ (ยืนยันจาก
+  // WORKFLOW_STATES_SEED, Constants.gs) และมี OWNER_STATE_LABELS_ ของตัวเองครบอยู่แล้ว — เช็คจาก mapping กลาง
+  // นี้ตรงๆ ก่อนเป็นอันดับแรกเสมอ (ไม่ต้องพึ่งการสแกนหา "bare station" ใน stationsMap ซึ่งพังได้ถ้าชีตจริงยัง
+  // ไม่ได้รัน migration ที่เพิ่ม state บางตัว หรือ station_key ไม่ตรงรูปแบบที่คาดในข้อมูลเก่า) ไป fallback ไปใช้
+  // ชื่อสถานีลูกตัวแรกก็ต่อเมื่อไม่มีใน OWNER_STATE_LABELS_ จริงๆ เท่านั้น
+  var directLabel = OWNER_STATE_LABELS_['s' + n];
+  if (directLabel) return { main: directLabel, desc: '' };
+
   var bare = null;
   for (var key in stationsMap) {
     if (String(stationsMap[key].station_order) === String(n)) { bare = stationsMap[key]; break; }
