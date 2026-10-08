@@ -835,3 +835,68 @@ function fixReceiveDatesFromLegacyExcel() {
   Logger.log('=== fixReceiveDatesFromLegacyExcel เสร็จ === แก้ received_date ' + fixed +
     ' รายการ (backup ค่าเดิมไว้ที่ชีต "ReceiveDateFixBackup" แล้ว) — StatusHistory ไม่ถูกแตะเลย');
 }
+
+/**
+ * กู้คืน Works.received_date จากรอบ fixReceiveDatesFromLegacyExcel() ล่าสุดเท่านั้น (2026-10-08) — ใช้เมื่อสงสัย
+ * ว่ารอบ fix ที่เพิ่งรันไปเขียนค่าผิด ยกตัวอย่างจริงที่เจอ: audit log รอบ 2026-10-08 ของผู้ใช้พบว่า 51 รายการที่
+ * "ต้องแก้" ล้วนมีค่า "ปัจจุบัน"/"Excel" เหมือนกันเป๊ะทุกแถว (คนละชื่อ คนละ tracking_no แต่ได้วันที่เดียวกันหมด)
+ * ซึ่งเป็นไปไม่ได้ถ้า legacy_seq ของแต่ละคนถูกต้อง — ชี้ว่า Works.legacy_seq ของ 51 รายการนี้ (และอีก 141
+ * รายการที่ "ไม่พบใน LegacyImport" ซึ่งมีค่าเป็นรูปแบบ "N.M" ตรงกับ legacy_team ไม่ใช่ "ลำดับ" จริง) เพี้ยนมาจาก
+ * รอบ import เก่าที่เสีย (ปัญหาเดิมที่ auditLegacyCleanupPlan()/auditRegistrationNumbers() ด้านบนเคยพบแล้ว
+ * ก่อนหน้านี้) — fixReceiveDatesFromLegacyExcel() จับคู่ด้วย legacy_seq ตามที่ผู้ใช้สั่งไว้ ถ้า legacy_seq เองผิด
+ * ผลที่ได้ก็ผิดตาม ต้องกู้คืนก่อนแล้วแก้ legacy_seq ให้ถูกต้องก่อน ค่อยรัน fix รอบใหม่
+ *
+ * กู้คืนเฉพาะรอบล่าสุด (fixed_at ล่าสุดในชีต backup) เท่านั้น ไม่ย้อนรอบเก่ากว่านั้น ปลอดภัยรันซ้ำได้ (ถ้าไม่มี
+ * backup จะไม่ทำอะไร) ห้าม auto-run
+ */
+function restoreReceiveDatesFromLatestBackup() {
+  var ss = getSpreadsheet_();
+  var backupSheet = ss.getSheetByName('ReceiveDateFixBackup');
+  if (!backupSheet) { Logger.log('ไม่พบชีต "ReceiveDateFixBackup" — ไม่มีอะไรให้กู้คืน'); return; }
+  var backupRows = readSheetAsObjects_(backupSheet);
+  if (!backupRows.length) { Logger.log('ชีต "ReceiveDateFixBackup" ไม่มีข้อมูล — ไม่มีอะไรให้กู้คืน'); return; }
+
+  // หารอบล่าสุด (fixed_at ล่าสุด) เทียบเป็น timestamp เสมอ (กัน Sheets เก็บ Date object/ข้อความไม่ตรงรูปแบบกัน)
+  var latestTs = backupRows.reduce(function (max, r) {
+    var t = new Date(r.fixed_at).getTime();
+    return isNaN(t) ? max : Math.max(max, t);
+  }, 0);
+  var latestRows = backupRows.filter(function (r) { return new Date(r.fixed_at).getTime() === latestTs; });
+  if (!latestRows.length) { Logger.log('หา fixed_at ล่าสุดไม่เจอ — ไม่ทำอะไร'); return; }
+
+  // old_received_date ในชีต backup เก็บเป็นข้อความผ่าน formatDateTh_ เสมอ ("dd/MM/yyyy HH:mm" หรือ "(ว่าง)")
+  function parseOld(str) {
+    str = String(str || '').trim();
+    if (!str || str === '(ว่าง)') return '';
+    var m = str.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})$/);
+    if (!m) return null; // parse ไม่ได้ — ข้ามแถวนี้ กันเขียนค่าผิดซ้ำ ไม่เดา
+    return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4]), Number(m[5]));
+  }
+
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var headers = worksSheet.getRange(1, 1, 1, worksSheet.getLastColumn()).getValues()[0];
+  var workIdCol = headers.indexOf('work_id');
+  var receivedCol = headers.indexOf('received_date');
+  var lastRow = worksSheet.getLastRow();
+  var data = worksSheet.getRange(2, 1, lastRow - 1, worksSheet.getLastColumn()).getValues();
+  var rowByWorkId = {};
+  data.forEach(function (row, i) { rowByWorkId[row[workIdCol]] = i; });
+
+  var restored = 0, skippedUnparseable = 0, skippedNotFound = 0;
+  latestRows.forEach(function (r) {
+    var rowIdx = rowByWorkId[r.work_id];
+    if (rowIdx === undefined) { skippedNotFound++; return; }
+    var oldVal = parseOld(r.old_received_date);
+    if (oldVal === null) {
+      skippedUnparseable++;
+      Logger.log('กู้คืนไม่ได้ (parse ค่าเดิมไม่ได้): ' + r.tracking_no + ' ' + r.name + ' old="' + r.old_received_date + '"');
+      return;
+    }
+    data[rowIdx][receivedCol] = oldVal;
+    restored++;
+  });
+  worksSheet.getRange(2, 1, data.length, headers.length).setValues(data);
+
+  Logger.log('=== restoreReceiveDatesFromLatestBackup เสร็จ === กู้คืนรอบล่าสุด (fixed_at=' + new Date(latestTs) +
+    '): กู้คืนสำเร็จ ' + restored + ' รายการ, parse ค่าเดิมไม่ได้ ' + skippedUnparseable + ' รายการ, ไม่พบใน Works ' + skippedNotFound + ' รายการ');
+}
