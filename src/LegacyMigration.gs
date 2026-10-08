@@ -625,6 +625,12 @@ var LEGACY_IMPORT_MARKER_ = 'legacy-import@system';
  * correctLegacyReceivedDate_() คำนวณได้ตอนนี้ ให้เห็นหลักฐานชัดก่อนตัดสินใจแก้ parsing (กระทบข้อมูล Legacy
  * ทั้งหมดถ้าแก้ผิดอีกรอบ ห้ามเดาซ้ำ)
  */
+/** wrapper ไม่รับ argument — ปุ่ม "Run" ใน Apps Script Editor เรียกฟังก์ชันแบบไม่มีพารามิเตอร์เสมอ (เจอจริง
+ *  2026-10-08: รันแล้วได้ legacy_seq="undefined") เจาะจง "176" (69-176) ที่กำลังตรวจอยู่ตอนนี้โดยตรง */
+function diagnoseLegacyReceivedDateRaw176() {
+  diagnoseLegacyReceivedDateRaw('176');
+}
+
 function diagnoseLegacyReceivedDateRaw(legacySeq) {
   var ss = getSpreadsheet_();
   var sheet = findSheetLoose_(ss, LEGACY_SHEET_NAME_);
