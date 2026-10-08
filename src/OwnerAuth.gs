@@ -696,46 +696,32 @@ function renderOwnerFullDetailSection_(fullWithSkips) {
 }
 
 /**
- * การ์ด "ผลการพิจารณา" (2026-10-08 รอบ 12 ตามที่ผู้ใช้ขอ) — เพิ่มบล็อก "ขั้นตอนปัจจุบัน" กลับเข้ามาในการ์ด
- * เดียวกัน (ก่อนหน้านี้ตัดออกไปเพราะซ้ำกับผลการพิจารณา — ผู้ใช้ขอให้เอากลับมาแสดงชัดเจนเสมอ ไม่ว่าจะมีผลย่อย
- * แล้วหรือไม่): "ขั้นตอนปัจจุบัน" → "ขั้นตอนที่ N" (เลขหน้าจุดเสมอ ไม่โชว์ 7.1 ตรงๆ, ใช้ parentStepOrder_ ตรงๆ
- * จาก currentStation.station_order ไม่พึ่ง info.stepOrder ที่ fallback เป็นเลขทศนิยมเต็มถ้าไม่เจอ bare parent
- * station เช่น state 8/9 ที่ไม่มี station "8"/"9" ตรงๆ ในระบบ — กันบั๊กเดิมที่ "ขั้นตอนที่ 3" เคยพัง) → ข้อความ
- * รอง (owner label ของขั้นหลัก ผ่าน ownerMainStepLabelFor_) → badge "สถานะปัจจุบัน" (reuse .pub-tl-badge เดิม)
+ * การ์ด "ผลการพิจารณา" (2026-10-08 รอบ 13 ตามที่ผู้ใช้ขอ redesign ให้เรียบ/compact ขึ้น) — เปลี่ยนจากรอบ 12
+ * (ตัวใหญ่ "ขั้นตอนที่ N" + badge "สถานะปัจจุบัน" แยกบรรทัด) เป็นบรรทัดเดียว "ขั้นตอนปัจจุบัน :: {ข้อความ}"
+ * (รูปแบบ label "::" ค่า เดียวกับ "ผู้รับผิดชอบ ::" ที่ Timeline ใช้อยู่แล้ว) ไม่มี "ขั้นตอนที่ N" ตัวใหญ่/badge
+ * แยกอีกต่อไป (ผู้ใช้บอกว่าซ้ำซ้อน) — ข้อความคือ owner label ของขั้นหลัก (ownerMainStepLabelFor_ จาก
+ * parentStepOrder_(currentStation.station_order) ตรงๆ เหมือนรอบก่อน กันบั๊กเลขทศนิยมหลุดแบบเดียวกับที่เคยพังกับ
+ * "ขั้นตอนที่ 3")
  *
- * ถ้ามีผลย่อยแล้ว (info.isSub=true, เช่น 7.1-7.4 เท่านั้น — ไม่รวม 8.x/9.x ที่เป็นแค่ลำดับขั้นย่อยไม่ใช่ผลประเมิน)
- * แสดงเพิ่มหัวข้อเล็ก "ผลการพิจารณา" + เครื่องหมาย/ข้อความผลจริงต่อท้าย (เดิมมีอยู่แล้ว ไม่เปลี่ยน logic ส่วนนี้)
- * ก่อนมีผล (state 1-6 หรือ 8/9/10 เฉยๆ) ไม่แสดงส่วนนี้เลยตามที่ผู้ใช้ขอ (ข้อ 3) ทุก label มาจาก
- * ownerLabelForStation_/ownerMainStepLabelFor_ (OWNER_STATE_LABELS_) เท่านั้น
+ * บรรทัดผลการพิจารณา (ถ้ามี, info.isSub=true เฉพาะ 7.1-7.4 เท่านั้น ไม่รวม 8.x/9.x ที่เป็นลำดับขั้นย่อยไม่ใช่ผล
+ * ประเมิน) แสดงเป็นไอคอน+ข้อความบรรทัดเดียวเด่นกว่าปกติเล็กน้อย (สีตาม tone: ผ่าน=เขียว/แก้ไข=เหลืองส้ม/ไม่ผ่าน=
+ * แดง) ไม่มีคำบรรยายยาวต่อท้ายแล้ว (descByTone เดิมตัดออก — ผู้ใช้ขอ "ไม่เพิ่ม card ซ้อน"/"ดูเรียบ") ถ้ายังไม่มีผล
+ * (isSub=false เสมอสำหรับ state 1-6/8/9/10) ไม่ render บรรทัดนี้เลย ไม่เหลือช่องว่าง/placeholder ใดๆ
  */
 function renderOwnerResultCard_(work, info, currentStation, stationsMap) {
-  var iconByTone = { done: '&#10003;', danger: '&#10007;', revision: '&#9998;', pending: '' };
-  var descByTone = {
-    done: 'ผลงานผ่านการพิจารณาแล้ว และกำลังอยู่ระหว่างดำเนินการแจ้งผลอย่างเป็นทางการ',
-    danger: 'ผลงานไม่ผ่านการพิจารณา และกำลังอยู่ระหว่างดำเนินการแจ้งผลอย่างเป็นทางการ',
-    revision: 'ผลงานต้องปรับปรุงแก้ไขตามข้อเสนอแนะของคณะกรรมการ',
-  };
+  var iconByTone = { done: '&#10003;', danger: '&#10007;', revision: '&#9888;', pending: '' };
 
   var mainOrder = currentStation ? parentStepOrder_(currentStation.station_order || '') : '';
   var mainLabel = mainOrder ? ownerMainStepLabelFor_(mainOrder, stationsMap || {}).main : '';
-  var currentBlockHtml = '' +
-    '<div class="owner-result-current-label">ขั้นตอนปัจจุบัน</div>' +
-    '<div class="owner-result-current-main">ขั้นตอนที่ ' + escapeHtml_(mainOrder) +
-    '<span class="pub-tl-badge">สถานะปัจจุบัน</span></div>' +
-    (mainLabel ? '<div class="owner-result-current-desc">' + escapeHtml_(mainLabel) + '</div>' : '');
+  var currentLineHtml = '<div class="owner-result-current-line">' +
+    '<span class="owner-result-current-label">ขั้นตอนปัจจุบัน ::</span> ' + escapeHtml_(mainLabel) + '</div>';
 
-  var headerHtml = '';
+  var outcomeHtml = '';
   if (info.isSub) {
     var tone = info.subTone;
     var resultLabel = ownerLabelForStation_(info.subStation);
-    headerHtml = '' +
-      '<div class="owner-result-divider"></div>' +
-      '<div class="owner-result-sub-label">ผลการพิจารณา</div>' +
-      '<div class="owner-result-head">' +
-      '<div class="owner-result-icon owner-result-icon-' + tone + '">' + iconByTone[tone] + '</div>' +
-      '<div class="owner-result-main">' + escapeHtml_(resultLabel) + '</div>' +
-      '</div>' +
-      (descByTone[tone] ? '<div class="owner-result-desc">' + escapeHtml_(descByTone[tone]) + '</div>' : '');
+    outcomeHtml = '<div class="owner-result-outcome owner-result-outcome-' + tone + '">' +
+      '<span class="owner-result-outcome-icon">' + iconByTone[tone] + '</span> ' + escapeHtml_(resultLabel) + '</div>';
   }
 
   var ownerOrgText = work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-');
@@ -749,8 +735,8 @@ function renderOwnerResultCard_(work, info, currentStation, stationsMap) {
   return '' +
     '<div class="owner-result-card">' +
     '<div class="owner-result-title">ผลการพิจารณา</div>' +
-    '<div class="owner-result-current">' + currentBlockHtml + '</div>' +
-    headerHtml +
+    currentLineHtml +
+    outcomeHtml +
     '<div class="owner-result-divider"></div>' +
     '<div class="owner-result-grid">' +
     miniRow('&#128100;', 'ผู้รับผิดชอบ', ownerOrgText) +

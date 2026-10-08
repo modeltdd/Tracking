@@ -2895,9 +2895,20 @@ var PUBLIC_CSS_ = '' +
   '.owner-result-card{background:#eef9f0;border:1px solid #cfe8d8;border-radius:16px;padding:18px;' +
   'margin-bottom:16px;box-shadow:0 1px 3px rgba(31,59,84,.05);}' +
   '.owner-result-title{font-size:.8rem;font-weight:700;color:var(--navy);margin-bottom:10px;}' +
-  // 2026-10-08 รอบ 12 — บล็อก "ขั้นตอนปัจจุบัน" ตามที่ผู้ใช้ขอ (label เล็ก -> ข้อความใหญ่ "ขั้นตอนที่ N" +
-  // badge inline -> ข้อความรอง) อยู่เหนือส่วน "ผลการพิจารณา" เดิม (ถ้ามี)
-  '.owner-result-current-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;}' +
+  // 2026-10-08 รอบ 13 — ผู้ใช้ขอ redesign ให้เรียบ/compact ขึ้น: "ขั้นตอนปัจจุบัน :: ข้อความ" บรรทัดเดียว
+  // (ไม่มี "ขั้นตอนที่ N" ตัวใหญ่/badge แยกบรรทัดแบบรอบ 12 แล้ว) .owner-result-current-label (label "::") เป็น
+  // <span> inline ใช้ rule เดิมที่มีอยู่แล้วได้ตรงๆ (font-size/color เข้ากัน ไม่ต้องเพิ่ม rule ใหม่)
+  '.owner-result-current-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;font-weight:600;}' +
+  '.owner-result-current-line{font-size:.92rem;color:var(--text);line-height:1.5;}' +
+  // บรรทัดผลการพิจารณา (ถ้ามี) — เด่นกว่าปกติเล็กน้อยด้วยสี tone + น้ำหนักตัวหนา ไม่มี card ซ้อน/ไอคอนวงกลมแล้ว
+  '.owner-result-outcome{font-size:1rem;font-weight:700;margin-top:6px;}' +
+  '.owner-result-outcome-done{color:var(--done);}' +
+  '.owner-result-outcome-revision{color:var(--revision);}' +
+  '.owner-result-outcome-danger{color:var(--danger);}' +
+  '.owner-result-outcome-icon{display:inline-block;}' +
+  // 2026-10-08 รอบ 12 — คลาสเดิมของรอบก่อน (ตัวใหญ่ "ขั้นตอนที่ N"/badge/คำบรรยายยาว) เลิกใช้ในหน้านี้แล้ว ไม่ได้
+  // ลบ rule ทิ้ง (เผื่อใช้ที่อื่นภายหลัง): .owner-result-current-main, .owner-result-current-desc,
+  // .owner-result-sub-label, .owner-result-head, .owner-result-icon*, .owner-result-main, .owner-result-desc
   '.owner-result-current-main{font-size:1.15rem;font-weight:700;color:var(--navy);display:flex;' +
   'align-items:center;flex-wrap:wrap;gap:0;}' +
   '.owner-result-current-desc{font-size:.85rem;color:var(--text);margin-top:4px;line-height:1.5;}' +
