@@ -734,7 +734,6 @@ function renderOwnerResultCard_(work, info, currentStation, stationsMap) {
 
   return '' +
     '<div class="owner-result-card">' +
-    '<div class="owner-result-title">ผลการพิจารณา</div>' +
     currentLineHtml +
     outcomeHtml +
     '<div class="owner-result-divider"></div>' +
