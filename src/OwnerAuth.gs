@@ -598,12 +598,128 @@ function renderOwnerTimelineItem_(entry) {
     '</span></div>';
 }
 
-/** หัวข้อ Timeline ภาษาคน (ข้อ 8) แทน "ดู Timeline ทั้งหมด N ขั้นตอน" เดิม */
-function renderOwnerTimelineSection_(pathData) {
+/**
+ * หัวข้อ Timeline ภาษาคน (2026-10-08 redesign ตาม mockup) — "เส้นทางการดำเนินงาน" + หัวข้อรอง ตามที่ผู้ใช้ขอ
+ * แนวนอนบน desktop/แนวตั้งบนมือถือผ่าน wrapper class .owner-timeline-h เดียว (CSS media query ล้วน Views.gs)
+ * ต่อท้ายด้วยปุ่ม "ดูรายละเอียดทั้ง 10 ขั้นตอน" (renderOwnerFullDetailSection_, <details> แยกอีกชั้น ไม่ reload หน้า)
+ */
+function renderOwnerTimelineSection_(pathData, fullWithSkips) {
   if (!pathData) return '';
-  return '<details class="pub-tl-full-details" open><summary>เส้นทางการดำเนินงาน' +
-    '<span class="owner-tl-summary-sub">แสดงเฉพาะขั้นตอนที่เกี่ยวข้องกับผลงานของท่าน</span></summary>' +
-    '<div class="pub-timeline">' + pathData.path.map(renderOwnerTimelineItem_).join('') + '</div></details>';
+  return '' +
+    '<div class="owner-tl-section-title">เส้นทางการดำเนินงาน</div>' +
+    '<div class="owner-tl-section-sub">แสดงภาพรวมขั้นตอนการพิจารณาผลงานของท่าน</div>' +
+    '<div class="owner-timeline-h"><div class="pub-timeline">' +
+    pathData.path.map(renderOwnerTimelineItem_).join('') + '</div></div>' +
+    renderOwnerFullDetailSection_(fullWithSkips);
+}
+
+/**
+ * รายการเดียวใน "ดูรายละเอียดทั้ง 10 ขั้นตอน" (2026-10-08) — เหมือน renderPubFixedTimelineItem_ (หน้าสาธารณะ)
+ * ทุกประการแต่: (1) ใช้ owner label แทน station_name ภายใน (2) state ที่ .skipped=true (8/9 ตอนผล 7="ผ่าน")
+ * แสดงข้อความเหตุผลที่ข้าม แทน "รอดำเนินการ" เฉยๆ — ห้ามบอกว่า "รอดำเนินการ" เพราะไม่จริง (ข้ามไปแล้วจริงๆ)
+ */
+function renderOwnerFullDetailItem_(entry) {
+  var icon = entry.state === 'current' ? '●' : (entry.state === 'done' ? '✓' : '○');
+  var stateClass = entry.skipped ? 'upcoming owner-tl-skip' : entry.state;
+
+  var metaHtml;
+  if (entry.skipped) {
+    metaHtml = '<span class="owner-tl-skip-reason">' + escapeHtml_(entry.skipReason) + '</span>';
+  } else if (entry.state === 'upcoming') {
+    metaHtml = '<span class="pub-tl-meta pub-tl-meta-pending">รอดำเนินการ</span>';
+  } else {
+    metaHtml = (entry.org || entry.enteredAt)
+      ? '<span class="pub-tl-meta">' +
+        (entry.org ? 'ผู้รับผิดชอบ :: ' + escapeHtml_(entry.org) : '') +
+        (entry.org && entry.enteredAt ? ' — ' : '') +
+        (entry.enteredAt ? escapeHtml_(formatDateThShort_(entry.enteredAt)) : '') +
+        '</span>'
+      : '';
+  }
+
+  var subHtml = entry.sub
+    ? '<span class="pub-tl-sub-row">&#9492; <span class="pub-tl-sub-label">ผลการพิจารณา:</span> ' +
+      '<span class="pub-tl-sub-badge pub-hero-sub-' + entry.sub.tone + '">' + escapeHtml_(entry.sub.split.main) + '</span></span>'
+    : '';
+
+  return '<div class="pub-tl-item pub-tl-' + stateClass + '">' +
+    '<span class="pub-tl-icon">' + icon + '</span>' +
+    '<span class="pub-tl-text">' + escapeHtml_(entry.split.main) + subHtml + metaHtml + '</span>' +
+    '</div>';
+}
+
+/** <details> "ดูรายละเอียดทั้ง 10 ขั้นตอน" / "ซ่อนรายละเอียด" — ปิดเริ่มต้นเสมอ (Timeline เส้นทางจริงด้านบนพอ
+ *  สำหรับอ่านไวแล้ว รายละเอียดเต็มเป็นของเสริมให้ดูตามต้องการ) toggle ข้อความด้วย CSS ล้วน ไม่มี JS (ข้อ 11) */
+function renderOwnerFullDetailSection_(fullWithSkips) {
+  if (!fullWithSkips) return '';
+  return '<details class="owner-detail-toggle"><summary>' +
+    '<span class="owner-toggle-closed-text">ดูรายละเอียดทั้ง 10 ขั้นตอน</span>' +
+    '<span class="owner-toggle-open-text">ซ่อนรายละเอียด</span></summary>' +
+    '<div class="pub-timeline">' + fullWithSkips.map(renderOwnerFullDetailItem_).join('') + '</div></details>';
+}
+
+/**
+ * การ์ด "ผลการพิจารณา" (2026-10-08 ตาม mockup) — ซ้ายของ split grid เครื่องหมาย+ข้อความใหญ่เฉพาะตอนมีผลจริง
+ * (info.isSub=true, เช่น 7.1-7.4) ถ้ายังไม่มีผล (อยู่ state หลักเฉยๆ) ไม่แสดงส่วนหัวนี้ แสดงแค่ 3 แถวข้อมูลล่าง
+ * (สถานะปัจจุบัน/ผู้รับผิดชอบ/อัปเดตล่าสุด) ทุก label มาจาก ownerLabelForStation_ (OWNER_STATE_LABELS_) เท่านั้น
+ * ไม่มีเลข state ปนเลย (ตรวจด้วย harness regex ทั้งหน้าอยู่แล้ว)
+ */
+function renderOwnerResultCard_(work, info, currentStation) {
+  var iconByTone = { done: '&#10003;', danger: '&#10007;', revision: '&#9998;', pending: '' };
+  var descByTone = {
+    done: 'ผลงานผ่านการพิจารณาแล้ว และกำลังอยู่ระหว่างดำเนินการแจ้งผลอย่างเป็นทางการ',
+    danger: 'ผลงานไม่ผ่านการพิจารณา และกำลังอยู่ระหว่างดำเนินการแจ้งผลอย่างเป็นทางการ',
+    revision: 'ผลงานต้องปรับปรุงแก้ไขตามข้อเสนอแนะของคณะกรรมการ',
+  };
+
+  var headerHtml = '';
+  if (info.isSub) {
+    var tone = info.subTone;
+    var resultLabel = ownerLabelForStation_(info.subStation);
+    headerHtml = '' +
+      '<div class="owner-result-icon owner-result-icon-' + tone + '">' + iconByTone[tone] + '</div>' +
+      '<div class="owner-result-main">' + escapeHtml_(resultLabel) + '</div>' +
+      (descByTone[tone] ? '<div class="owner-result-desc">' + escapeHtml_(descByTone[tone]) + '</div>' : '') +
+      '<div class="owner-result-divider"></div>';
+  }
+
+  // "สถานะปัจจุบัน" แสดงเสมอ (ไม่ขึ้นกับว่ามีผลย่อยหรือไม่) — มีผลย่อย (isSub) ใช้ label ของ parent (เช่น state 7),
+  // ไม่มี (isSub=false) ใช้ label ของสถานีปัจจุบันตรงๆ (ครอบคลุมทั้ง state หลักจริง และ state ย่อยที่ไม่มี parent
+  // บาง เช่น 8.3/9.2 ซึ่ง buildHeroDisplayInfo_ ก็คืน isSub=false เหมือนกัน)
+  var currentLabel = ownerLabelForStation_(info.isSub ? info.parentStation : currentStation);
+  var ownerOrgText = work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-');
+
+  return '' +
+    '<div class="owner-result-card">' +
+    headerHtml +
+    '<div class="owner-result-row"><div class="owner-result-row-label">สถานะปัจจุบัน</div>' +
+    '<div class="owner-result-row-value">' + escapeHtml_(currentLabel) + '</div></div>' +
+    '<div class="owner-result-row"><div class="owner-result-row-label">ผู้รับผิดชอบ</div>' +
+    '<div class="owner-result-row-value">' + escapeHtml_(ownerOrgText) + '</div></div>' +
+    '<div class="owner-result-row"><div class="owner-result-row-label">อัปเดตล่าสุด</div>' +
+    '<div class="owner-result-row-value">' + escapeHtml_(formatDateThShort_(work.updated_at)) + '</div></div>' +
+    '</div>';
+}
+
+/**
+ * การ์ด "ขั้นตอนถัดไป" (2026-10-08 ตาม mockup) — reuse findNextStepDisplay_ เดิม (คำนวณจาก steps จริง ไม่
+ * hardcode) ระบบนี้ Owner Dashboard เป็น Read-Only ล้วน (ดู docstring บนสุดของไฟล์ — ไม่มีสิทธิ์แก้ไขใดๆ) จึง
+ * ไม่มีกรณีที่เจ้าของผลงานต้องกดทำอะไรเองเลยสักจุด ข้อความ "ขณะนี้ท่านยังไม่ต้องดำเนินการ" จึงแสดงเสมอเมื่อมี
+ * ขั้นตอนถัดไป (ไม่ใช่การเดา — เป็นข้อเท็จจริงของสถาปัตยกรรมระบบนี้)
+ */
+function renderOwnerNextStepCard_(nextStep) {
+  var bodyHtml = nextStep
+    ? '' +
+      '<div class="owner-next-text">' + escapeHtml_(nextStep.station ? ownerLabelForStation_(nextStep.station) : nextStep.split.main) + '</div>' +
+      '<div class="owner-next-noaction">&#10003; ขณะนี้ท่านยังไม่ต้องดำเนินการ</div>' +
+      '<div class="owner-next-subtext">โปรดรอการแจ้งผลจากสำนักงานเขต<br>ท่านจะได้รับการแจ้งอีกครั้งเมื่อมีความคืบหน้า</div>'
+    : '<div class="owner-next-empty">กระบวนการพิจารณาเสร็จสิ้นแล้ว</div>';
+
+  return '' +
+    '<div class="owner-next-card">' +
+    '<div class="owner-next-title">ขั้นตอนถัดไป</div>' +
+    bodyHtml +
+    '</div>';
 }
 
 /** การ์ดสรุป "ตอนนี้ / ถัดไป" แบบ compact (2026-10-07 ข้อ 5) — reuse ข้อมูลเดียวกับกรอบสถานะปัจจุบัน
@@ -641,37 +757,53 @@ function formatOwnerReceivedDate_(date) {
   return day + ' ' + month + ' ' + year + ' เวลา ' + hh + '.' + mm + ' น.';
 }
 
+/**
+ * 2026-10-08 — redesign เต็มหน้าตาม mockup ที่ผู้ใช้ส่งมา (ข้อความ/layout ใหม่): Header -> Owner Summary Card
+ * (3 ช่อง) -> Result Card + Next Step Card (2 คอลัมน์) -> Timeline เส้นทางจริง (แนวนอน desktop/แนวตั้งมือถือ
+ * ผ่าน CSS เท่านั้น) + ปุ่มขยายดูครบ 10 ขั้นตอน -> หมายเหตุ (ถ้ามี) ทุกจุดยัง reuse data layer เดิมทั้งหมด
+ * (buildPublicResultData_/buildHeroDisplayInfo_/findNextStepDisplay_/buildOwnerActualPathTimeline_/
+ * buildOwnerFullWorkflowWithSkips_) ไม่สร้าง logic คำนวณใหม่เลย แก้เฉพาะการจัดวาง/ข้อความที่แสดงผล
+ * (ข้อ 16 — ไม่กระทบ Admin/Staff/Login/Search/Excel View/QR/WorkflowMaster/schema ใดๆ ทั้งสิ้น)
+ */
 function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   var ownerName = ((work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')).trim();
   var data = buildPublicResultData_(ss, work);
+  var info = buildHeroDisplayInfo_(data.currentStation, data.stationsMap || {});
+  var logoutUrl = baseUrl + '?page=owner-login&logout=1&osession=' + encodeURIComponent(sessionId);
 
-  var nameBlockHtml = '' +
-    '<div class="pub-name-block">' +
-    '<div class="pub-name-owner">' + escapeHtml_(ownerName || '-') + '</div>' +
-    '<div class="pub-name-tracking">เลขทะเบียน ' + escapeHtml_(work.tracking_no) + '</div>' +
-    '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
-    // 2026-10-08 ผู้ใช้ขอเพิ่ม "วันที่รับผลงาน" ใต้ชื่อผลงาน เฉพาะหน้า Owner Dashboard — ใช้ work.received_date
-    // จริง (field เดียวกับที่หน้าอื่นทั่วระบบใช้แสดง "รับเรื่องเมื่อ"/"วันที่ลงรับ" อยู่แล้ว คือวันที่เขตรับเรื่อง
-    // เข้าระบบจริง ตรวจจาก Constants.gs/Register.gs แล้ว ไม่เดา) ใช้ formatOwnerReceivedDate_ ของตัวเองแยกจาก
-    // formatDateThShort_ เดิม (ไม่แตะของเดิมที่หน้าอื่นใช้อยู่) เพราะต้องซ่อนเวลาถ้าไม่มีเวลาจริง (ข้อ 6)
-    '<div class="pub-name-received">วันที่รับผลงาน: ' + escapeHtml_(formatOwnerReceivedDate_(work.received_date)) + '</div>' +
+  // 1. PAGE HEADER — "← กลับหน้าหลัก" ไม่มีหน้า "หลัก" อื่นแยกต่างหากในระบบนี้ (Owner Dashboard เป็นหน้าเดียว
+  // หลัง login ทั้งหมด) ตีความเป็นออกจากระบบกลับไปหน้าแรก (เข้ากับ "หน้าหลัก" ได้ตรงที่สุด) — ย้ายปุ่ม
+  // "ออกจากระบบ" เดิมที่ท้ายหน้ามารวมเป็นจุดเดียวตรงนี้แทน (กันมีทางออกซ้ำ 2 จุด)
+  var headerHtml = '' +
+    '<div class="owner-page-header">' +
+    '<a class="owner-back-link" target="_top" href="' + escapeHtml_(logoutUrl) + '">&larr; กลับหน้าหลัก</a>' +
+    '<div class="owner-page-title">ผลการติดตามสถานะ</div>' +
+    '<div class="owner-page-subtitle">ตรวจสอบความคืบหน้าและขั้นตอนถัดไปของผลงาน</div>' +
     '</div>';
 
-  // friendlyMode=true (2026-10-07 ตามที่ผู้ใช้ขอ) — เฉพาะหน้า Owner Dashboard: ซ่อน "ขั้นตอนที่ N" และเลข
-  // state ย่อย (7.1/7.4) ออกจากกรอบสถานะปัจจุบัน ใช้คำเต็มอ่านง่ายแทน หน้าสาธารณะ/เจ้าหน้าที่ยังเหมือนเดิม
-  var heroHtml = renderPubHero_(work, data.currentStation, data.stationsMap, data.steps, true);
+  // 2. OWNER SUMMARY CARD — 3 ช่องตามที่ผู้ใช้ขอ (เจ้าของผลงาน/เลขทะเบียน/วันที่รับผลงาน) ไม่มีชื่อผลงานในการ์ด
+  // นี้เลย (ข้อกำหนด: ถ้าไม่มีชื่อผลงาน ห้ามแสดง "ชื่อผลงาน: -") — โชว์เป็นช่องที่ 4 เสริมเฉพาะตอนมีค่าจริงเท่านั้น
+  var summaryHtml = '' +
+    '<div class="owner-summary-card"><div class="owner-summary-grid">' +
+    '<div><div class="owner-summary-label">เจ้าของผลงาน</div><div class="owner-summary-value">' + escapeHtml_(ownerName || '-') + '</div></div>' +
+    '<div><div class="owner-summary-label">เลขทะเบียน</div><div class="owner-summary-value">' + escapeHtml_(work.tracking_no) + '</div></div>' +
+    '<div><div class="owner-summary-label">วันที่รับผลงาน</div><div class="owner-summary-value">' + escapeHtml_(formatOwnerReceivedDate_(work.received_date)) + '</div></div>' +
+    (work.work_title ? '<div><div class="owner-summary-label">ชื่อผลงาน</div><div class="owner-summary-value">' + escapeHtml_(work.work_title) + '</div></div>' : '') +
+    '</div></div>';
 
-  var actionHtml = work.next_step_text
-    ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
-    : '';
+  // 3/4. RESULT CARD + NEXT STEP CARD (2 คอลัมน์ desktop, เรียงล่าง mobile)
+  var nextStep = findNextStepDisplay_(data.steps, data.stationsMap || {});
+  var splitGridHtml = '' +
+    '<div class="owner-split-grid">' +
+    renderOwnerResultCard_(work, info, data.currentStation) +
+    renderOwnerNextStepCard_(nextStep) +
+    '</div>';
 
-  // 2026-10-07 ตามที่ผู้ใช้ขอ — ตัดการ์ด "ความคืบหน้าของผลงาน" + "ข้อมูลสำคัญ" ออกเฉพาะหน้า Owner Dashboard
-  // (หน้าสาธารณะ/หน้ารายละเอียดเจ้าหน้าที่ยังมีเหมือนเดิม ไม่แตะ) + เปลี่ยน Timeline เป็น "เส้นทางจริง" แบบ
-  // รองรับ Branching Workflow (ไม่ใช่ backbone คงที่ 1-10 เหมือนหน้าอื่น — เฉพาะหน้านี้)
+  // 5/6. TIMELINE เส้นทางจริง (ข้ามสาย 8/9 อัตโนมัติอยู่แล้วตาม actual path) + ปุ่มขยายดูครบ 10 ขั้นตอน
   var ownerPathTimeline = buildOwnerActualPathTimeline_(data.steps, data.stationsMap, work);
-  // 2026-10-07 ตามที่ผู้ใช้ขอ — ตัดกล่อง "ⓘ ข้อมูลเดิม" ออกเฉพาะหน้า Owner Dashboard (หน้าสาธารณะ/หน้า
-  // รายละเอียดเจ้าหน้าที่ยังมีเหมือนเดิม ไม่แตะ renderPubLegacyInfoBox_ เอง)
-  var timelineHtml = renderOwnerTimelineSection_(ownerPathTimeline);
+  var fullWithSkips = buildOwnerFullWorkflowWithSkips_(data.steps, data.stationsMap, work);
+  var timelineHtml = renderOwnerTimelineSection_(ownerPathTimeline, fullWithSkips);
+  if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
   var noteHtml = '';
   if (work.current_status_public === 'need_revision' && data.revisionInfo) {
@@ -686,14 +818,8 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
       '<div class="pub-note-box"><div class="pub-note-title">หมายเหตุจากผู้รับผิดชอบ</div><p>' + escapeHtml_(data.latestNote) + '</p></div>';
   }
 
-  var logoutUrl = baseUrl + '?page=owner-login&logout=1&osession=' + encodeURIComponent(sessionId);
-
-  // ลำดับหน้าใหม่ (2026-10-07 รอบ 2 ตามที่ผู้ใช้ขอ — ตัดการ์ด "ตอนนี้/ถัดไป" ออกทั้งหมด เพราะข้อมูลซ้ำกับกรอบ
-  // สถานะปัจจุบัน + Timeline อยู่แล้ว "หนึ่งข้อมูลสำคัญ แสดงเพียงหนึ่งครั้ง"): ข้อมูลเจ้าของผลงาน -> สถานะ
-  // ปัจจุบัน -> สิ่งที่ต้องดำเนินการ (ถ้ามี) -> Timeline เส้นทาง -> หมายเหตุ (ถ้ามี) -> ออกจากระบบ
   return '' +
     '<div class="pub-compact">' +
-    nameBlockHtml + heroHtml + actionHtml + timelineHtml + noteHtml +
-    '<p class="pub-back-link"><a target="_top" href="' + logoutUrl + '">ออกจากระบบ &rarr;</a></p>' +
+    headerHtml + summaryHtml + splitGridHtml + timelineHtml + noteHtml +
     '</div>';
 }

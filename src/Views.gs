@@ -2825,4 +2825,61 @@ var PUBLIC_CSS_ = '' +
   '.wf-more-actions summary::after{content:"▾";font-size:.75rem;transition:transform .15s;}' +
   '.wf-more-actions[open] summary::after{transform:rotate(180deg);}' +
   '.wf-more-actions .action-list{padding-bottom:12px;}' +
-  '@media (min-width:600px){.pub-compact{max-width:860px;}}';
+  '@media (min-width:600px){.pub-compact{max-width:860px;}}' +
+  // 2026-10-08 — redesign หน้า "ผลการติดตามสถานะ" (Owner Dashboard) ตาม mockup ที่ผู้ใช้ขอ สโคปเฉพาะ class
+  // ใหม่ทั้งหมด (owner-*) ไม่แตะ .pub-*/.wf-* เดิมที่หน้าอื่นใช้ร่วมกันเลย (Admin/Staff/Search/Login ไม่กระทบ)
+  '.owner-page-header{margin-bottom:14px;}' +
+  '.owner-back-link{display:inline-block;color:var(--muted);font-size:.8rem;text-decoration:none;margin-bottom:8px;}' +
+  '.owner-page-title{font-size:1.25rem;font-weight:700;color:var(--navy);line-height:1.3;}' +
+  '.owner-page-subtitle{font-size:.82rem;color:var(--muted);margin-top:2px;}' +
+  '.owner-summary-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px 18px;' +
+  'margin-bottom:16px;box-shadow:0 1px 3px rgba(31,59,84,.05);}' +
+  '.owner-summary-grid{display:flex;flex-direction:column;gap:14px;}' +
+  '.owner-summary-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;}' +
+  '.owner-summary-value{font-size:.95rem;font-weight:700;color:var(--navy);word-wrap:break-word;}' +
+  '@media (min-width:640px){.owner-summary-grid{flex-direction:row;}.owner-summary-grid>div{flex:1;}}' +
+  '.owner-split-grid{display:flex;flex-direction:column;gap:16px;margin-bottom:16px;}' +
+  '@media (min-width:900px){.owner-split-grid{flex-direction:row;align-items:stretch;}.owner-split-grid>div{flex:1;}}' +
+  '.owner-result-card{background:#eef9f0;border:1px solid #cfe8d8;border-radius:16px;padding:18px;' +
+  'box-shadow:0 1px 3px rgba(31,59,84,.05);}' +
+  '.owner-result-icon{font-size:2.1rem;line-height:1;margin-bottom:6px;}' +
+  '.owner-result-icon-done{color:var(--done);}.owner-result-icon-danger{color:var(--danger);}' +
+  '.owner-result-icon-revision{color:var(--revision);}.owner-result-icon-pending{color:var(--muted);}' +
+  '.owner-result-main{font-size:1.05rem;font-weight:700;color:var(--navy);margin-bottom:4px;}' +
+  '.owner-result-desc{font-size:.82rem;color:var(--text);line-height:1.55;margin-bottom:12px;}' +
+  '.owner-result-divider{border-top:1px solid #cfe8d8;margin:12px 0;}' +
+  '.owner-result-row{margin-bottom:10px;}.owner-result-row:last-child{margin-bottom:0;}' +
+  '.owner-result-row-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;}' +
+  '.owner-result-row-value{font-size:.88rem;color:var(--text);font-weight:600;line-height:1.4;}' +
+  '.owner-next-card{background:#eaf4fb;border:1px solid #cfe3f3;border-radius:16px;padding:18px;' +
+  'box-shadow:0 1px 3px rgba(31,59,84,.05);}' +
+  '.owner-next-title{font-size:.85rem;font-weight:700;color:var(--navy);margin-bottom:10px;}' +
+  '.owner-next-text{font-size:.92rem;font-weight:600;color:var(--text);line-height:1.5;margin-bottom:14px;}' +
+  '.owner-next-noaction{display:flex;align-items:center;gap:6px;color:var(--done);font-weight:700;font-size:.85rem;margin-bottom:4px;}' +
+  '.owner-next-subtext{font-size:.78rem;color:var(--muted);line-height:1.6;}' +
+  '.owner-next-empty{font-size:.88rem;color:var(--muted);}' +
+  '.owner-tl-section-title{font-size:.95rem;font-weight:700;color:var(--navy);margin-bottom:2px;}' +
+  '.owner-tl-section-sub{font-size:.78rem;color:var(--muted);margin-bottom:10px;}' +
+  // Timeline เส้นทางจริง — แนวนอนบน desktop (reuse .pub-tl-item/.pub-timeline เดิมทั้งสี/icon แค่ปรับ layout
+  // ผ่าน wrapper class นี้เท่านั้น สโคปแค่หน้านี้ ไม่กระทบ .pub-timeline ที่หน้าอื่นใช้)
+  '@media (min-width:900px){' +
+  '.owner-timeline-h .pub-timeline{display:flex;align-items:flex-start;padding:20px 12px 14px;overflow-x:auto;}' +
+  '.owner-timeline-h .pub-tl-item{flex:1 1 0;min-width:92px;flex-direction:column;align-items:center;text-align:center;padding-bottom:0;gap:6px;}' +
+  '.owner-timeline-h .pub-tl-item::before{left:50%;right:-50%;top:10px;bottom:auto;width:auto;height:1px;}' +
+  '.owner-timeline-h .pub-tl-text{padding-top:2px;max-width:150px;}' +
+  '.owner-timeline-h .pub-tl-badge{display:block;margin:4px auto 0;width:fit-content;}' +
+  '.owner-timeline-h .pub-tl-sub-row{display:block;}' +
+  '}' +
+  // ปุ่ม "ดูรายละเอียดทั้ง 10 ขั้นตอน" / "ซ่อนรายละเอียด" สลับข้อความตามสถานะเปิด/ปิดด้วย CSS ล้วน (ไม่มี JS,
+  // ไม่ reload หน้า — <details>/<summary> มาตรฐาน)
+  '.owner-detail-toggle summary{cursor:pointer;font-size:.8rem;font-weight:600;color:var(--teal);list-style:none;' +
+  'text-align:center;padding:6px 0;}' +
+  '.owner-detail-toggle summary::-webkit-details-marker{display:none;}' +
+  '.owner-detail-toggle .owner-toggle-open-text{display:none;}' +
+  '.owner-detail-toggle[open] .owner-toggle-open-text{display:inline;}' +
+  '.owner-detail-toggle[open] .owner-toggle-closed-text{display:none;}' +
+  '.owner-detail-toggle[open] summary{margin-bottom:4px;}' +
+  // งาน state ที่ "ข้าม" เพราะแตกสาย (8/9 ตอนผล 7 = ผ่าน) — เทาจาง + บอกเหตุผล แทน "รอดำเนินการ"
+  '.owner-tl-skip .pub-tl-icon{background:#f1f2f4;border-color:var(--border);color:var(--muted);}' +
+  '.owner-tl-skip .pub-tl-text{color:var(--muted);}' +
+  '.owner-tl-skip-reason{display:block;font-size:.76rem;color:var(--muted);font-style:italic;margin-top:2px;}';

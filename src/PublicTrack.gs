@@ -362,6 +362,55 @@ function buildFixedMainTimeline_(steps, stationsMap, work) {
   return result;
 }
 
+/**
+ * "ดูรายละเอียดทั้ง 10 ขั้นตอน" เฉพาะหน้า Owner Dashboard (2026-10-08 ตามที่ผู้ใช้ขอ) — reuse
+ * buildFixedMainTimeline_ เดิม (backbone คงที่ 1-10 ตัวเดียวกับหน้าสาธารณะ ไม่สร้าง logic คู่ขนาน) แต่เติม
+ * flag .skipped ให้ขั้นตอนที่ไม่ได้อยู่บนเส้นทางจริงของงานนี้ (เช่น 8/9 ตอนที่ state 7 ผล "ผ่าน" ข้ามตรงไป 10)
+ * วิธีตรวจ: main step N ถือว่า "ข้าม" ก็ต่อเมื่อไม่มี step จริงใดๆ (done/current/upcoming จาก buildPublicDetailedSteps_)
+ * อยู่ในกลุ่ม N เลย แต่มี main step ที่ "มากกว่า" N อยู่บนเส้นทางจริงแล้ว (แปลว่าเส้นทางเดินข้าม N ไปจริง ไม่ใช่
+ * แค่ยังไปไม่ถึง) — ไม่ต้องเดา ใช้ข้อมูลจริงจาก steps ล้วนๆ
+ */
+function buildOwnerFullWorkflowWithSkips_(steps, stationsMap, work) {
+  var fixed = buildFixedMainTimeline_(steps, stationsMap, work);
+  if (!fixed || !steps) return fixed;
+
+  var realMainSteps = {};
+  steps.forEach(function (s) { realMainSteps[parentStepOrder_(s.order)] = true; });
+  var maxRealMain = 0;
+  Object.keys(realMainSteps).forEach(function (k) {
+    var num = parseInt(k, 10);
+    if (!isNaN(num)) maxRealMain = Math.max(maxRealMain, num);
+  });
+
+  // หาเหตุผลข้าม จาก step 7 ที่ resolve แล้ว (จุดแตกสายจริงจุดเดียวในระบบที่ทำให้ข้าม 8/9 ได้ — ถ้ามี)
+  var step7Resolved = steps.filter(function (s) { return parentStepOrder_(s.order) === '7' && s.order !== '7'; })[0] || null;
+  var skipReasonText = '';
+  if (step7Resolved) {
+    var resolvedLabel = OWNER_STATE_LABELS_[step7Resolved.key] || step7Resolved.name;
+    var staysForRevision = step7Resolved.name.indexOf('แก้ไข') !== -1;
+    skipReasonText = staysForRevision ? '' : (resolvedLabel + ' → ข้ามขั้นตอนแก้ไข');
+  }
+
+  fixed.forEach(function (entry) {
+    var n = parseInt(entry.order, 10);
+    // owner label แทน station_name ภายใน (buildFixedMainTimeline_ ใช้ mainStepNameFor_ ภายในเสมอ — ต้อง
+    // override ทุก entry ที่นี่ ไม่งั้นชื่อ internal จะหลุดเข้าหน้า Owner Dashboard)
+    entry.split = ownerMainStepLabelFor_(entry.order, stationsMap);
+    if (entry.sub) {
+      var subStationForEntry = null;
+      for (var subKey in stationsMap) {
+        if (String(stationsMap[subKey].station_order) === String(entry.sub.order)) { subStationForEntry = stationsMap[subKey]; break; }
+      }
+      entry.sub = { split: { main: ownerLabelForStation_(subStationForEntry), desc: '' }, tone: entry.sub.tone };
+    }
+    if (!realMainSteps[entry.order] && n < maxRealMain) {
+      entry.skipped = true;
+      entry.skipReason = skipReasonText || 'ไม่ใช้ในเส้นทางนี้';
+    }
+  });
+  return fixed;
+}
+
 /** สีของ "สถานะย่อย/ผลการดำเนินงาน" ตามคำในชื่อ state จริง (2026-09-24 ตามที่ผู้ใช้ขอ) — เช็ค "ไม่ผ่าน" ก่อน
  *  "ผ่าน" เสมอ (ไม่งั้น "ไม่ผ่าน" จะแมตช์ "ผ่าน" ก่อนผิดความหมาย) ใช้หลักการเดียวกันกับทุก state ทศนิยม */
 function subStatusToneClass_(stationName) {
