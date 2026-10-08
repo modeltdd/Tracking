@@ -611,61 +611,62 @@ function renderOwnerTimelineItem_(entry) {
 }
 
 /**
- * หัวข้อ Timeline ภาษาคน + รายการ Timeline แนวตั้งตามเส้นทางจริง (2026-10-08 รอบ 5 ตามที่ผู้ใช้ขอกลับมาใช้
- * แบบนี้อีกครั้ง — ไม่ใช่แถบแนวนอน compact เหมือนรอบก่อนหน้า) ใช้ buildOwnerActualPathTimeline_ เดิมที่มีอยู่
- * แล้ว (ไม่ได้ลบทิ้งตอนหยุดใช้ชั่วคราวรอบก่อน) เป็นแหล่งข้อมูลหลัก แสดงเฉพาะขั้นตอนบนเส้นทางจริง (ข้ามสาย 8/9
- * อัตโนมัติเมื่อผล state 7 = ผ่าน) อยู่ใน card สีขาวใบเดียว (.pub-timeline เดิม ไม่แยก card ย่อย) ต่อท้ายด้วยปุ่ม
- * "ดูรายละเอียดทั้ง 10 ขั้นตอน" (renderOwnerFullDetailSection_ เดิม ยังเก็บไว้ตาม requirement ก่อนหน้า)
+ * หัวข้อ Timeline ภาษาคน + รายการ Timeline แนวตั้งครบ 1-10 ขั้นตอน (2026-10-08 รอบ 9 ตามที่ผู้ใช้ขอ) — Timeline
+ * ชุดเดียวของหน้านี้ ใช้ buildOwnerFullWorkflowWithSkips_ (PublicTrack.gs, backbone คงที่ 1-10 เหมือนหน้า
+ * สาธารณะ + flag .skipped/.isNextAfterSkip) เป็นแหล่งข้อมูลเดียว แสดงขั้นตอนทั้ง 1-10 เสมอไม่ว่าจะข้ามสาย
+ * 8/9 หรือไม่ (ผู้ใช้ขอให้เห็นภาพรวมกระบวนการทั้งหมด) อยู่ใน card สีขาวใบเดียว (.pub-timeline เดิม)
+ * buildOwnerActualPathTimeline_/renderOwnerTimelineItem_ (เส้นทางจริงเท่านั้น ไม่โชว์ 8/9 ที่ถูกข้าม) เลิกใช้
+ * ในหน้านี้แล้ว — ไม่ได้ลบไฟล์ทิ้ง (เผื่อใช้ที่อื่นภายหลัง)
  */
-function renderOwnerTimelineSection_(pathData, fullWithSkips) {
-  if (!pathData) return '';
-  // 2026-10-08 รอบ 8 — ผู้ใช้ขอตัดส่วน "ดูรายละเอียดทั้ง 10 ขั้นตอน" (renderOwnerFullDetailSection_) ออกด้วย
-  // เพราะเป็น Timeline ซ้ำชุดที่ 2 ในหน้าเดียวกัน (แสดงเกือบเหมือน Timeline หลักด้านบน ต่างกันแค่โชว์ครบ 1-10
-  // รวม state ที่ถูกข้าม) — เหลือ Timeline หลัก (เส้นทางจริง) เพียงชุดเดียวตามที่ผู้ใช้ขอ ไม่เรียก
-  // renderOwnerFullDetailSection_ อีกต่อไป (ฟังก์ชัน/ข้อมูล fullWithSkips ไม่ได้ถูกลบออกจากไฟล์ แค่ไม่ถูกเรียก
-  // ในหน้านี้แล้ว — เผื่อใช้ที่อื่นภายหลัง)
+function renderOwnerTimelineSection_(fullWithSkips) {
+  if (!fullWithSkips) return '';
   return '' +
     '<div class="owner-tl-section-title">เส้นทางการดำเนินงาน</div>' +
     '<div class="owner-tl-wrap"><div class="pub-timeline">' +
-    pathData.path.map(renderOwnerTimelineItem_).join('') + '</div></div>';
+    fullWithSkips.map(renderOwnerFullDetailItem_).join('') + '</div></div>';
 }
 
 /**
- * รายการเดียวใน "ดูรายละเอียดทั้ง 10 ขั้นตอน" (2026-10-08) — เหมือน renderPubFixedTimelineItem_ (หน้าสาธารณะ)
- * ทุกประการแต่: (1) ใช้ owner label แทน station_name ภายใน (2) state ที่ .skipped=true (8/9 ตอนผล 7="ผ่าน")
- * แสดงข้อความเหตุผลที่ข้าม แทน "รอดำเนินการ" เฉยๆ — ห้ามบอกว่า "รอดำเนินการ" เพราะไม่จริง (ข้ามไปแล้วจริงๆ)
+ * รายการเดียวใน Timeline หลัก (2026-10-08 รอบ 9) — ครบ 1-10 ขั้นตอนเสมอ:
+ * - เสร็จแล้ว (done): ✓ เขียว แสดงแค่ชื่อขั้นตอนหลัก ไม่มีข้อความรอง/ผู้รับผิดชอบ/วันที่ซ้ำ (ข้อ 4)
+ * - ปัจจุบัน (current): ● กรมท่า badge "สถานะปัจจุบัน" + "ผู้รับผิดชอบ :: X" (ข้อ 3) + "ผลการพิจารณา: X"
+ *   ถ้ามีผลย่อยแล้ว (ข้อ 6, decimal state ไม่สร้าง node ใหม่ รวมเป็นผลของ step หลัก)
+ * - ยังไม่ถึงปกติ (upcoming, ไม่ถูกข้าม): ○ เทา "รอดำเนินการ" หรือ "ขั้นตอนถัดไป" ถ้าเป็นขั้นตอนจริงที่ต่อ
+ *   จากช่วงที่ถูกข้ามทันที (.isNextAfterSkip, ข้อ 7 ตัวอย่าง state 10 หลัง 8/9 ถูกข้าม)
+ * - ถูกข้าม (.skipped=true, 8/9 ตอนผล state 7="ผ่าน/ไม่ผ่าน"): ○ เทา "ไม่ใช้ในกรณีนี้" ห้ามแสดง
+ *   "รอดำเนินการ" เพราะไม่จริง (ข้ามไปแล้วจริงๆ ไม่ใช่กำลังรอ) — entry.skipped ต้องชนะ entry.state เสมอ
+ *   (state อาจยังเป็น "done" จาก buildFixedMainTimeline_ ที่มาร์คตามตำแหน่งเลขเฉยๆ ถ้างานเดินผ่าน state 10
+ *   ไปแล้ว ทั้งที่ 8/9 ไม่เคยถูกเดินผ่านจริง ไอคอนต้องเป็น ○ ไม่ใช่ ✓)
  */
 function renderOwnerFullDetailItem_(entry) {
-  // 2026-10-08 แก้บั๊กจริง — entry.skipped ต้องชนะ entry.state เสมอ (state อาจยังเป็น "done" จาก
-  // buildFixedMainTimeline_ ที่มาร์คตามตำแหน่งเลขเฉยๆ ถ้างานเดินผ่าน state 10 ไปแล้ว ทั้งที่ 8/9 ไม่เคยถูกเดิน
-  // ผ่านจริง ไอคอนต้องเป็น ○ (ยังไม่ถึง) ไม่ใช่ ✓ (เสร็จแล้ว) สำหรับ state ที่ถูกข้าม)
   var icon = entry.skipped ? '○' : (entry.state === 'current' ? '●' : (entry.state === 'done' ? '✓' : '○'));
   var stateClass = entry.skipped ? 'upcoming owner-tl-skip' : entry.state;
 
-  var metaHtml;
-  if (entry.skipped) {
-    metaHtml = '<span class="owner-tl-skip-reason">' + escapeHtml_(entry.skipReason) + '</span>';
-  } else if (entry.state === 'upcoming') {
-    metaHtml = '<span class="pub-tl-meta pub-tl-meta-pending">รอดำเนินการ</span>';
-  } else {
-    metaHtml = (entry.org || entry.enteredAt)
-      ? '<span class="pub-tl-meta">' +
-        (entry.org ? 'ผู้รับผิดชอบ :: ' + escapeHtml_(entry.org) : '') +
-        (entry.org && entry.enteredAt ? ' — ' : '') +
-        (entry.enteredAt ? escapeHtml_(formatDateThShort_(entry.enteredAt)) : '') +
-        '</span>'
-      : '';
-  }
+  var badges = '';
+  if (entry.state === 'current') badges += '<span class="pub-tl-badge">สถานะปัจจุบัน</span>';
+  if (entry.isLastStep) badges += '<span class="pub-tl-badge pub-tl-badge-last">ขั้นตอนสุดท้าย</span>';
 
   var subHtml = entry.sub
-    ? '<span class="pub-tl-sub-row">&#9492; <span class="pub-tl-sub-label">ผลการพิจารณา:</span> ' +
-      '<span class="pub-tl-sub-badge pub-hero-sub-' + entry.sub.tone + '">' + escapeHtml_(entry.sub.split.main) + '</span></span>'
+    ? '<div class="pub-tl-sub-row"><span class="pub-tl-sub-label">ผลการพิจารณา:</span> ' +
+      '<span class="pub-tl-sub-badge pub-hero-sub-' + entry.sub.tone + '">' + escapeHtml_(entry.sub.split.main) + '</span></div>'
     : '';
+
+  var metaHtml = '';
+  if (entry.skipped) {
+    metaHtml = '<span class="owner-tl-skip-reason">' + escapeHtml_(entry.skipReason) + '</span>';
+  } else if (entry.state === 'current') {
+    if (entry.org) metaHtml = '<div class="owner-tl-resp">ผู้รับผิดชอบ :: <b>' + escapeHtml_(entry.org) + '</b></div>';
+  } else if (entry.state === 'upcoming') {
+    metaHtml = '<span class="pub-tl-meta pub-tl-meta-pending">' + (entry.isNextAfterSkip ? 'ขั้นตอนถัดไป' : 'รอดำเนินการ') + '</span>';
+  }
+  // state === 'done' (ไม่ถูกข้าม): ไม่มี metaHtml เลยตามข้อกำหนด "ไม่ต้องมีข้อความรองซ้ำ"
 
   return '<div class="pub-tl-item pub-tl-' + stateClass + '">' +
     '<span class="pub-tl-icon">' + icon + '</span>' +
-    '<span class="pub-tl-text">' + escapeHtml_(entry.split.main) + subHtml + metaHtml + '</span>' +
-    '</div>';
+    '<span class="pub-tl-text">' +
+    '<div class="owner-tl-station-name">ขั้นตอนที่ ' + escapeHtml_(entry.order) + ' ' + escapeHtml_(entry.split.main) + badges + '</div>' +
+    subHtml + metaHtml +
+    '</span></div>';
 }
 
 /** <details> "ดูรายละเอียดทั้ง 10 ขั้นตอน" / "ซ่อนรายละเอียด" — ปิดเริ่มต้นเสมอ (Timeline เส้นทางจริงด้านบนพอ
@@ -828,13 +829,13 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   // next state ไม่ได้ถูกลบออกจากระบบ ยังคำนวณอยู่ใน Timeline เหมือนเดิมทุกประการ แค่ไม่ render เป็นการ์ดแยกแล้ว)
   var resultCardHtml = renderOwnerResultCard_(work, info, data.currentStation);
 
-  // 5/6. TIMELINE — กลับมาใช้ Timeline แนวตั้งตามเส้นทางจริง (2026-10-08 รอบ 5 ตามที่ผู้ใช้ขอ) ข้ามสาย 8/9
-  // อัตโนมัติอยู่แล้วตาม actual path + ปุ่มขยายดูรายละเอียดครบ 10 ขั้นตอนด้านล่าง (ของเดิม ยังเก็บไว้)
-  var ownerPathTimeline = buildOwnerActualPathTimeline_(data.steps, data.stationsMap, work);
+  // 5/6. TIMELINE — Timeline หลักชุดเดียวของหน้า (2026-10-08 รอบ 9 ตามที่ผู้ใช้ขอ) โชว์ครบ 1-10 ขั้นตอนเสมอ
+  // (buildOwnerFullWorkflowWithSkips_ เดิม ก่อนรอบนี้ใช้แสดงในปุ่ม "ดูรายละเอียด 10 ขั้นตอน" ที่ซ้ำกับ Timeline
+  // เส้นทางจริงด้านบน — ตอนนี้กลายเป็น Timeline เดียวของหน้า buildOwnerActualPathTimeline_ เลิกใช้ในหน้านี้แล้ว)
   var fullWithSkips = buildOwnerFullWorkflowWithSkips_(data.steps, data.stationsMap, work);
   // 2026-10-08 รอบ 3 — ผู้ใช้ขอตัดกล่อง "ⓘ ข้อมูลเดิม" ออกจากหน้านี้โดยเฉพาะ (หน้าสาธารณะ/หน้ารายละเอียด
   // เจ้าหน้าที่/Workflow Checklist ยังมีเหมือนเดิม ไม่แตะ renderPubLegacyInfoBox_ เอง)
-  var timelineHtml = renderOwnerTimelineSection_(ownerPathTimeline, fullWithSkips);
+  var timelineHtml = renderOwnerTimelineSection_(fullWithSkips);
 
   var noteHtml = '';
   if (work.current_status_public === 'need_revision' && data.revisionInfo) {

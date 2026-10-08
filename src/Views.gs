@@ -2945,4 +2945,7 @@ var PUBLIC_CSS_ = '' +
   // .owner-tl-wrap สโคปเฉพาะหน้านี้) desktop กว้าง 700-900px กึ่งกลางหน้าตามที่ผู้ใช้ขอ ไม่ยืดเต็ม 1200px เหมือน
   // ส่วนอื่นของหน้า
   '.owner-tl-wrap{max-width:900px;margin:0 auto;}' +
-  '.owner-tl-wrap .pub-tl-item{padding-bottom:22px;}';
+  '.owner-tl-wrap .pub-tl-item{padding-bottom:22px;}' +
+  // 2026-10-08 รอบ 9 — ผู้ใช้ขอ shadow อ่อนให้การ์ด Timeline (ข้อ 8) สโคปเฉพาะหน้า Owner (.owner-tl-wrap) ไม่แก้
+  // .pub-timeline ฐานที่หน้าสาธารณะ/เจ้าหน้าที่ใช้ร่วมกัน (กันกระทบหน้าอื่นที่ไม่ได้ขอ)
+  '.owner-tl-wrap .pub-timeline{box-shadow:0 1px 3px rgba(31,59,84,.06);}';

@@ -372,9 +372,13 @@ function buildFixedMainTimeline_(steps, stationsMap, work) {
 }
 
 /**
- * "ดูรายละเอียดทั้ง 10 ขั้นตอน" เฉพาะหน้า Owner Dashboard (2026-10-08 ตามที่ผู้ใช้ขอ) — reuse
+ * Timeline หลัก (ชุดเดียว) ของหน้า Owner Dashboard (2026-10-08 รอบ 9 ตามที่ผู้ใช้ขอ) — reuse
  * buildFixedMainTimeline_ เดิม (backbone คงที่ 1-10 ตัวเดียวกับหน้าสาธารณะ ไม่สร้าง logic คู่ขนาน) แต่เติม
  * flag .skipped ให้ขั้นตอนที่ไม่ได้อยู่บนเส้นทางจริงของงานนี้ (8/9 ตอนที่ state 7 ผล "ผ่าน/ไม่ผ่าน" ข้ามตรงไป 10)
+ * และ .isNextAfterSkip ให้ขั้นตอนที่เป็น "ขั้นตอนถัดไป" จริงทันทีหลังจากช่วงที่ถูกข้าม (ต่างจาก upcoming ธรรมดา
+ * อื่นๆ ที่ยังเป็น "รอดำเนินการ" เฉยๆ) — ก่อนรอบนี้ใช้แสดงเฉพาะในปุ่ม "ดูรายละเอียด 10 ขั้นตอน" (ซ้ำกับ
+ * Timeline เส้นทางจริงด้านบน) ตอนนี้กลายเป็น Timeline หลักชุดเดียวของหน้า (buildOwnerActualPathTimeline_ เดิม
+ * เลิกใช้ในหน้านี้แล้ว ไม่ได้ลบไฟล์ทิ้ง)
  *
  * 2026-10-08 รอบ 2 แก้บั๊กจริง (เจอจากภาพที่ผู้ใช้ส่งมา — state 1-6 ถูกตีว่า "ถูกข้าม" ผิดๆ ไปด้วย): เดิมเช็คจาก
  * "ไม่มี step จริงอยู่ในกลุ่ม N" ซึ่งพังกับงาน legacy import (มี StatusHistory แถวเดียว ไม่มีประวัติทีละขั้นของ
@@ -384,6 +388,10 @@ function buildFixedMainTimeline_(steps, stationsMap, work) {
  * (ยืนยันจาก WORKFLOW_TRANSITIONS_SEED, ดูคอมเมนต์ buildOwnerActualPathTimeline_ ด้านบน) ถ้า StatusHistory
  * จริงมีแถว 7.1/7.4 (ผ่าน/ไม่ผ่าน) อยู่แล้ว แปลว่า 8/9 ถูกข้ามจริงแน่นอนไม่ว่า currentMainStep จะอยู่ตรงไหนก็ตาม
  * ถ้าเป็น 7.2/7.3 (แก้ไข) ไม่ข้าม 8/9 เลย (เข้าสู่ 8 จริง) — ไม่เดา ใช้ผลจริงจาก StatusHistory ของ state 7 เท่านั้น
+ *
+ * 2026-10-08 รอบ 9 — ผู้ใช้ขอเปลี่ยนข้อความของขั้นตอนที่ถูกข้าม จากเดิม "<ผลจริง> → ข้ามขั้นตอนแก้ไข" (ยาว ผูกกับ
+ * ผลการพิจารณา) เป็นข้อความสั้นตรงๆ "ไม่ใช้ในกรณีนี้" ตามตัวอย่างใน requirement (ข้อ 7) ห้ามแสดง "รอดำเนินการ"
+ * กับขั้นตอนที่ถูกข้ามอีกต่อไป (เข้าใจผิดว่ายังต้องรอ)
  */
 function buildOwnerFullWorkflowWithSkips_(steps, stationsMap, work) {
   var fixed = buildFixedMainTimeline_(steps, stationsMap, work);
@@ -392,18 +400,16 @@ function buildOwnerFullWorkflowWithSkips_(steps, stationsMap, work) {
   // จุดแตกสายจริงจุดเดียวในระบบ: step 7 resolve เป็น 7.1/7.4 (ผ่าน/ไม่ผ่าน) -> ข้าม 8/9 ตรงไป 10, 7.2/7.3
   // (แก้ไข) -> ไม่ข้าม เข้าสู่ 8 จริง
   var step7Resolved = steps.filter(function (s) { return parentStepOrder_(s.order) === '7' && s.order !== '7'; })[0] || null;
-  var skipReasonText = '';
   var skippedMainSteps = {};
   if (step7Resolved) {
-    var resolvedLabel = OWNER_STATE_LABELS_[step7Resolved.key] || step7Resolved.name;
     var staysForRevision = step7Resolved.name.indexOf('แก้ไข') !== -1;
     if (!staysForRevision) {
-      skipReasonText = resolvedLabel + ' → ข้ามขั้นตอนแก้ไข';
       skippedMainSteps['8'] = true;
       skippedMainSteps['9'] = true;
     }
   }
 
+  var prevSkipped = false;
   fixed.forEach(function (entry) {
     // owner label แทน station_name ภายใน (buildFixedMainTimeline_ ใช้ mainStepNameFor_ ภายในเสมอ — ต้อง
     // override ทุก entry ที่นี่ ไม่งั้นชื่อ internal จะหลุดเข้าหน้า Owner Dashboard)
@@ -417,8 +423,10 @@ function buildOwnerFullWorkflowWithSkips_(steps, stationsMap, work) {
     }
     if (skippedMainSteps[entry.order]) {
       entry.skipped = true;
-      entry.skipReason = skipReasonText;
+      entry.skipReason = 'ไม่ใช้ในกรณีนี้';
     }
+    if (entry.state === 'upcoming' && !entry.skipped && prevSkipped) entry.isNextAfterSkip = true;
+    prevSkipped = !!entry.skipped;
   });
   return fixed;
 }
