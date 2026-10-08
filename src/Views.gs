@@ -2895,6 +2895,13 @@ var PUBLIC_CSS_ = '' +
   '.owner-result-card{background:#eef9f0;border:1px solid #cfe8d8;border-radius:16px;padding:18px;' +
   'margin-bottom:16px;box-shadow:0 1px 3px rgba(31,59,84,.05);}' +
   '.owner-result-title{font-size:.8rem;font-weight:700;color:var(--navy);margin-bottom:10px;}' +
+  // 2026-10-08 รอบ 12 — บล็อก "ขั้นตอนปัจจุบัน" ตามที่ผู้ใช้ขอ (label เล็ก -> ข้อความใหญ่ "ขั้นตอนที่ N" +
+  // badge inline -> ข้อความรอง) อยู่เหนือส่วน "ผลการพิจารณา" เดิม (ถ้ามี)
+  '.owner-result-current-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;}' +
+  '.owner-result-current-main{font-size:1.15rem;font-weight:700;color:var(--navy);display:flex;' +
+  'align-items:center;flex-wrap:wrap;gap:0;}' +
+  '.owner-result-current-desc{font-size:.85rem;color:var(--text);margin-top:4px;line-height:1.5;}' +
+  '.owner-result-sub-label{font-size:.72rem;color:var(--muted);margin-bottom:4px;}' +
   '.owner-result-head{display:flex;align-items:center;gap:12px;margin-bottom:6px;}' +
   '.owner-result-icon{flex-shrink:0;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;' +
   'justify-content:center;font-size:1.15rem;color:#fff;}' +

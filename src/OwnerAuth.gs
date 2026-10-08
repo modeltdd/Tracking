@@ -696,12 +696,19 @@ function renderOwnerFullDetailSection_(fullWithSkips) {
 }
 
 /**
- * การ์ด "ผลการพิจารณา" (2026-10-08 ตาม mockup) — ซ้ายของ split grid เครื่องหมาย+ข้อความใหญ่เฉพาะตอนมีผลจริง
- * (info.isSub=true, เช่น 7.1-7.4) ถ้ายังไม่มีผล (อยู่ state หลักเฉยๆ) ไม่แสดงส่วนหัวนี้ แสดงแค่ 3 แถวข้อมูลล่าง
- * (สถานะปัจจุบัน/ผู้รับผิดชอบ/อัปเดตล่าสุด) ทุก label มาจาก ownerLabelForStation_ (OWNER_STATE_LABELS_) เท่านั้น
- * ไม่มีเลข state ปนเลย (ตรวจด้วย harness regex ทั้งหน้าอยู่แล้ว)
+ * การ์ด "ผลการพิจารณา" (2026-10-08 รอบ 12 ตามที่ผู้ใช้ขอ) — เพิ่มบล็อก "ขั้นตอนปัจจุบัน" กลับเข้ามาในการ์ด
+ * เดียวกัน (ก่อนหน้านี้ตัดออกไปเพราะซ้ำกับผลการพิจารณา — ผู้ใช้ขอให้เอากลับมาแสดงชัดเจนเสมอ ไม่ว่าจะมีผลย่อย
+ * แล้วหรือไม่): "ขั้นตอนปัจจุบัน" → "ขั้นตอนที่ N" (เลขหน้าจุดเสมอ ไม่โชว์ 7.1 ตรงๆ, ใช้ parentStepOrder_ ตรงๆ
+ * จาก currentStation.station_order ไม่พึ่ง info.stepOrder ที่ fallback เป็นเลขทศนิยมเต็มถ้าไม่เจอ bare parent
+ * station เช่น state 8/9 ที่ไม่มี station "8"/"9" ตรงๆ ในระบบ — กันบั๊กเดิมที่ "ขั้นตอนที่ 3" เคยพัง) → ข้อความ
+ * รอง (owner label ของขั้นหลัก ผ่าน ownerMainStepLabelFor_) → badge "สถานะปัจจุบัน" (reuse .pub-tl-badge เดิม)
+ *
+ * ถ้ามีผลย่อยแล้ว (info.isSub=true, เช่น 7.1-7.4 เท่านั้น — ไม่รวม 8.x/9.x ที่เป็นแค่ลำดับขั้นย่อยไม่ใช่ผลประเมิน)
+ * แสดงเพิ่มหัวข้อเล็ก "ผลการพิจารณา" + เครื่องหมาย/ข้อความผลจริงต่อท้าย (เดิมมีอยู่แล้ว ไม่เปลี่ยน logic ส่วนนี้)
+ * ก่อนมีผล (state 1-6 หรือ 8/9/10 เฉยๆ) ไม่แสดงส่วนนี้เลยตามที่ผู้ใช้ขอ (ข้อ 3) ทุก label มาจาก
+ * ownerLabelForStation_/ownerMainStepLabelFor_ (OWNER_STATE_LABELS_) เท่านั้น
  */
-function renderOwnerResultCard_(work, info, currentStation) {
+function renderOwnerResultCard_(work, info, currentStation, stationsMap) {
   var iconByTone = { done: '&#10003;', danger: '&#10007;', revision: '&#9998;', pending: '' };
   var descByTone = {
     done: 'ผลงานผ่านการพิจารณาแล้ว และกำลังอยู่ระหว่างดำเนินการแจ้งผลอย่างเป็นทางการ',
@@ -709,23 +716,28 @@ function renderOwnerResultCard_(work, info, currentStation) {
     revision: 'ผลงานต้องปรับปรุงแก้ไขตามข้อเสนอแนะของคณะกรรมการ',
   };
 
+  var mainOrder = currentStation ? parentStepOrder_(currentStation.station_order || '') : '';
+  var mainLabel = mainOrder ? ownerMainStepLabelFor_(mainOrder, stationsMap || {}).main : '';
+  var currentBlockHtml = '' +
+    '<div class="owner-result-current-label">ขั้นตอนปัจจุบัน</div>' +
+    '<div class="owner-result-current-main">ขั้นตอนที่ ' + escapeHtml_(mainOrder) +
+    '<span class="pub-tl-badge">สถานะปัจจุบัน</span></div>' +
+    (mainLabel ? '<div class="owner-result-current-desc">' + escapeHtml_(mainLabel) + '</div>' : '');
+
   var headerHtml = '';
   if (info.isSub) {
     var tone = info.subTone;
     var resultLabel = ownerLabelForStation_(info.subStation);
     headerHtml = '' +
+      '<div class="owner-result-divider"></div>' +
+      '<div class="owner-result-sub-label">ผลการพิจารณา</div>' +
       '<div class="owner-result-head">' +
       '<div class="owner-result-icon owner-result-icon-' + tone + '">' + iconByTone[tone] + '</div>' +
       '<div class="owner-result-main">' + escapeHtml_(resultLabel) + '</div>' +
       '</div>' +
-      (descByTone[tone] ? '<div class="owner-result-desc">' + escapeHtml_(descByTone[tone]) + '</div>' : '') +
-      '<div class="owner-result-divider"></div>';
+      (descByTone[tone] ? '<div class="owner-result-desc">' + escapeHtml_(descByTone[tone]) + '</div>' : '');
   }
 
-  // 2026-10-08 รอบ 4 — ผู้ใช้ขอตัดแถว "สถานะปัจจุบัน" (icon เอกสาร + ข้อความ label ของ parent state เช่น
-  // "ผลการพิจารณาถูกส่งมายังสำนักงานเขตแล้ว") ออกจากการ์ดนี้ทั้งหมด เพราะซ้ำซ้อนกับข้อความ "ผ่านการประเมิน" ที่
-  // เด่นอยู่แล้วด้านบน เหลือแค่ "ผู้รับผิดชอบ"/"อัปเดตล่าสุด" (currentStation param ยังรับไว้เผื่อใช้ภายหลัง แต่
-  // ไม่ได้ใช้คำนวณอะไรในฟังก์ชันนี้แล้วตอนนี้)
   var ownerOrgText = work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-');
 
   function miniRow(icon, label, value) {
@@ -737,7 +749,9 @@ function renderOwnerResultCard_(work, info, currentStation) {
   return '' +
     '<div class="owner-result-card">' +
     '<div class="owner-result-title">ผลการพิจารณา</div>' +
+    '<div class="owner-result-current">' + currentBlockHtml + '</div>' +
     headerHtml +
+    '<div class="owner-result-divider"></div>' +
     '<div class="owner-result-grid">' +
     miniRow('&#128100;', 'ผู้รับผิดชอบ', ownerOrgText) +
     miniRow('&#128336;', 'อัปเดตล่าสุด', formatDateThShort_(work.updated_at)) +
@@ -843,7 +857,7 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   // 3. RESULT CARD — เต็มความกว้าง (2026-10-08 รอบ 6 ตามที่ผู้ใช้ขอ) ตัดการ์ด "ขั้นตอนถัดไป" ออกแล้ว ไม่แบ่ง
   // layout 70/30 อีกต่อไป — Timeline ด้านล่าง (buildOwnerActualPathTimeline_) เป็นตัวบอกขั้นตอนถัดไปแทน (ข้อมูล
   // next state ไม่ได้ถูกลบออกจากระบบ ยังคำนวณอยู่ใน Timeline เหมือนเดิมทุกประการ แค่ไม่ render เป็นการ์ดแยกแล้ว)
-  var resultCardHtml = renderOwnerResultCard_(work, info, data.currentStation);
+  var resultCardHtml = renderOwnerResultCard_(work, info, data.currentStation, data.stationsMap);
 
   // 5/6. TIMELINE — Timeline หลักชุดเดียวของหน้า (2026-10-08 รอบ 9 ตามที่ผู้ใช้ขอ) โชว์ครบ 1-10 ขั้นตอนเสมอ
   // (buildOwnerFullWorkflowWithSkips_ เดิม ก่อนรอบนี้ใช้แสดงในปุ่ม "ดูรายละเอียด 10 ขั้นตอน" ที่ซ้ำกับ Timeline
