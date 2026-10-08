@@ -297,6 +297,9 @@ function renderOwnerLoginDirectFormBody_(baseUrl, errors, notices, prevValues) {
     '<div class="field" style="text-align:left"><label>Username</label>' +
     '<input class="input" name="owner_username" value="' + escapeHtml_(prevValues.owner_username || '') + '" placeholder="กรอกชื่อผู้ใช้งาน" required></div>' +
     '<div class="field" style="text-align:left"><label>Password</label>' +
+    // 2026-10-08 ผู้ใช้ขอ hint อธิบายว่ารหัสผ่านคืออะไร — ค่าเริ่มต้นจริงคือ tracking_no ของงานนั้น (ยืนยัน
+    // จาก verifyOwnerLoginCode_ ด้านบน — รูปแบบ NN-NNN ตรงกับเลขทะเบียนที่พิมพ์บนเอกสาร/QR อยู่แล้ว)
+    '<p class="hint" style="margin:2px 0 8px">รหัสผ่านเริ่มต้นคือเลขทะเบียนผลงานของท่าน รูปแบบ XX-XXX</p>' +
     '<div class="owner-pass-boxes">' + boxesHtml + '</div>' +
     '<button type="button" id="owner-pass-toggle" class="owner-pass-toggle-btn">แสดงรหัส</button>' +
     '</div>' +
