@@ -833,8 +833,9 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   // การซ่อนไปเลย ตาม mockup ล่าสุด) + ปุ่มขยายดูรายละเอียดครบ (ผู้รับผิดชอบ/วันที่ต่อขั้นตอน) ด้านล่าง ใช้ข้อมูล
   // ชุดเดียวกัน (buildOwnerFullWorkflowWithSkips_) ทั้ง 2 จุด ไม่คำนวณซ้ำซ้อน
   var fullWithSkips = buildOwnerFullWorkflowWithSkips_(data.steps, data.stationsMap, work);
+  // 2026-10-08 รอบ 3 — ผู้ใช้ขอตัดกล่อง "ⓘ ข้อมูลเดิม" ออกจากหน้านี้โดยเฉพาะ (หน้าสาธารณะ/หน้ารายละเอียด
+  // เจ้าหน้าที่/Workflow Checklist ยังมีเหมือนเดิม ไม่แตะ renderPubLegacyInfoBox_ เอง)
   var timelineHtml = renderOwnerTimelineSection_(fullWithSkips);
-  if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
   var noteHtml = '';
   if (work.current_status_public === 'need_revision' && data.revisionInfo) {
