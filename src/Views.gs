@@ -640,9 +640,9 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
     var state = stationsMap[w.current_station_key];
     return '<tr>' +
       '<td>' + escapeHtml_(w.tracking_no) + '</td>' +
+      '<td>' + escapeHtml_(ownerName) + '</td>' +
       '<td>' + escapeHtml_(w.work_title || '-') + '</td>' +
       '<td>' + escapeHtml_(w.org_from || '-') + '</td>' +
-      '<td>' + escapeHtml_(ownerName) + '</td>' +
       '<td>' + escapeHtml_(state ? state.station_name : w.current_station_key) + '</td>' +
       '<td>' + escapeHtml_(w.current_owner_org || '-') + '</td>' +
       '<td>' + formatDateTh_(w.updated_at) + '</td>' +
@@ -654,9 +654,9 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
   // หัวตารางกดเรียงได้ (2026-09-24 ตามที่ผู้ใช้ขอ) — คลิกครั้งแรกเรียง asc, คลิกซ้ำสลับ desc/asc คอลัมน์เดิม
   var theadHtml = '<tr>' +
     registrySortHeaderHtml_('เลขทะเบียน', 'tracking_no', rp, baseUrl) +
+    registrySortHeaderHtml_('เจ้าของผลงาน', 'owner', rp, baseUrl) +
     registrySortHeaderHtml_('ชื่อผลงาน', 'work_title', rp, baseUrl) +
     registrySortHeaderHtml_('หน่วยงาน', 'org_from', rp, baseUrl) +
-    registrySortHeaderHtml_('เจ้าของผลงาน', 'owner', rp, baseUrl) +
     registrySortHeaderHtml_('สถานะปัจจุบัน', 'state', rp, baseUrl) +
     registrySortHeaderHtml_('ผู้รับผิดชอบ', 'current_owner_org', rp, baseUrl) +
     registrySortHeaderHtml_('วันที่อัปเดตล่าสุด', 'updated_at', rp, baseUrl) +
