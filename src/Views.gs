@@ -1646,7 +1646,9 @@ function renderScanWorkBody_(ss, work, eligible, eligibleTransitions, baseUrl, t
   var historyLinkHtml = '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=detail&id=' +
     encodeURIComponent(work.work_id) + '">ดูประวัติการดำเนินงาน &rarr;</a></p>';
 
-  if (data.isLegacyImportOnly) checklistHtml += renderPubLegacyInfoBox_();
+  // 2026-10-08 ตามที่ผู้ใช้ขอ — ตัดกล่อง "ⓘ ข้อมูลเดิม" (renderPubLegacyInfoBox_) และลิงก์ "← สแกนรายการอื่น"
+  // ออกจากหน้านี้โดยเฉพาะ (หน้าสาธารณะ/หน้ารายละเอียดเจ้าหน้าที่อื่นยังมีกล่องนี้เหมือนเดิม ไม่แตะ — ดู
+  // renderPubLegacyInfoBox_ อีก 2 จุดที่เหลือใน Views.gs) ไม่ได้ลบฟังก์ชัน/route/logic QR ใดๆ
 
   return '' +
     '<div class="pub-compact">' +
@@ -1658,7 +1660,6 @@ function renderScanWorkBody_(ss, work, eligible, eligibleTransitions, baseUrl, t
     checklistHtml + moreActionsHtml +
     '</div>' +
     historyLinkHtml +
-    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=scan">&larr; สแกนรายการอื่น</a></p>' +
     '</div>' +
     WF_CONFIRM_TOGGLE_SCRIPT_;
 }

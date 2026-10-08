@@ -209,7 +209,9 @@ function doPost(e) {
         if (eligibleErr[i].transition_id === e.parameter.transition_id) { reTransition = eligibleErr[i]; break; }
       }
       if (!reTransition) {
-        return renderStaffPage_('สแกน QR', renderScanWorkBody_(ss, transWork, computeEligibleActions_(transWork, stateDefErr, user),
+        // 2026-10-08 ตามที่ผู้ใช้ขอ — หน้า "รายละเอียดผลงาน" (renderScanWorkBody_) ใช้ title "รายละเอียดข้อมูล"
+        // แทน "สแกน QR" เฉพาะหน้านี้ (ดูคอมเมนต์เดียวกันใน Actions.gs renderScanRoute_)
+        return renderStaffPage_('รายละเอียดข้อมูล', renderScanWorkBody_(ss, transWork, computeEligibleActions_(transWork, stateDefErr, user),
           eligibleErr, baseUrl, transToken, transResult.errors), user, 'scan', baseUrl);
       }
       return renderStaffPage_('สแกน QR',
