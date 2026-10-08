@@ -2921,7 +2921,9 @@ var PUBLIC_CSS_ = '' +
   'font-size:.8rem;background:#e3f6e8;border-radius:10px;padding:8px 12px;margin-bottom:8px;}' +
   '.owner-next-subtext{font-size:.78rem;color:var(--muted);line-height:1.6;}' +
   '.owner-next-empty{font-size:.88rem;color:var(--muted);}' +
-  '.owner-tl-section-title{font-size:.95rem;font-weight:700;color:var(--navy);margin-bottom:2px;}' +
+  // 2026-10-08 — ตัดข้อความรอง (.owner-tl-section-sub) ออกแล้ว เพิ่ม margin-bottom ของหัวข้อเองแทน กันหัวข้อ
+  // ติดกับ Timeline จนแน่นเกินไป (class .owner-tl-section-sub เหลือไว้เฉยๆ ไม่มี markup ใช้แล้ว)
+  '.owner-tl-section-title{font-size:.95rem;font-weight:700;color:var(--navy);margin-bottom:10px;}' +
   '.owner-tl-section-sub{font-size:.78rem;color:var(--muted);margin-bottom:10px;}' +
   // 2026-10-08 รอบ 3 — ผู้ใช้ขอลบแถบ Timeline แนวนอน compact (.owner-tlc-*) ออกทั้งชุด (วงกลม/เส้นเชื่อม/
   // ข้อความใต้วงกลม/สี completed-current-future) เหลือแค่หัวข้อ + ปุ่ม "ดูรายละเอียดทั้ง 10 ขั้นตอน" ด้านล่าง

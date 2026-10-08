@@ -619,9 +619,10 @@ function renderOwnerTimelineItem_(entry) {
  */
 function renderOwnerTimelineSection_(pathData, fullWithSkips) {
   if (!pathData) return '';
+  // 2026-10-08 ผู้ใช้ขอลบกล่องคำอธิบายก่อน Timeline ออกทั้งหมด (ทั้งกล่อง "ข้อมูลเดิม" ที่ตัดออกไปแล้วรอบก่อน
+  // และข้อความรอง "แสดงเฉพาะขั้นตอนที่เกี่ยวข้องกับผลงานของท่าน" ที่ตัดออกตอนนี้) เหลือแค่หัวข้อ + Timeline ตรงๆ
   return '' +
     '<div class="owner-tl-section-title">เส้นทางการดำเนินงาน</div>' +
-    '<div class="owner-tl-section-sub">แสดงเฉพาะขั้นตอนที่เกี่ยวข้องกับผลงานของท่าน</div>' +
     '<div class="owner-tl-wrap"><div class="pub-timeline">' +
     pathData.path.map(renderOwnerTimelineItem_).join('') + '</div></div>' +
     renderOwnerFullDetailSection_(fullWithSkips);
