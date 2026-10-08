@@ -619,13 +619,15 @@ function renderOwnerTimelineItem_(entry) {
  */
 function renderOwnerTimelineSection_(pathData, fullWithSkips) {
   if (!pathData) return '';
-  // 2026-10-08 ผู้ใช้ขอลบกล่องคำอธิบายก่อน Timeline ออกทั้งหมด (ทั้งกล่อง "ข้อมูลเดิม" ที่ตัดออกไปแล้วรอบก่อน
-  // และข้อความรอง "แสดงเฉพาะขั้นตอนที่เกี่ยวข้องกับผลงานของท่าน" ที่ตัดออกตอนนี้) เหลือแค่หัวข้อ + Timeline ตรงๆ
+  // 2026-10-08 รอบ 8 — ผู้ใช้ขอตัดส่วน "ดูรายละเอียดทั้ง 10 ขั้นตอน" (renderOwnerFullDetailSection_) ออกด้วย
+  // เพราะเป็น Timeline ซ้ำชุดที่ 2 ในหน้าเดียวกัน (แสดงเกือบเหมือน Timeline หลักด้านบน ต่างกันแค่โชว์ครบ 1-10
+  // รวม state ที่ถูกข้าม) — เหลือ Timeline หลัก (เส้นทางจริง) เพียงชุดเดียวตามที่ผู้ใช้ขอ ไม่เรียก
+  // renderOwnerFullDetailSection_ อีกต่อไป (ฟังก์ชัน/ข้อมูล fullWithSkips ไม่ได้ถูกลบออกจากไฟล์ แค่ไม่ถูกเรียก
+  // ในหน้านี้แล้ว — เผื่อใช้ที่อื่นภายหลัง)
   return '' +
     '<div class="owner-tl-section-title">เส้นทางการดำเนินงาน</div>' +
     '<div class="owner-tl-wrap"><div class="pub-timeline">' +
-    pathData.path.map(renderOwnerTimelineItem_).join('') + '</div></div>' +
-    renderOwnerFullDetailSection_(fullWithSkips);
+    pathData.path.map(renderOwnerTimelineItem_).join('') + '</div></div>';
 }
 
 /**
