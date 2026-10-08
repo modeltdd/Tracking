@@ -2904,4 +2904,10 @@ var PUBLIC_CSS_ = '' +
   // งาน state ที่ "ข้าม" เพราะแตกสาย (8/9 ตอนผล 7 = ผ่าน) — เทาจาง + บอกเหตุผล แทน "รอดำเนินการ"
   '.owner-tl-skip .pub-tl-icon{background:#f1f2f4;border-color:var(--border);color:var(--muted);}' +
   '.owner-tl-skip .pub-tl-text{color:var(--muted);}' +
-  '.owner-tl-skip-reason{display:block;font-size:.76rem;color:var(--muted);font-style:italic;margin-top:2px;}';
+  '.owner-tl-skip-reason{display:block;font-size:.76rem;color:var(--muted);font-style:italic;margin-top:2px;}' +
+  // 2026-10-08 รอบ 5 — Timeline แนวตั้งตามเส้นทางจริง กลับมาเป็น primary display อีกครั้ง (.pub-timeline/
+  // .pub-tl-item เดิมที่หน้าสาธารณะใช้ร่วมกันอยู่แล้ว ไม่แก้ class ฐาน แค่ override gap/width ผ่าน wrapper
+  // .owner-tl-wrap สโคปเฉพาะหน้านี้) desktop กว้าง 700-900px กึ่งกลางหน้าตามที่ผู้ใช้ขอ ไม่ยืดเต็ม 1200px เหมือน
+  // ส่วนอื่นของหน้า
+  '.owner-tl-wrap{max-width:900px;margin:0 auto;}' +
+  '.owner-tl-wrap .pub-tl-item{padding-bottom:22px;}';

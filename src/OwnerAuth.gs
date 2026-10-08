@@ -589,33 +589,38 @@ function renderOwnerTimelineItem_(entry) {
     }
   }
 
+  // 2026-10-08 รอบ 5 ตามที่ผู้ใช้ขอ — กลับมาใช้ "ขั้นตอนที่ N ชื่อสถานะ" + badge "สถานะปัจจุบัน"/"ขั้นตอนสุดท้าย"
+  // (เหมือน renderPubFixedTimelineItem_ ที่หน้าสาธารณะใช้อยู่แล้ว — reuse .pub-tl-badge/.pub-tl-badge-last เดิม
+  // ไม่สร้าง CSS ใหม่) แทนคำสัมพัทธ์ "ผ่านแล้ว/ตอนนี้/ถัดไป/หลังจากนั้น" รอบก่อน — ชื่อสถานะยังเป็น owner label
+  // (OWNER_STATE_LABELS_) เหมือนเดิมทุกจุด ไม่ใช่ station_name ภายใน (ไม่ใช่การเดา — ไม่มี requirement ใหม่ไหน
+  // ขอให้เปลี่ยนกลับไปใช้ชื่อภายใน) เพิ่ม "รอดำเนินการ" กลับมาสำหรับ state ที่ยังไม่ถึง (ข้อ 8)
+  var badges = '';
+  if (entry.state === 'current') badges += '<span class="pub-tl-badge">สถานะปัจจุบัน</span>';
+  if (entry.isLastStep) badges += '<span class="pub-tl-badge pub-tl-badge-last">ขั้นตอนสุดท้าย</span>';
+  var pendingHtml = entry.state === 'upcoming' ? '<span class="pub-tl-meta pub-tl-meta-pending">รอดำเนินการ</span>' : '';
+
   return '<div class="pub-tl-item pub-tl-' + entry.state + '">' +
     '<span class="pub-tl-icon">' + icon + '</span>' +
     '<span class="pub-tl-text">' +
-    '<div class="owner-tl-position-label">' + escapeHtml_(entry.positionLabel) + '</div>' +
-    '<div class="owner-tl-station-name">' + escapeHtml_(entry.split.main) + '</div>' +
-    subHtml + noteHtml + branchHtml + respHtml +
+    '<div class="owner-tl-station-name">ขั้นตอนที่ ' + escapeHtml_(entry.order) + ' ' + escapeHtml_(entry.split.main) + badges + '</div>' +
+    subHtml + noteHtml + branchHtml + respHtml + pendingHtml +
     '</span></div>';
 }
 
 /**
- * หัวข้อ Timeline ภาษาคน (2026-10-08 รอบ 2 ตาม mockup รูปจริงที่ผู้ใช้ส่งมา) — "เส้นทางการดำเนินงาน" + หัวข้อรอง
- * แถบ 10 ขั้นตอนแนวนอนเสมอ (ไม่ซ่อน 8/9 ไปเลยเหมือนรอบก่อน — mockup จริงแสดงเลขกำกับครบ 1-10 ตลอด ขั้นที่ถูก
- * ข้ามจริงแสดงจางๆ + ป้าย "(ถ้ามี)" กำกับแทน) ต่อท้ายด้วยปุ่ม "ดูรายละเอียดทั้ง 10 ขั้นตอน" (รายละเอียดเต็ม
- * ผู้รับผิดชอบ/วันที่ต่อขั้นตอน, <details> ไม่ reload หน้า) ใช้ fullWithSkips ชุดเดียวกันทั้ง 2 จุด
+ * หัวข้อ Timeline ภาษาคน + รายการ Timeline แนวตั้งตามเส้นทางจริง (2026-10-08 รอบ 5 ตามที่ผู้ใช้ขอกลับมาใช้
+ * แบบนี้อีกครั้ง — ไม่ใช่แถบแนวนอน compact เหมือนรอบก่อนหน้า) ใช้ buildOwnerActualPathTimeline_ เดิมที่มีอยู่
+ * แล้ว (ไม่ได้ลบทิ้งตอนหยุดใช้ชั่วคราวรอบก่อน) เป็นแหล่งข้อมูลหลัก แสดงเฉพาะขั้นตอนบนเส้นทางจริง (ข้ามสาย 8/9
+ * อัตโนมัติเมื่อผล state 7 = ผ่าน) อยู่ใน card สีขาวใบเดียว (.pub-timeline เดิม ไม่แยก card ย่อย) ต่อท้ายด้วยปุ่ม
+ * "ดูรายละเอียดทั้ง 10 ขั้นตอน" (renderOwnerFullDetailSection_ เดิม ยังเก็บไว้ตาม requirement ก่อนหน้า)
  */
-/**
- * 2026-10-08 รอบ 3 — ผู้ใช้ขอลบแถบ Timeline แนวนอน compact (วงกลมเลข 1-10 + เส้นเชื่อม + ข้อความใต้วงกลม) ออก
- * ทั้งชุด ให้เหลือแค่หัวข้อ "เส้นทางการดำเนินงาน" เป็น label ของส่วน "ดูรายละเอียดทั้ง 10 ขั้นตอน" ที่ยังเก็บไว้
- * ตาม requirement เดิม (ข้อ 7 — Timeline รายละเอียดที่กดเปิดดูได้) renderOwnerCompactTimelineItem_/
- * .owner-tlc-* CSS ถูกลบออกทั้งหมด (โค้ด UI ใหม่ล้วนจาก session นี้เอง ไม่ใช่ของเดิมที่มีมาก่อน ไม่กระทบ
- * WorkflowMaster/StatusHistory/state code ใดๆ)
- */
-function renderOwnerTimelineSection_(fullWithSkips) {
-  if (!fullWithSkips) return '';
+function renderOwnerTimelineSection_(pathData, fullWithSkips) {
+  if (!pathData) return '';
   return '' +
     '<div class="owner-tl-section-title">เส้นทางการดำเนินงาน</div>' +
-    '<div class="owner-tl-section-sub">แสดงภาพรวมขั้นตอนการพิจารณาผลงานของท่าน</div>' +
+    '<div class="owner-tl-section-sub">แสดงเฉพาะขั้นตอนที่เกี่ยวข้องกับผลงานของท่าน</div>' +
+    '<div class="owner-tl-wrap"><div class="pub-timeline">' +
+    pathData.path.map(renderOwnerTimelineItem_).join('') + '</div></div>' +
     renderOwnerFullDetailSection_(fullWithSkips);
 }
 
@@ -817,13 +822,13 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
     renderOwnerNextStepCard_(nextStep) +
     '</div>';
 
-  // 5/6. TIMELINE — แถบ 10 ขั้นตอนแนวนอนเสมอ (เลขกำกับทุกวงกลม ขั้นที่ถูกข้ามจริงแสดงจางๆ + ป้าย "(ถ้ามี)" แทน
-  // การซ่อนไปเลย ตาม mockup ล่าสุด) + ปุ่มขยายดูรายละเอียดครบ (ผู้รับผิดชอบ/วันที่ต่อขั้นตอน) ด้านล่าง ใช้ข้อมูล
-  // ชุดเดียวกัน (buildOwnerFullWorkflowWithSkips_) ทั้ง 2 จุด ไม่คำนวณซ้ำซ้อน
+  // 5/6. TIMELINE — กลับมาใช้ Timeline แนวตั้งตามเส้นทางจริง (2026-10-08 รอบ 5 ตามที่ผู้ใช้ขอ) ข้ามสาย 8/9
+  // อัตโนมัติอยู่แล้วตาม actual path + ปุ่มขยายดูรายละเอียดครบ 10 ขั้นตอนด้านล่าง (ของเดิม ยังเก็บไว้)
+  var ownerPathTimeline = buildOwnerActualPathTimeline_(data.steps, data.stationsMap, work);
   var fullWithSkips = buildOwnerFullWorkflowWithSkips_(data.steps, data.stationsMap, work);
   // 2026-10-08 รอบ 3 — ผู้ใช้ขอตัดกล่อง "ⓘ ข้อมูลเดิม" ออกจากหน้านี้โดยเฉพาะ (หน้าสาธารณะ/หน้ารายละเอียด
   // เจ้าหน้าที่/Workflow Checklist ยังมีเหมือนเดิม ไม่แตะ renderPubLegacyInfoBox_ เอง)
-  var timelineHtml = renderOwnerTimelineSection_(fullWithSkips);
+  var timelineHtml = renderOwnerTimelineSection_(ownerPathTimeline, fullWithSkips);
 
   var noteHtml = '';
   if (work.current_status_public === 'need_revision' && data.revisionInfo) {
