@@ -281,27 +281,30 @@ function renderOwnerLoginDirectFormBody_(baseUrl, errors, notices, prevValues) {
     : '';
   var sessionToken = prevValues.session_token || randomToken_(16);
 
+  // 2026-10-12 ตามรายการแก้ไขที่ผู้ใช้ขอ — password แสดงตัวอักษร/ตัวเลขทันที (type="text" ไม่ซ่อนด้วย
+  // password dots) ไม่มีปุ่ม "แสดงรหัส" อีกต่อไปเพราะไม่มีอะไรให้สลับโชว์/ซ่อน (ค่าโชว์อยู่แล้วตั้งแต่แรก)
+  // auto-focus/paste-กระจายอัตโนมัติ/แยกช่องเดิมยังคงไว้ทั้งหมด (OWNER_LOGIN_PASSWORD_SCRIPT_ ด้านล่าง)
   var boxesHtml = '';
   for (var i = 0; i < 5; i++) {
     if (i === 2) boxesHtml += '<span class="owner-pass-sep">-</span>';
-    boxesHtml += '<input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" class="owner-pass-box">';
+    boxesHtml += '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" class="owner-pass-box">';
   }
 
   return '' + errorHtml + noticeHtml +
     '<div class="detail-card owner-login-card">' +
-    '<p class="pub-subheader-label">กรุณาเข้าสู่ระบบเพื่อติดตามผลงานของท่าน</p>' +
+    // 2026-10-12 — ตัดข้อความหัว "กรุณาเข้าสู่ระบบเพื่อติดตามผลงานของท่าน" ออกตามที่ผู้ใช้ขอ (ข้อ 3) ดึง
+    // Username ขึ้นมาเป็นองค์ประกอบแรกของการ์ดทันที ไม่มีช่องว่างคั่นเหลือ
     '<form id="owner-login-direct-form" method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;">' +
     '<input type="hidden" name="form_action" value="owner_login_direct">' +
     '<input type="hidden" name="session_token" value="' + escapeHtml_(sessionToken) + '">' +
     '<input type="hidden" id="owner_login_code_hidden" name="owner_login_code" value="">' +
     '<div class="field" style="text-align:left"><label>Username</label>' +
-    '<input class="input" name="owner_username" value="' + escapeHtml_(prevValues.owner_username || '') + '" placeholder="กรอกชื่อผู้ใช้งาน" required></div>' +
+    // 2026-10-12 — เปลี่ยน placeholder จาก "กรอกชื่อผู้ใช้งาน" เป็น "ชื่อ - สกุล" ตามที่ผู้ใช้ขอ (ข้อ 1)
+    '<input class="input" name="owner_username" value="' + escapeHtml_(prevValues.owner_username || '') + '" placeholder="ชื่อ - สกุล" required></div>' +
     '<div class="field" style="text-align:left"><label>Password</label>' +
-    // 2026-10-08 ผู้ใช้ขอ hint อธิบายว่ารหัสผ่านคืออะไร — ค่าเริ่มต้นจริงคือ tracking_no ของงานนั้น (ยืนยัน
-    // จาก verifyOwnerLoginCode_ ด้านบน — รูปแบบ NN-NNN ตรงกับเลขทะเบียนที่พิมพ์บนเอกสาร/QR อยู่แล้ว)
-    '<p class="hint" style="margin:2px 0 8px">รหัสผ่านเริ่มต้นคือเลขทะเบียนผลงานของท่าน รูปแบบ XX-XXX</p>' +
+    // 2026-10-12 — ตัดข้อความอธิบาย "รหัสผ่านเริ่มต้นคือ..." ออกตามที่ผู้ใช้ขอ (ข้อ 4) และตัดปุ่ม "แสดงรหัส"
+    // ออก (ข้อ 5, ไม่จำเป็นแล้วเพราะช่องรหัสโชว์ค่าอยู่แล้วตั้งแต่แรกด้วย type="text" ด้านบน)
     '<div class="owner-pass-boxes">' + boxesHtml + '</div>' +
-    '<button type="button" id="owner-pass-toggle" class="owner-pass-toggle-btn">แสดงรหัส</button>' +
     '</div>' +
     '<button class="btn-primary" type="submit" data-loading-text="กำลังเข้าสู่ระบบ...">เข้าสู่ระบบ</button>' +
     '</form>' +
@@ -312,14 +315,16 @@ function renderOwnerLoginDirectFormBody_(baseUrl, errors, notices, prevValues) {
 }
 
 /** พฤติกรรมช่อง password แยกทีละตัว — auto-advance/backspace ย้อนกลับ/ลูกศรซ้าย-ขวา/paste กระจายอัตโนมัติ/
- *  Enter submit/ปุ่มแสดง-ซ่อนรหัส (ข้อ 3/5/14) รวมค่าทุกช่องเป็น "NN-NNN" ลง hidden input ก่อน submit เสมอ */
+ *  Enter submit (ข้อ 3/5/14) รวมค่าทุกช่องเป็น "NN-NNN" ลง hidden input ก่อน submit เสมอ
+ *  2026-10-12 — ตัด JS toggle แสดง/ซ่อนรหัส (toggleBtn) ออกตามที่ผู้ใช้ขอ (ปุ่ม "แสดงรหัส" ไม่มีใน UI แล้ว
+ *  เพราะช่องรหัสเป็น type="text" แสดงค่าอยู่แล้วตั้งแต่แรก ไม่มีอะไรให้สลับ) ไม่กระทบ logic Login ฝั่ง server
+ *  เลย (hidden input/syncHidden/form submit listener ด้านล่างเหมือนเดิมทุกจุด) */
 var OWNER_LOGIN_PASSWORD_SCRIPT_ = '' +
   '<script>' +
   'document.addEventListener("DOMContentLoaded", function () {' +
   'var boxes = Array.prototype.slice.call(document.querySelectorAll(".owner-pass-box"));' +
   'var hidden = document.getElementById("owner_login_code_hidden");' +
   'var form = document.getElementById("owner-login-direct-form");' +
-  'var toggleBtn = document.getElementById("owner-pass-toggle");' +
   'if (!boxes.length || !hidden || !form) return;' +
   'function syncHidden() {' +
   'var digits = boxes.map(function (b) { return b.value || ""; }).join("");' +
@@ -357,14 +362,6 @@ var OWNER_LOGIN_PASSWORD_SCRIPT_ = '' +
   '});' +
   '});' +
   'if (boxes[0]) boxes[0].focus();' +
-  'if (toggleBtn) {' +
-  'var shown = false;' +
-  'toggleBtn.addEventListener("click", function () {' +
-  'shown = !shown;' +
-  'boxes.forEach(function (b) { b.type = shown ? "text" : "password"; });' +
-  'toggleBtn.textContent = shown ? "ซ่อนรหัส" : "แสดงรหัส";' +
-  '});' +
-  '}' +
   'form.addEventListener("submit", function (ev) {' +
   'syncHidden();' +
   'if (hidden.value.length < 6) {' +
