@@ -449,19 +449,21 @@ function renderOwnerLoginCandidatesBody_(candidates, baseUrl, sessionToken, erro
  * อัตโนมัติแบบไม่ต้องกดจริงๆ" ทำไม่ได้ 100% ในสถาปัตยกรรมนี้ (ยืนยันแล้วจากรอบนี้)
  *
  * 2026-10-12 รอบ 17 ตามที่ผู้ใช้ขอ (ลบหน้า "เข้าสู่ระบบสำเร็จ"/ปุ่ม "ไปที่หน้าผลงานของฉัน" ออกจาก flow, ห้าม
- * จำลองการกด .click()) — ปรับให้ใกล้เคียง "ไม่มีหน้าคั่น" ที่สุดเท่าที่ platform จำกัดนี้ทำได้จริง: ตัดข้อความ
- * "เข้าสู่ระบบสำเร็จ"/ปุ่ม "ไปที่หน้าผลงานของฉัน" ออกทั้งหมด เหลือแค่ spinner + "กำลังโหลดข้อมูล..." (ข้อ 9) ลิงก์
- * จริง (ไม่ใช่ปุ่มโชว์เด่น) auto-focus ทันทีให้กด Enter ต่อได้โดยไม่ต้องเล็งเมาส์ (มี user gesture จริงจากการกด
- * Enter ถือว่าผ่านเงื่อนไข sandbox) + ลอง top.location.replace() ก่อนเสมอ (ฟรี เผื่อบาง deployment อนุญาต) ถ้า
- * ทั้งสองทางไม่ติด ภายใน 1.2 วินาทีจะ fade-in ปุ่ม "เปิดหน้าผลงานของฉัน" ให้กดจริงเป็น fallback สุดท้าย (ไม่ใช่
- * .click() จำลอง — ผู้ใช้ต้องกด/แตะเองจริง) */
+ * จำลองการกด .click()) — ตัดข้อความ "เข้าสู่ระบบสำเร็จ"/ปุ่ม "ไปที่หน้าผลงานของฉัน" ออก เหลือ spinner +
+ * "กำลังโหลดข้อมูล..." + ลอง top.location.replace() ก่อนเสมอ (ฟรี เผื่อบาง deployment อนุญาต)
+ *
+ * 2026-10-12 รอบ 18 — ผู้ใช้แจ้งว่ารอบ 17 (ปุ่มซ่อนไว้ก่อน fade-in หลัง 1.2s) "ใช้งานยาก" (ต้องรู้ว่าต้องกด Enter
+ * หรือรอ) ขอปรับกลับให้มีปุ่มกดได้ทันทีเหมือนเดิม — ปุ่ม "เปิดหน้าผลงานของฉัน" จึงโชว์เด่นชัดทันที (ไม่ซ่อน/ไม่มี
+ * setTimeout fade-in แล้ว) auto-focus ไว้ด้วยเผื่อกด Enter ได้เลย แต่ไม่ได้บังคับผู้ใช้ต้องรู้ trick นี้อีกต่อไป
+ * เห็นปุ่มจริงให้กดได้ตั้งแต่โหลดหน้าเสร็จ ยังไม่เอาข้อความ "เข้าสู่ระบบสำเร็จ"/ปุ่ม "ไปที่หน้าผลงานของฉัน" กลับมา
+ * (ข้อนั้นผู้ใช้ไม่ได้ขอให้ย้อน — แค่ขอปุ่มกดได้ทันที) */
 function renderOwnerLoginBounceBody_(baseUrl, sessionId) {
   var url = baseUrl + '?page=owner-dashboard&osession=' + encodeURIComponent(sessionId);
   return '' +
     '<div class="detail-card owner-bounce-loading" id="owner-bounce-fallback">' +
     '<div class="owner-bounce-spinner" aria-hidden="true"></div>' +
     '<p class="owner-bounce-text">กำลังโหลดข้อมูล...</p>' +
-    '<a target="_top" id="owner-bounce-link" class="owner-bounce-link" href="' + escapeHtml_(url) + '">เปิดหน้าผลงานของฉัน</a>' +
+    '<a target="_top" id="owner-bounce-link" class="owner-bounce-link btn-primary" style="display:inline-block;text-decoration:none" href="' + escapeHtml_(url) + '">เปิดหน้าผลงานของฉัน</a>' +
     '</div>' +
     '<script>(function () {' +
     'var u = ' + JSON.stringify(url) + ';' +
@@ -475,7 +477,6 @@ function renderOwnerLoginBounceBody_(baseUrl, sessionId) {
     '}' +
     'var link = document.getElementById("owner-bounce-link");' +
     'if (link) link.focus();' +
-    'setTimeout(function () { if (link) link.classList.add("owner-bounce-link-visible"); }, 1200);' +
     '})();</script>';
 }
 
