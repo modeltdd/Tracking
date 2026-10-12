@@ -64,9 +64,10 @@ function trackPublicStatus_(ss, e) {
 /** เหตุผล/กำหนดวันของคำขอแก้ไขล่าสุด — ใช้แสดงในหน้า "revision detail" สาธารณะ เมื่อสถานะ = need_revision
  *  โมเดล 24-state (2026-09-08) ไม่มี action 'revision_requested' แยกอีกต่อไป — ใช้ note ของ transition ล่าสุด
  *  (มี button_label ของเส้นทางที่เลือกอยู่แล้ว เช่น "ไม่ครบถ้วน → ส่งคืนหน่วยงาน — เอกสารไม่ครบถ้วน") แทน
- *  ไม่มีกำหนดวันส่งกลับแบบ per-work ในโมเดลใหม่ (due_date เป็นนโยบายคงที่ตาม evaluation_result 2/6 เดือน ไม่ track ราย state) */
-function getLatestRevisionInfo_(ss, workId) {
-  var history = getHistoryForWork_(ss, workId); // เก่า -> ใหม่
+ *  ไม่มีกำหนดวันส่งกลับแบบ per-work ในโมเดลใหม่ (due_date เป็นนโยบายคงที่ตาม evaluation_result 2/6 เดือน ไม่ track ราย state)
+ *  2026-10-12 — รับ history ที่ buildPublicResultData_ อ่านมาแล้วตรงๆ (เดิมเรียก getHistoryForWork_ ซ้ำเอง
+ *  เป็นการอ่าน StatusHistory ซ้ำสองรอบโดยไม่จำเป็น พบจากการตรวจ performance หลัง Owner Login ช้า) */
+function getLatestRevisionInfo_(history) {
   for (var i = history.length - 1; i >= 0; i--) {
     var h = history[i];
     if (h.action === 'revision_requested') {
@@ -441,9 +442,10 @@ function subStatusToneClass_(stationName) {
   return 'pending';
 }
 
-/** หมายเหตุล่าสุดจากผู้รับผิดชอบ (transition ล่าสุดที่มี note) ไม่จำกัดแค่ตอน need_revision — ใช้กับ section "หมายเหตุจากผู้รับผิดชอบ" */
-function getLatestTransitionNote_(ss, workId) {
-  var history = getHistoryForWork_(ss, workId); // เก่า -> ใหม่
+/** หมายเหตุล่าสุดจากผู้รับผิดชอบ (transition ล่าสุดที่มี note) ไม่จำกัดแค่ตอน need_revision — ใช้กับ section
+ *  "หมายเหตุจากผู้รับผิดชอบ" 2026-10-12 — รับ history ที่อ่านมาแล้วตรงๆ เหมือน getLatestRevisionInfo_ ด้านบน
+ *  (เดิมเรียก getHistoryForWork_ ซ้ำเอง อ่าน StatusHistory ซ้ำโดยไม่จำเป็น) */
+function getLatestTransitionNote_(history) {
   for (var i = history.length - 1; i >= 0; i--) {
     if (history[i].action === 'transition' && history[i].note) return history[i].note;
   }
@@ -454,7 +456,7 @@ function getLatestTransitionNote_(ss, workId) {
 function buildPublicResultData_(ss, work) {
   var stationsMap = getStationsMap_(ss);
   var history = getHistoryForWork_(ss, work.work_id);
-  var revisionInfo = work.current_status_public === 'need_revision' ? getLatestRevisionInfo_(ss, work.work_id) : null;
+  var revisionInfo = work.current_status_public === 'need_revision' ? getLatestRevisionInfo_(history) : null;
   var steps = buildPublicDetailedSteps_(ss, history, stationsMap, work.current_station_key, work.current_status_public);
   return {
     revisionInfo: revisionInfo,
@@ -467,7 +469,7 @@ function buildPublicResultData_(ss, work) {
     // ทศนิยม (เช่น 7.1 -> หา state order='7') ได้โดยไม่ต้องอ่านชีตซ้ำ — renderWorkDetailBody_ (staff) มี
     // stationsMap เป็นพารามิเตอร์ตรงอยู่แล้ว ไม่ต้องใช้ตัวนี้
     stationsMap: stationsMap,
-    latestNote: revisionInfo ? '' : getLatestTransitionNote_(ss, work.work_id),
+    latestNote: revisionInfo ? '' : getLatestTransitionNote_(history),
     // เพิ่ม 2026-09-15 (ดูแชท requirement ข้อ I.9.6) — s10 คือขั้น "ส่งต่อให้ผู้ว่าราชการจังหวัด/แจ้งผลหน่วยงาน"
     // อยู่แล้วในตัว (ยืนยันกับผู้ใช้แล้ว ไม่ใช่ state แยก) ใช้ StatusHistory จริง ไม่เดา งานที่ยังไม่ถึง s10 จะได้ null
     governorForwardDate: findStationEntryDateByHistory_(history, 's10'),

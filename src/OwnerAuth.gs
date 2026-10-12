@@ -281,11 +281,12 @@ function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
   // dashboard ตรงใน POST response ทำให้ refresh/ย้อนกลับ resubmit POST เดิมจน script.google.com ปฏิเสธการเชื่อมต่อ)
   // session ต้องสร้าง+บันทึกสำเร็จ "ก่อน" ส่ง response กลับเสมอ (บรรทัดถัดไปรันแบบ synchronous ใน Apps Script
   // อยู่แล้ว ไม่มีทาง race — createOwnerSession_ เขียนชีต OwnerSessions เสร็จก่อนบรรทัด return เสมอ)
+  // 2026-10-12 รอบ 20 (performance) — ตัดการเรียก validateOwnerSession_ ซ้ำทันทีหลังสร้าง session ออก (เคย
+  // เพิ่มไว้รอบ 17 เป็น defensive check) เพราะ appendRowByHeader_/sheet.appendRow() ข้างบนเป็น synchronous
+  // call ที่ throw ทันทีถ้าเขียนไม่สำเร็จอยู่แล้ว (ไม่มีทาง "เขียนเงียบๆแล้วอ่านไม่เจอ") การ verify ซ้ำนี้มีแต่
+  // เสียเวลาอ่าน OwnerSessions + Works เต็มชีตอีก 2 รอบโดยไม่ลดความเสี่ยงจริงเลย — พบจากการตรวจ performance
+  // หลัง Owner Login ช้า (ดูสรุป bottleneck ท้ายไฟล์)
   var session = createOwnerSession_(ss, result.work);
-  if (!validateOwnerSession_(ss, session.id)) {
-    Logger.log('[OwnerLogin] verify session failed ทันทีหลังสร้าง session_id=' + session.id);
-    return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['เกิดข้อผิดพลาดในการสร้างเซสชัน กรุณาลองเข้าสู่ระบบใหม่อีกครั้ง'], [], {}));
-  }
   var redirectUrl = baseUrl + '?page=owner-dashboard&osession=' + encodeURIComponent(session.id);
   Logger.log('[OwnerLogin] session created: session_id=' + session.id + ', redirectUrl=' + redirectUrl);
   return renderPublicPage_('กำลังโหลดข้อมูล...', renderOwnerLoginBounceBody_(baseUrl, session.id));
@@ -296,8 +297,17 @@ function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
  * เพื่อเลี่ยงข้อจำกัดจริงของ iframe sandbox ที่บล็อก top-navigation แบบไม่มี user gesture — ดู root cause
  * เต็มๆ ที่คอมเมนต์ renderOwnerLoginBounceBody_) เรียก resolveOwnerLoginCredentials_ เดียวกับ
  * handleOwnerLoginDirectPost_ เป๊ะ ไม่มี logic ตรวจรหัสซ้ำ คืน plain object (ไม่ใช่ HtmlOutput เพราะ
- * google.script.run ส่งได้แค่ค่า serializable) ฝั่ง client (OWNER_LOGIN_SPA_SCRIPT_) เอา sessionId ไปเรียก
- * ownerDashboardRpc_ ต่อเองโดยไม่ navigate เลย
+ * google.script.run ส่งได้แค่ค่า serializable)
+ *
+ * 2026-10-12 รอบ 20 (performance — ตรวจ root cause "กำลังโหลดข้อมูล..." ค้างนาน) — เดิมมี 2 จุดที่ทำให้ช้า:
+ * (1) validateOwnerSession_ ซ้ำทันทีหลังสร้าง session (อ่าน OwnerSessions+Works เต็มชีต 2 รอบ ไม่จำเป็น —
+ * ตัดออกแล้วด้านบน same fix ใน handleOwnerLoginDirectPost_) (2) ฝั่ง client ต้องรอ RPC round-trip ที่ 2
+ * (ownerDashboardRpc_) แยกจาก login RPC เสมอ แต่ละ round-trip มี overhead คงที่ของ google.script.run เอง
+ * (cold start/quota check) บวกเพิ่มเข้าไปอีก — ตอนนี้พยายาม render dashboard html "ในคำขอเดียวกัน" นี้เลย
+ * (reuse renderOwnerDashboardBody_ ตัวเดียวกับ ownerDashboardRpc_ ไม่ใช่ loader ใหม่) ถ้าสำเร็จคืน html มาด้วย
+ * ฝั่ง client ใช้ได้ทันทีไม่ต้องยิง round-trip ที่ 2 เลย (ลดจาก 2 round-trip เหลือ 1 ในเคสปกติ) ถ้า render
+ * ล้มเหลว (err) ไม่ทำให้ login fail — คืน sessionId เฉยๆ ให้ client fallback ไปเรียก ownerDashboardRpc_ ปกติ
+ * (มี try/catch + ปุ่ม "ลองใหม่" ของตัวเองอยู่แล้ว ไม่ซ้ำ logic)
  */
 function ownerLoginRpc_(params) {
   var ss = getSpreadsheet_();
@@ -310,11 +320,13 @@ function ownerLoginRpc_(params) {
   if (!result.ok) return { ok: false, error: result.error };
 
   var session = createOwnerSession_(ss, result.work);
-  if (!validateOwnerSession_(ss, session.id)) {
-    Logger.log('[OwnerLoginRpc] verify session failed ทันทีหลังสร้าง session_id=' + session.id);
-    return { ok: false, error: 'เกิดข้อผิดพลาดในการสร้างเซสชัน กรุณาลองเข้าสู่ระบบใหม่อีกครั้ง' };
+  var response = { ok: true, sessionId: session.id };
+  try {
+    response.html = renderOwnerDashboardBody_(ss, result.work, getWebAppUrl_(), session.id);
+  } catch (err) {
+    Logger.log('[OwnerLoginRpc] render dashboard ในคำขอเดียวกันไม่สำเร็จ (ไม่กระทบ login — client จะ fallback ไปเรียก ownerDashboardRpc_ เอง): ' + err);
   }
-  return { ok: true, sessionId: session.id };
+  return response;
 }
 
 /**
@@ -545,7 +557,10 @@ var OWNER_LOGIN_SPA_SCRIPT_ = '' +
   'google.script.run.withSuccessHandler(function (res) {' +
   'if (res && res.ok) {' +
   'try { localStorage.setItem(STORAGE_KEY, res.sessionId); } catch (e) {}' +
-  'loadDashboard_(res.sessionId);' +
+  // 2026-10-12 รอบ 20 (performance) — ownerLoginRpc_ ตอนนี้พยายาม render dashboard มาให้ในคำขอเดียวกันแล้ว
+  // (res.html) ถ้ามี ใช้ได้ทันทีไม่ต้องยิง round-trip ที่ 2 เลย (loadDashboard_) — เหลือ fallback ไว้เผื่อ
+  // render ฝั่ง server ล้มเหลว (ไม่ทำให้ login fail) เท่านั้น
+  'if (res.html) { root.innerHTML = res.html; } else { loadDashboard_(res.sessionId); }' +
   '} else {' +
   'showLoginAgain_((res && res.error) || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");' +
   '}' +
@@ -578,9 +593,23 @@ var OWNER_LOGIN_SPA_SCRIPT_ = '' +
   'var retryBtn = root.querySelector(".owner-retry-btn");' +
   'if (retryBtn) retryBtn.addEventListener("click", function () { loadDashboard_(sessionId); });' +
   '}' +
+  // 2026-10-12 รอบ 20 ข้อ 11 — UX safety net เท่านั้น (ไม่ใช่การแก้ root cause) ถ้าโหลดเกิน 9 วินาทีให้เปลี่ยน
+  // ข้อความเป็น "โหลดข้อมูลใช้เวลานานกว่าปกติ" + ปุ่มลองใหม่ แทนที่จะหมุนค้างไม่มีกำหนด ปุ่มลองใหม่เรียก
+  // loadDashboard_ ตัวเดิม (ไม่สร้าง loader ใหม่) — ถ้า RPC เดิมดันสำเร็จช้าๆหลังจากนี้ callback ของมันจะเขียน
+  // ทับ root.innerHTML อีกที (เคส edge rare ไม่ critical — ไม่ cancel request เดิม เพื่อไม่เพิ่มความซับซ้อนเกิน
+  // ขอบเขตที่ผู้ใช้ขอ "แก้เฉพาะ performance/callback/error handling")
+  'function showSlow_(sessionId) {' +
+  'root.innerHTML = ' + JSON.stringify(
+    '<div class="detail-card owner-login-card"><p>โหลดข้อมูลใช้เวลานานกว่าปกติ</p>' +
+    '<p><button type="button" class="btn-primary owner-retry-btn" style="display:inline-block">ลองใหม่</button></p></div>') + ';' +
+  'var retryBtn = root.querySelector(".owner-retry-btn");' +
+  'if (retryBtn) retryBtn.addEventListener("click", function () { loadDashboard_(sessionId); });' +
+  '}' +
   'function loadDashboard_(sessionId) {' +
   'showLoading_();' +
+  'var slowTimer = setTimeout(function () { showSlow_(sessionId); }, 9000);' +
   'google.script.run.withSuccessHandler(function (res) {' +
+  'clearTimeout(slowTimer);' +
   'if (res && res.ok) {' +
   'root.innerHTML = res.html;' +
   '} else if (res && res.expired) {' +
@@ -589,6 +618,7 @@ var OWNER_LOGIN_SPA_SCRIPT_ = '' +
   'showDataError_(sessionId);' +
   '}' +
   '}).withFailureHandler(function () {' +
+  'clearTimeout(slowTimer);' +
   'showDataError_(sessionId);' +
   '}).ownerDashboardRpc_(sessionId);' +
   '}' +
