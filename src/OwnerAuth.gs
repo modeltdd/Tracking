@@ -310,22 +310,35 @@ function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
  * (มี try/catch + ปุ่ม "ลองใหม่" ของตัวเองอยู่แล้ว ไม่ซ้ำ logic)
  */
 function ownerLoginRpc_(params) {
+  // 2026-10-12 รอบ 21 — ผู้ใช้แจ้งว่ายังค้างนาน/เข้าไม่ได้หลังแก้รอบ 20 ตามที่ขอ (ข้อ 1/14: ห้ามเดา ให้ใส่
+  // timing log วัดจริงทีละช่วง) log เวลาทุกขั้นด้วย Date.now() ไปที่ Apps Script Editor > Executions (ดูได้
+  // จาก Logger.log) เพื่อหาว่าขั้นไหนจริงๆ กินเวลา ไม่เดาอีกรอบ
+  var t0 = Date.now();
   var ss = getSpreadsheet_();
+  var t1 = Date.now();
   var p = params || {};
   var username = normalizeSearchName_(p.owner_username || '');
   var code = String(p.owner_login_code || '').trim();
   var sessionToken = String(p.session_token || '').trim() || randomToken_(16);
 
   var result = resolveOwnerLoginCredentials_(ss, username, code, sessionToken);
-  if (!result.ok) return { ok: false, error: result.error };
+  var t2 = Date.now();
+  if (!result.ok) {
+    Logger.log('[OwnerLoginRpc][timing] getSpreadsheet_=' + (t1 - t0) + 'ms, resolveCredentials(FAIL)=' + (t2 - t1) + 'ms, TOTAL=' + (t2 - t0) + 'ms');
+    return { ok: false, error: result.error };
+  }
 
   var session = createOwnerSession_(ss, result.work);
+  var t3 = Date.now();
   var response = { ok: true, sessionId: session.id };
   try {
     response.html = renderOwnerDashboardBody_(ss, result.work, getWebAppUrl_(), session.id);
   } catch (err) {
     Logger.log('[OwnerLoginRpc] render dashboard ในคำขอเดียวกันไม่สำเร็จ (ไม่กระทบ login — client จะ fallback ไปเรียก ownerDashboardRpc_ เอง): ' + err);
   }
+  var t4 = Date.now();
+  Logger.log('[OwnerLoginRpc][timing] getSpreadsheet_=' + (t1 - t0) + 'ms, resolveCredentials=' + (t2 - t1) +
+    'ms, createSession=' + (t3 - t2) + 'ms, renderDashboard=' + (t4 - t3) + 'ms, TOTAL=' + (t4 - t0) + 'ms, hasHtml=' + (!!response.html));
   return response;
 }
 
@@ -337,11 +350,19 @@ function ownerLoginRpc_(params) {
  * อย่างเดียว ต้อง verify ฝั่ง server เสมอ)
  */
 function ownerDashboardRpc_(sessionId) {
+  // 2026-10-12 รอบ 21 — timing log เดียวกับ ownerLoginRpc_ (ข้อ 1/14 ของผู้ใช้)
+  var t0 = Date.now();
   var ss = getSpreadsheet_();
   var work = validateOwnerSession_(ss, sessionId);
-  if (!work) return { ok: false, expired: true };
+  var t1 = Date.now();
+  if (!work) {
+    Logger.log('[OwnerDashboardRpc][timing] validateSession=' + (t1 - t0) + 'ms -> expired/invalid');
+    return { ok: false, expired: true };
+  }
   try {
     var html = renderOwnerDashboardBody_(ss, work, getWebAppUrl_(), sessionId);
+    var t2 = Date.now();
+    Logger.log('[OwnerDashboardRpc][timing] validateSession=' + (t1 - t0) + 'ms, renderDashboard=' + (t2 - t1) + 'ms, TOTAL=' + (t2 - t0) + 'ms');
     return { ok: true, html: html };
   } catch (err) {
     Logger.log('[OwnerDashboardRpc] โหลดข้อมูลผลงานล้มเหลว (session ผ่านแล้ว): ' + err);
@@ -501,6 +522,11 @@ var OWNER_LOGIN_SPA_SCRIPT_ = '' +
   'if (!root) return;' +
   'var STORAGE_KEY = "owner_session_id";' +
   'var loginSnapshotHtml = null;' +
+  // 2026-10-12 รอบ 21 — ผู้ใช้แจ้งว่ายังค้าง/เข้าไม่ได้หลังรอบ 20 (ข้อ 1/2/10 ของผู้ใช้: ตรวจว่า success
+  // handler ถูกเรียกหรือไม่/มี google.script.run จริงหรือไม่/เรียกซ้ำกี่ครั้ง) log นี้ให้เปิด DevTools Console
+  // (F12) ตอน login ดูว่าสคริปต์นี้รันจริงหรือไม่ และ google.script.run มีจริงในสภาพแวดล้อมนั้นหรือไม่ — ถ้าไม่
+  // เห็น log บรรทัดนี้เลย แปลว่าสคริปต์ทั้งก้อนไม่ได้รันตั้งแต่ต้น (ไม่ใช่แค่ RPC ช้า)
+  'console.log("[OwnerLoginSPA] script started, google.script.run available =", !!(window.google && google.script && google.script.run));' +
 
   'function initOwnerLoginForm_() {' +
   'var boxes = Array.prototype.slice.call(document.querySelectorAll(".owner-pass-box"));' +
@@ -554,7 +580,13 @@ var OWNER_LOGIN_SPA_SCRIPT_ = '' +
   'var tokenInput = form.querySelector("input[name=session_token]");' +
   'var params = { owner_username: usernameInput ? usernameInput.value : "", owner_login_code: hidden.value, session_token: tokenInput ? tokenInput.value : "" };' +
   'showLoading_();' +
+  // 2026-10-12 รอบ 21 — timing log ฝั่ง client (ข้อ 1/14) เปิด DevTools Console ดูว่า "sending" กับ
+  // "success"/"failure" ห่างกันกี่ ms จริง ถ้าไม่เห็น "success"/"failure" โผล่มาเลยหลังรอนาน แปลว่า RPC ไม่คืน
+  // ค่ากลับมาจริง (ต้องดู Apps Script Editor > Executions ว่า execution นั้นค้าง/error/ไม่เริ่มด้วยซ้ำ)
+  'var loginSentAt = Date.now();' +
+  'console.log("[OwnerLoginSPA] ownerLoginRpc_ sending...", params.owner_username);' +
   'google.script.run.withSuccessHandler(function (res) {' +
+  'console.log("[OwnerLoginSPA] ownerLoginRpc_ SUCCESS handler fired after", Date.now() - loginSentAt, "ms", res);' +
   'if (res && res.ok) {' +
   'try { localStorage.setItem(STORAGE_KEY, res.sessionId); } catch (e) {}' +
   // 2026-10-12 รอบ 20 (performance) — ownerLoginRpc_ ตอนนี้พยายาม render dashboard มาให้ในคำขอเดียวกันแล้ว
@@ -564,7 +596,8 @@ var OWNER_LOGIN_SPA_SCRIPT_ = '' +
   '} else {' +
   'showLoginAgain_((res && res.error) || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");' +
   '}' +
-  '}).withFailureHandler(function () {' +
+  '}).withFailureHandler(function (err) {' +
+  'console.error("[OwnerLoginSPA] ownerLoginRpc_ FAILURE handler fired after", Date.now() - loginSentAt, "ms", err);' +
   'showLoginAgain_("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");' +
   '}).ownerLoginRpc_(params);' +
   '});' +
@@ -608,7 +641,10 @@ var OWNER_LOGIN_SPA_SCRIPT_ = '' +
   'function loadDashboard_(sessionId) {' +
   'showLoading_();' +
   'var slowTimer = setTimeout(function () { showSlow_(sessionId); }, 9000);' +
+  'var dashSentAt = Date.now();' +
+  'console.log("[OwnerLoginSPA] ownerDashboardRpc_ sending...");' +
   'google.script.run.withSuccessHandler(function (res) {' +
+  'console.log("[OwnerLoginSPA] ownerDashboardRpc_ SUCCESS handler fired after", Date.now() - dashSentAt, "ms", res && res.ok);' +
   'clearTimeout(slowTimer);' +
   'if (res && res.ok) {' +
   'root.innerHTML = res.html;' +
@@ -617,7 +653,8 @@ var OWNER_LOGIN_SPA_SCRIPT_ = '' +
   '} else {' +
   'showDataError_(sessionId);' +
   '}' +
-  '}).withFailureHandler(function () {' +
+  '}).withFailureHandler(function (err) {' +
+  'console.error("[OwnerLoginSPA] ownerDashboardRpc_ FAILURE handler fired after", Date.now() - dashSentAt, "ms", err);' +
   'clearTimeout(slowTimer);' +
   'showDataError_(sessionId);' +
   '}).ownerDashboardRpc_(sessionId);' +
