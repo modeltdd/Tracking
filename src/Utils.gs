@@ -139,6 +139,19 @@ function formatDateThShort_(date) {
   }
 }
 
+/** วันที่แบบ dd/mm/yyyy ปี พ.ศ. ไม่มีเวลา (2026-10-12 ตามที่ผู้ใช้ขอ — บรรทัด "วันที่ :: ..." การ์ดผลการ
+ *  พิจารณา หน้า Owner Dashboard) วัน/เดือนมี 2 หลักเสมอ (ใช้ padLeft_/getBuddhistYear_ เดิม) คืนค่าว่าง ''
+ *  ถ้าไม่มีวันที่จริง/invalid — ให้ผู้เรียกซ่อนบรรทัดทั้งหมด ห้ามแสดง "-"/"null"/"Invalid Date" */
+function formatDateDDMMYYYYBuddhist_(date) {
+  if (!date) return '';
+  var d = new Date(date);
+  if (isNaN(d.getTime())) return '';
+  var day = padLeft_(d.getDate(), 2);
+  var month = padLeft_(d.getMonth() + 1, 2);
+  var year = getBuddhistYear_(d);
+  return day + '/' + month + '/' + year;
+}
+
 /** ปกปิดชื่อ-สกุลสำหรับแสดงบนหน้าสาธารณะ (docs/DESIGN.md A10) — 2 ตัวอักษรแรกของชื่อ/สกุล ตามด้วย "***"
  *  เช่น "นาย นภ*** ทุม***" — คำนำหน้าไม่ใช่ข้อมูลระบุตัวตน แสดงเต็มได้ ใช้กับหน้าติดตามสถานะสาธารณะเท่านั้น
  *  (หน้าเจ้าหน้าที่/Admin ยังเห็นชื่อเต็มตามเดิม ไม่เปลี่ยน) */

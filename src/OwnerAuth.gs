@@ -696,12 +696,15 @@ function renderOwnerFullDetailSection_(fullWithSkips) {
 }
 
 /**
- * การ์ด "ผลการพิจารณา" (2026-10-12 รอบ 15 ตามที่ผู้ใช้ขอ) — ตัด "ผู้รับผิดชอบ"/"อัปเดตล่าสุด" แบบ 2-column
- * grid เดิม (miniRow) ออกทั้งหมด (ข้อ 1/2) ย้ายวันที่ "อัปเดตล่าสุด" (work.updated_at ฟิลด์เดิม ไม่ได้ลบ/
- * เปลี่ยน แค่ย้ายตำแหน่งแสดงผล) ไปไว้เป็นบรรทัดเล็กสีเทา "อัปเดตเมื่อ ..." ใต้บรรทัด "ขั้นตอนปัจจุบัน :: ..."
- * ทันที (ข้อ 3/4) — ผู้รับผิดชอบ (work.current_owner_org) เลิกแสดงในการ์ดนี้แล้วตามที่ผู้ใช้ขอ (field ยังอยู่ใน
- * ฐานข้อมูลเหมือนเดิม ไม่ได้ลบ แค่ไม่ render ที่นี่) การ์ดจึงเตี้ยลง/compact ขึ้น ไม่มี grid 2 คอลัมน์/divider
- * เหลืออยู่ท้ายการ์ดอีกต่อไป
+ * การ์ด "ผลการพิจารณา" (2026-10-12 รอบ 16 ตามที่ผู้ใช้ขอ) — ตัด "ผู้รับผิดชอบ"/"อัปเดตล่าสุด" แบบ 2-column
+ * grid เดิม (miniRow) ออกทั้งหมด (รอบ 15) ย้ายวันที่ (work.updated_at ฟิลด์เดิม — "วันที่อัปเดตสถานะล่าสุดจาก
+ * ข้อมูลจริง" ไม่ใช่ receive_date ซึ่งคือ "วันที่รับผลงาน" คนละความหมาย ไม่ได้ลบ/เปลี่ยน field แค่ย้ายตำแหน่ง/
+ * รูปแบบแสดงผล) ไปไว้เป็นบรรทัด "วันที่ :: dd/mm/yyyy" (ปี พ.ศ., วัน/เดือน 2 หลักเสมอ, ไม่มีเวลา — ใช้
+ * formatDateDDMMYYYYBuddhist_ ใหม่, Utils.gs) ใต้บรรทัด "ขั้นตอนปัจจุบัน :: ..." ทันที (รอบ 16 — เปลี่ยนจาก
+ * label/รูปแบบ "อัปเดตเมื่อ 8 ต.ค. 2569 เวลา 10.24 น." ของรอบ 15) ถ้าไม่มีวันที่จริง/invalid ไม่ render บรรทัด
+ * นี้เลย (formatDateDDMMYYYYBuddhist_ คืน '' ให้เช็คแล้วซ่อนทั้งบรรทัด ห้ามแสดง "วันที่ :: -"/"null"/
+ * "Invalid Date") ผู้รับผิดชอบ (work.current_owner_org) เลิกแสดงในการ์ดนี้แล้วตามที่ผู้ใช้ขอ (field ยังอยู่ใน
+ * ฐานข้อมูลเหมือนเดิม ไม่ได้ลบ แค่ไม่ render ที่นี่)
  *
  * บรรทัดผลการพิจารณา (ถ้ามี, info.isSub=true เฉพาะ 7.1-7.4 เท่านั้น ไม่รวม 8.x/9.x ที่เป็นลำดับขั้นย่อยไม่ใช่ผล
  * ประเมิน) แสดงเป็นไอคอน+ข้อความบรรทัดเดียวเด่นกว่าปกติเล็กน้อย (สีตาม tone: ผ่าน=เขียว/แก้ไข=เหลืองส้ม/ไม่ผ่าน=
@@ -716,7 +719,10 @@ function renderOwnerResultCard_(work, info, currentStation, stationsMap) {
   var currentLineHtml = '<div class="owner-result-current-line">' +
     '<span class="owner-result-current-label">ขั้นตอนปัจจุบัน ::</span> ' + escapeHtml_(mainLabel) + '</div>';
 
-  var updatedLineHtml = '<div class="owner-result-updated">อัปเดตเมื่อ ' + escapeHtml_(formatDateThShort_(work.updated_at)) + '</div>';
+  var updatedDateText = formatDateDDMMYYYYBuddhist_(work.updated_at);
+  var updatedLineHtml = updatedDateText
+    ? '<div class="owner-result-updated"><span class="owner-result-updated-label">วันที่ ::</span> ' + escapeHtml_(updatedDateText) + '</div>'
+    : '';
 
   var outcomeHtml = '';
   if (info.isSub) {

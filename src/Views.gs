@@ -2981,6 +2981,7 @@ var PUBLIC_CSS_ = '' +
   // 2026-10-12 รอบ 15 — วันที่ "อัปเดตล่าสุด" (updated_at เดิม) ย้ายมาไว้ใต้บรรทัด "ขั้นตอนปัจจุบัน" เป็นบรรทัด
   // เล็กสีเทา "อัปเดตเมื่อ ..." ตามที่ผู้ใช้ขอ (ข้อ 3) ไม่ให้แย่งความเด่นจากสถานะหลัก
   '.owner-result-updated{font-size:.74rem;color:var(--muted);margin-top:3px;}' +
+  '.owner-result-updated-label{font-weight:600;}' +
   // บรรทัดผลการพิจารณา (ถ้ามี) — เด่นกว่าปกติเล็กน้อยด้วยสี tone + น้ำหนักตัวหนา ไม่มี card ซ้อน/ไอคอนวงกลมแล้ว
   '.owner-result-outcome{font-size:1rem;font-weight:700;margin-top:6px;}' +
   '.owner-result-outcome-done{color:var(--done);}' +
