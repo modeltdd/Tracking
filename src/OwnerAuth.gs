@@ -135,7 +135,10 @@ function handleOwnerLogoutGet_(ss, params, baseUrl) {
   return renderPublicPage_('ออกจากระบบแล้ว', renderOwnerLoginDirectFormBody_(baseUrl, [], ['ออกจากระบบเรียบร้อยแล้ว'], {}));
 }
 
-/** ?page=owner-dashboard&osession=... (GET) — ต้องตรวจ session ฝั่ง server ทุกครั้ง ห้ามเชื่อ URL เฉยๆ (ข้อ 10) */
+/** ?page=owner-dashboard&osession=... (GET) — ต้องตรวจ session ฝั่ง server ทุกครั้ง ห้ามเชื่อ URL เฉยๆ (ข้อ 10)
+ *  ครอบการโหลด/render ข้อมูลผลงานด้วย try/catch (2026-10-12 รอบ 17 ข้อ 11/12) — session ผ่านแล้วแต่โหลด
+ *  ข้อมูลผลงานพัง (เช่น StatusHistory/WorkflowStates อ่านไม่ขึ้น) ต้องไม่โชว้หน้า error ดิบของ Apps Script แต่
+ *  โชว์ "ไม่สามารถโหลดข้อมูลผลงานได้" + ปุ่ม "ลองใหม่" ที่ใช้ session เดิม (ไม่ใช่บังคับ login ใหม่) */
 function renderOwnerDashboardRoute_(ss, params, baseUrl) {
   var sessionId = String(params.osession || '').trim();
   var work = sessionId ? validateOwnerSession_(ss, sessionId) : null;
@@ -143,7 +146,12 @@ function renderOwnerDashboardRoute_(ss, params, baseUrl) {
     return renderPublicPage_('เข้าสู่ระบบ',
       renderOwnerLoginDirectFormBody_(baseUrl, sessionId ? ['เซสชันหมดอายุหรือไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่อีกครั้ง'] : [], [], {}));
   }
-  return renderPublicPage_('ผลงานของฉัน', renderOwnerDashboardBody_(ss, work, baseUrl, sessionId));
+  try {
+    return renderPublicPage_('ผลงานของฉัน', renderOwnerDashboardBody_(ss, work, baseUrl, sessionId));
+  } catch (err) {
+    Logger.log('[OwnerDashboard] โหลดข้อมูลผลงานล้มเหลว (session ผ่านแล้ว): ' + err);
+    return renderPublicPage_('ผลงานของฉัน', renderOwnerDataErrorBody_(baseUrl, sessionId));
+  }
 }
 
 /** form_action=owner_login_search (POST) — ขั้นที่ 1: ค้นหาชื่อ (reuse searchPublicRecordsByName_ เดิมทุก
@@ -196,7 +204,14 @@ function handleOwnerLoginSubmitPost_(ss, e, baseUrl) {
   // script.google.com ปฏิเสธการเชื่อมต่อแทนที่จะถาม "ส่งฟอร์มซ้ำ" ตามปกติ — ต้อง redirect ไป URL แบบ GET
   // (?page=owner-dashboard&osession=) เสมอหลัง login สำเร็จ ให้ refresh/ย้อนกลับปลอดภัย
   var session = createOwnerSession_(ss, work);
-  return renderPublicPage_('เข้าสู่ระบบสำเร็จ', renderOwnerLoginBounceBody_(baseUrl, session.id));
+  // 2026-10-12 รอบ 17 ข้อ 2 — เพิ่มขั้น "verify session success" แยกจาก "create session" ตามลำดับที่ผู้ใช้ขอ
+  // (validate credentials -> create session -> verify session success -> ...) อ่านกลับจากชีตจริงทันทีกัน
+  // เคสเขียนไม่สำเร็จ/ไม่ติด ก่อนส่ง redirect ไปหน้า Owner (ไม่ redirect เข้า session ที่ตายไปตั้งแต่สร้าง)
+  if (!validateOwnerSession_(ss, session.id)) {
+    Logger.log('[OwnerLogin] verify session failed ทันทีหลังสร้าง session_id=' + session.id);
+    return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['เกิดข้อผิดพลาดในการสร้างเซสชัน กรุณาลองเข้าสู่ระบบใหม่อีกครั้ง'], [], {}));
+  }
+  return renderPublicPage_('กำลังโหลดข้อมูล...', renderOwnerLoginBounceBody_(baseUrl, session.id));
 }
 
 /**
@@ -259,7 +274,7 @@ function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
   var session = createOwnerSession_(ss, matchedWork);
   var redirectUrl = baseUrl + '?page=owner-dashboard&osession=' + encodeURIComponent(session.id);
   Logger.log('[OwnerLogin] session created: session_id=' + session.id + ', redirectUrl=' + redirectUrl);
-  return renderPublicPage_('เข้าสู่ระบบสำเร็จ', renderOwnerLoginBounceBody_(baseUrl, session.id));
+  return renderPublicPage_('กำลังโหลดข้อมูล...', renderOwnerLoginBounceBody_(baseUrl, session.id));
 }
 
 // ================= Render =================
@@ -426,24 +441,28 @@ function renderOwnerLoginCandidatesBody_(candidates, baseUrl, sessionToken, erro
 /** หน้าระหว่างทางหลัง login สำเร็จ — เด้งไป URL แบบ GET ที่มี ?osession= ติดไปด้วย (ข้อ 8/10) ตรวจ session ฝั่ง
  *  server อีกครั้งตอนโหลดหน้านั้นอยู่ดี (renderOwnerDashboardRoute_) จึงไม่ใช่จุดอ่อนด้านความปลอดภัย
  *
- * 2026-10-07 รอบ 3 — ผู้ใช้ส่ง DevTools Console log จริงมาให้ดู (หลังรอบ 2 ที่ซ่อนปุ่มไว้) พิสูจน์ root cause ชัดเจน:
- * "Unsafe attempt to initiate navigation for frame ... sandboxed with the 'allow-top-navigation-by-user-
- * activation' flag, but has no user activation (gesture)" — Apps Script web app เนื้อหาจริงรันอยู่ใน iframe
- * ข้าม origin (googleusercontent.com) ภายใต้ script.google.com เสมอ (ไม่มีทางหนีออกได้) Chrome บล็อก
- * top.location.replace() ที่ยิงเองจาก <script> อัตโนมัติไม่มี user gesture เสมอ ไม่ว่าจะ try/catch ยังไงก็ตาม —
- * fallback location.replace() (navigate เฉพาะ iframe ตัวเอง) ก็ถูก X-Frame-Options:sameorigin ของ
- * script.google.com เองปฏิเสธอีกทอด เป็น hard platform limitation ของ Apps Script Web App ไม่ใช่บั๊กที่แก้
- * ด้วยโค้ดได้ — <a target="_top"> ที่ใช้ทั่วทั้งระบบนี้ทำงานได้เพราะมาจาก click จริง (มี user gesture) เท่านั้น
- * สรุป: "redirect อัตโนมัติแบบไม่ต้องกด" ทำไม่ได้จริงในสถาปัตยกรรมนี้ — ของที่ทำได้ดีที่สุดคือลดเหลือกดแค่ 1 ครั้ง
- * (ปุ่มโชว์ทันที ไม่ซ่อน ไม่หน่วง 3 วิเหมือนรอบก่อน เพราะรู้แล้วว่า auto-redirect แทบไม่มีทางสำเร็จ) auto-focus
- * ปุ่มให้กด Enter/เว้นวรรคต่อได้ทันทีโดยไม่ต้องเล็งเมาส์ ยังลอง top.location.replace() ก่อนเสมอ (ฟรี เผื่อ
- * deployment/browser บางแบบอนุญาต) ไม่ตัดทิ้งไปเลย */
+ * 2026-10-07 รอบ 3 — ผู้ใช้ส่ง DevTools Console log จริงมาให้ดู พิสูจน์ root cause ชัดเจน: "Unsafe attempt to
+ * initiate navigation for frame ... sandboxed with the 'allow-top-navigation-by-user-activation' flag, but
+ * has no user activation (gesture)" — Apps Script web app รันอยู่ใน iframe ข้าม origin ภายใต้
+ * script.google.com เสมอ Chrome บล็อก top.location.replace() ที่ยิงเองจาก <script> โดยไม่มี user gesture
+ * เสมอ เป็น hard platform limitation ของ Apps Script Web App เอง ไม่ใช่บั๊กที่แก้ด้วยโค้ดได้ — "redirect
+ * อัตโนมัติแบบไม่ต้องกดจริงๆ" ทำไม่ได้ 100% ในสถาปัตยกรรมนี้ (ยืนยันแล้วจากรอบนี้)
+ *
+ * 2026-10-12 รอบ 17 ตามที่ผู้ใช้ขอ (ลบหน้า "เข้าสู่ระบบสำเร็จ"/ปุ่ม "ไปที่หน้าผลงานของฉัน" ออกจาก flow, ห้าม
+ * จำลองการกด .click()) — ปรับให้ใกล้เคียง "ไม่มีหน้าคั่น" ที่สุดเท่าที่ platform จำกัดนี้ทำได้จริง: ตัดข้อความ
+ * "เข้าสู่ระบบสำเร็จ"/ปุ่ม "ไปที่หน้าผลงานของฉัน" ออกทั้งหมด เหลือแค่ spinner + "กำลังโหลดข้อมูล..." (ข้อ 9) ลิงก์
+ * จริง (ไม่ใช่ปุ่มโชว์เด่น) auto-focus ทันทีให้กด Enter ต่อได้โดยไม่ต้องเล็งเมาส์ (มี user gesture จริงจากการกด
+ * Enter ถือว่าผ่านเงื่อนไข sandbox) + ลอง top.location.replace() ก่อนเสมอ (ฟรี เผื่อบาง deployment อนุญาต) ถ้า
+ * ทั้งสองทางไม่ติด ภายใน 1.2 วินาทีจะ fade-in ปุ่ม "เปิดหน้าผลงานของฉัน" ให้กดจริงเป็น fallback สุดท้าย (ไม่ใช่
+ * .click() จำลอง — ผู้ใช้ต้องกด/แตะเองจริง) */
 function renderOwnerLoginBounceBody_(baseUrl, sessionId) {
   var url = baseUrl + '?page=owner-dashboard&osession=' + encodeURIComponent(sessionId);
   return '' +
-    '<div class="detail-card" id="owner-bounce-fallback">' +
-    '<p>เข้าสู่ระบบสำเร็จ</p>' +
-    '<p><a target="_top" class="btn-primary" id="owner-bounce-link" href="' + escapeHtml_(url) + '" style="display:inline-block;text-decoration:none;text-align:center">ไปที่หน้าผลงานของฉัน</a></p></div>' +
+    '<div class="detail-card owner-bounce-loading" id="owner-bounce-fallback">' +
+    '<div class="owner-bounce-spinner" aria-hidden="true"></div>' +
+    '<p class="owner-bounce-text">กำลังโหลดข้อมูล...</p>' +
+    '<a target="_top" id="owner-bounce-link" class="owner-bounce-link" href="' + escapeHtml_(url) + '">เปิดหน้าผลงานของฉัน</a>' +
+    '</div>' +
     '<script>(function () {' +
     'var u = ' + JSON.stringify(url) + ';' +
     'console.log("[OwnerLoginBounce] current URL =", location.href);' +
@@ -456,7 +475,20 @@ function renderOwnerLoginBounceBody_(baseUrl, sessionId) {
     '}' +
     'var link = document.getElementById("owner-bounce-link");' +
     'if (link) link.focus();' +
+    'setTimeout(function () { if (link) link.classList.add("owner-bounce-link-visible"); }, 1200);' +
     '})();</script>';
+}
+
+/** เมื่อ session ผ่านแล้ว (login สำเร็จจริง) แต่โหลดข้อมูลผลงานไม่สำเร็จ (ข้อ 11/12) — ปุ่ม "ลองใหม่" ใช้
+ *  session เดิม (?osession= เดิม) เรียก renderOwnerDashboardRoute_ ใหม่เฉยๆ ไม่สร้าง session ใหม่/ไม่บังคับ
+ *  login ใหม่ ตราบใด session ยัง valid */
+function renderOwnerDataErrorBody_(baseUrl, sessionId) {
+  var retryUrl = baseUrl + '?page=owner-dashboard&osession=' + encodeURIComponent(sessionId);
+  return '' +
+    '<div class="detail-card owner-login-card">' +
+    '<p>ไม่สามารถโหลดข้อมูลผลงานได้</p>' +
+    '<p><a target="_top" class="btn-primary owner-retry-link" href="' + escapeHtml_(retryUrl) + '" style="display:inline-block;text-decoration:none;text-align:center">ลองใหม่</a></p>' +
+    '</div>';
 }
 
 /**

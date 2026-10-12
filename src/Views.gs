@@ -2863,6 +2863,17 @@ var PUBLIC_CSS_ = '' +
   '.owner-pass-toggle-btn{background:none;border:none;color:var(--teal);font-size:.78rem;font-weight:600;' +
   'cursor:pointer;padding:4px 0;text-decoration:underline;}' +
   '@media (max-width:360px){.owner-pass-box{width:36px;height:46px;font-size:1.1rem;}}' +
+  // 2026-10-12 รอบ 17 — หน้า "กำลังโหลดข้อมูล..." ระหว่างทางหลัง login สำเร็จ (renderOwnerLoginBounceBody_)
+  // แทนหน้า "เข้าสู่ระบบสำเร็จ"/ปุ่ม "ไปที่หน้าผลงานของฉัน" เดิม — spinner หมุนเรียบง่าย + ลิงก์ fallback ซ่อน
+  // ไว้ก่อน (fade-in หลัง 1.2s ถ้า auto-redirect/Enter ไม่ติด)
+  '.owner-bounce-loading{text-align:center;padding:32px 20px;}' +
+  '.owner-bounce-spinner{width:32px;height:32px;margin:0 auto 14px;border:3px solid var(--border);' +
+  'border-top-color:var(--teal);border-radius:50%;animation:ownerBounceSpin .7s linear infinite;}' +
+  '@keyframes ownerBounceSpin{to{transform:rotate(360deg);}}' +
+  '.owner-bounce-text{color:var(--muted);font-size:.88rem;margin-bottom:4px;}' +
+  '.owner-bounce-link{opacity:0;pointer-events:none;display:inline-block;margin-top:10px;color:var(--teal);' +
+  'font-size:.8rem;font-weight:600;text-decoration:underline;transition:opacity .25s ease;}' +
+  '.owner-bounce-link-visible{opacity:1;pointer-events:auto;}' +
   // Timeline "เส้นทางจริง" (Branching Workflow) เฉพาะหน้า Owner Dashboard, 2026-10-07 — ข้อความอธิบายผล
   // การพิจารณา/branch indicator ใต้รายการ Timeline แต่ละขั้น ใช้โทนสีเดิม (muted/navy) ไม่เพิ่มสีใหม่
   '.owner-tl-note{display:block;font-size:.78rem;color:var(--muted);margin-top:3px;line-height:1.5;}' +
