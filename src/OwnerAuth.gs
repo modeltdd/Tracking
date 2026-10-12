@@ -435,7 +435,7 @@ function renderOwnerLoginDirectFormBody_(baseUrl, errors, notices, prevValues) {
     // Password/ปุ่มเข้าสู่ระบบ (ตัดเฉพาะ UI หน้านี้ — ฟังก์ชันค้นหาเดิม/QR ยังอยู่ปกติที่ ?mode=search, Views.gs)
     '</div>' +
     '</div>' +
-    OWNER_LOGIN_SPA_SCRIPT_;
+    buildOwnerLoginSpaScript_(baseUrl);
 }
 
 /** พฤติกรรมช่อง password แยกทีละตัว — auto-advance/backspace ย้อนกลับ/ลูกศรซ้าย-ขวา/paste กระจายอัตโนมัติ/
@@ -515,13 +515,42 @@ var OWNER_LOGIN_PASSWORD_SCRIPT_ = '' +
  * (method=post ธรรมดา, ดู renderOwnerLoginDirectFormBody_) จะ navigate ไปหน้า bounce เดิมตามปกติทุกประการ
  * (fallback เต็มรูปแบบ ไม่ใช่ระบบคู่ขนาน — ปลายทางเป็น handleOwnerLoginDirectPost_ ซึ่งใช้
  * resolveOwnerLoginCredentials_ ตัวเดียวกับ ownerLoginRpc_ ด้านล่างนี้เป๊ะ)
+ *
+ * 2026-10-12 รอบ 22 — ผู้ใช้ส่งหลักฐาน DevTools จริงมา พบ error "google.script.run....ownerLoginRpc_ is not
+ * a function" (google.script.run มีจริง แต่ยังไม่ลงทะเบียนฟังก์ชันนี้ให้เบราว์เซอร์ตอนนั้น — อาการที่เคยเกิดกับ
+ * Apps Script เวลา deploy ใหม่ๆ บาง browser session ก็มี delay ของ Google เองกว่าจะ sync รายชื่อฟังก์ชันที่
+ * เรียกได้ ไม่ใช่บั๊กโค้ดที่แก้ตรงๆ ได้) ทำให้ login ค้าง/เข้าไม่ได้เลยแทนที่จะแค่ช้า — เปลี่ยนเป็น
+ * buildOwnerLoginSpaScript_(baseUrl) (เดิมเป็น var คงที่) เพื่อฝัง URL ของ route เดิมที่พิสูจน์แล้วว่าใช้งานได้
+ * เสมอ (owner-dashboard GET) ไว้เป็น fallback — ทุกจุดที่เรียก google.script.run.XXX ต้องเช็ค
+ * "typeof google.script.run.XXX === 'function'" ตรงๆ ก่อนเสมอ (ไม่ใช่แค่เช็คว่า google.script.run มีอยู่เฉยๆ)
+ * ถ้าไม่พร้อมจริง fallback ไปใช้ navigation จริง (1 คลิกจริง มี user gesture ไม่ติด sandbox) แทนที่จะค้างเงียบๆ
  */
-var OWNER_LOGIN_SPA_SCRIPT_ = '' +
+function buildOwnerLoginSpaScript_(baseUrl) {
+  var dashboardUrlPrefix = baseUrl + '?page=owner-dashboard&osession=';
+  return '' +
   '<script>(function () {' +
   'var root = document.getElementById("owner-app-root");' +
   'if (!root) return;' +
   'var STORAGE_KEY = "owner_session_id";' +
+  'var DASHBOARD_URL_PREFIX = ' + JSON.stringify(dashboardUrlPrefix) + ';' +
   'var loginSnapshotHtml = null;' +
+  'function hasRpc_(name) {' +
+  'return !!(window.google && google.script && google.script.run && typeof google.script.run[name] === "function");' +
+  '}' +
+  // fallback สุดท้ายตอน RPC ใช้ไม่ได้จริง — ลิงก์จริง 1 อัน ไปยัง route GET เดิมที่ทำงานได้เสมอ (ไม่ auto-
+  // navigate เอง ให้ผู้ใช้กดเอง 1 ครั้ง มี user gesture จริง ไม่ติด iframe sandbox)
+  'function showRpcUnavailable_(sessionId) {' +
+  'var url = sessionId ? (DASHBOARD_URL_PREFIX + encodeURIComponent(sessionId)) : null;' +
+  'root.innerHTML = ' + JSON.stringify('<div class="detail-card owner-login-card"><p>ไม่สามารถเชื่อมต่อได้ชั่วคราว</p></div>') + ';' +
+  'if (url) {' +
+  'var p = document.createElement("p");' +
+  'var a = document.createElement("a");' +
+  'a.className = "btn-primary"; a.target = "_top"; a.href = url; a.style.display = "inline-block"; a.style.textDecoration = "none";' +
+  'a.textContent = "เปิดหน้าผลงานของฉัน";' +
+  'p.appendChild(a);' +
+  'root.querySelector(".detail-card").appendChild(p);' +
+  '}' +
+  '}' +
   // 2026-10-12 รอบ 21 — ผู้ใช้แจ้งว่ายังค้าง/เข้าไม่ได้หลังรอบ 20 (ข้อ 1/2/10 ของผู้ใช้: ตรวจว่า success
   // handler ถูกเรียกหรือไม่/มี google.script.run จริงหรือไม่/เรียกซ้ำกี่ครั้ง) log นี้ให้เปิด DevTools Console
   // (F12) ตอน login ดูว่าสคริปต์นี้รันจริงหรือไม่ และ google.script.run มีจริงในสภาพแวดล้อมนั้นหรือไม่ — ถ้าไม่
@@ -573,8 +602,16 @@ var OWNER_LOGIN_SPA_SCRIPT_ = '' +
   'form.addEventListener("submit", function (ev) {' +
   'syncHidden();' +
   'if (hidden.value.length < 6) { ev.preventDefault(); alert("กรุณากรอกรหัสผ่านให้ครบ"); return; }' +
-  // ไม่มี google.script.run (JS ปิด/environment แปลกๆ) -> ปล่อยให้ native form POST ทำงานปกติ (fallback เดิม)
-  'if (!window.google || !google.script || !google.script.run) return;' +
+  // 2026-10-12 รอบ 22 — ผู้ใช้เจอ error จริงจาก DevTools: "google.script.run....ownerLoginRpc_ is not a
+  // function" (google.script.run ตัวแม่มีจริง แต่ไม่ลงทะเบียนฟังก์ชันนี้ไว้ในเบราว์เซอร์ตอนนั้น — สาเหตุที่
+  // Apps Script ไม่ expose ฟังก์ชันให้ google.script.run ทันทีหลัง deploy ใหม่ บางครั้งมี delay/cache ฝั่ง
+  // Google เอง ไม่ใช่บั๊กโค้ด) เพิ่มเช็ค typeof ... === "function" ตรงๆ ก่อนใช้งานจริงเสมอ (ไม่ใช่แค่เช็คว่า
+  // google.script.run มีอยู่เฉยๆ) ถ้าไม่พร้อมจริง ให้ "ไม่" preventDefault เลย ปล่อย native form POST ทำงาน
+  // ตามปกติ (fallback เดิมที่พิสูจน์แล้วว่าใช้งานได้เสมอ — ไม่ทำให้ login ค้าง/ล็อกผู้ใช้ออกจากระบบอีก)
+  'if (!hasRpc_("ownerLoginRpc_")) {' +
+  'console.warn("[OwnerLoginSPA] ownerLoginRpc_ ไม่พร้อมใช้งานบน google.script.run ตอนนี้ — fallback ไป native form POST ปกติ");' +
+  'return;' +
+  '}' +
   'ev.preventDefault();' +
   'var usernameInput = form.querySelector("input[name=owner_username]");' +
   'var tokenInput = form.querySelector("input[name=session_token]");' +
@@ -639,6 +676,14 @@ var OWNER_LOGIN_SPA_SCRIPT_ = '' +
   'if (retryBtn) retryBtn.addEventListener("click", function () { loadDashboard_(sessionId); });' +
   '}' +
   'function loadDashboard_(sessionId) {' +
+  // 2026-10-12 รอบ 22 — เช็ค ownerDashboardRpc_ ให้แน่ใจจริงก่อนเสมอ (เคสเดียวกับ ownerLoginRpc_ ด้านบน) ถ้า
+  // ไม่พร้อม fallback ไปลิงก์จริง (route GET เดิมที่พิสูจน์แล้วว่าใช้งานได้เสมอ) แทนที่จะยิง RPC ที่รู้อยู่แล้ว
+  // ว่าจะพังแล้วค้างรอ failure handler เปล่าๆ
+  'if (!hasRpc_("ownerDashboardRpc_")) {' +
+  'console.warn("[OwnerLoginSPA] ownerDashboardRpc_ ไม่พร้อมใช้งานบน google.script.run ตอนนี้ — fallback ไปลิงก์จริง");' +
+  'showRpcUnavailable_(sessionId);' +
+  'return;' +
+  '}' +
   'showLoading_();' +
   'var slowTimer = setTimeout(function () { showSlow_(sessionId); }, 9000);' +
   'var dashSentAt = Date.now();' +
@@ -672,6 +717,7 @@ var OWNER_LOGIN_SPA_SCRIPT_ = '' +
   '}' +
   '});' +
   '})();</script>';
+}
 
 function renderOwnerLoginFormBody_(baseUrl, errors, notices, prevValues) {
   prevValues = prevValues || {};
