@@ -2942,6 +2942,13 @@ var PUBLIC_CSS_ = '' +
   '.owner-back-link{flex-shrink:0;display:inline-flex;align-items:center;gap:4px;color:var(--navy);font-size:.78rem;' +
   'font-weight:600;text-decoration:none;border:1px solid var(--border);border-radius:999px;padding:7px 14px;' +
   'background:#fff;white-space:nowrap;}' +
+  // 2026-10-12 ตามที่ผู้ใช้ขอ — ปุ่ม "✕ ปิด" แทน "← กลับหน้าหลัก" (.owner-back-link เดิมเหลือไว้เฉยๆ ไม่ได้ลบ
+  // ไม่มีที่ไหนเรียกใช้แล้ว) สี danger token เดิมของระบบ (var(--danger)=#b23a3a) border-radius 999px เท่าเดิม
+  // ขนาด compact กว่าเดิมเล็กน้อย กดง่ายบนมือถือ (padding แนวตั้งพอดี ไม่เล็กเกิน touch target)
+  '.owner-close-btn{flex-shrink:0;display:inline-flex;align-items:center;gap:4px;color:#fff;font-size:.78rem;' +
+  'font-weight:700;text-decoration:none;border:none;border-radius:999px;padding:8px 16px;' +
+  'background:var(--danger);white-space:nowrap;}' +
+  '.owner-close-btn:hover{background:#9c2f2f;}' +
   '.owner-page-title{font-size:1.3rem;font-weight:700;color:var(--navy);line-height:1.3;}' +
   '.owner-page-subtitle{font-size:.82rem;color:var(--muted);margin-top:3px;}' +
   '@media (max-width:480px){.owner-page-header{flex-direction:column;}}' +
@@ -2971,6 +2978,9 @@ var PUBLIC_CSS_ = '' +
   // <span> inline ใช้ rule เดิมที่มีอยู่แล้วได้ตรงๆ (font-size/color เข้ากัน ไม่ต้องเพิ่ม rule ใหม่)
   '.owner-result-current-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;font-weight:600;}' +
   '.owner-result-current-line{font-size:.92rem;color:var(--text);line-height:1.5;}' +
+  // 2026-10-12 รอบ 15 — วันที่ "อัปเดตล่าสุด" (updated_at เดิม) ย้ายมาไว้ใต้บรรทัด "ขั้นตอนปัจจุบัน" เป็นบรรทัด
+  // เล็กสีเทา "อัปเดตเมื่อ ..." ตามที่ผู้ใช้ขอ (ข้อ 3) ไม่ให้แย่งความเด่นจากสถานะหลัก
+  '.owner-result-updated{font-size:.74rem;color:var(--muted);margin-top:3px;}' +
   // บรรทัดผลการพิจารณา (ถ้ามี) — เด่นกว่าปกติเล็กน้อยด้วยสี tone + น้ำหนักตัวหนา ไม่มี card ซ้อน/ไอคอนวงกลมแล้ว
   '.owner-result-outcome{font-size:1rem;font-weight:700;margin-top:6px;}' +
   '.owner-result-outcome-done{color:var(--done);}' +

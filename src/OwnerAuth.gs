@@ -696,17 +696,17 @@ function renderOwnerFullDetailSection_(fullWithSkips) {
 }
 
 /**
- * การ์ด "ผลการพิจารณา" (2026-10-08 รอบ 13 ตามที่ผู้ใช้ขอ redesign ให้เรียบ/compact ขึ้น) — เปลี่ยนจากรอบ 12
- * (ตัวใหญ่ "ขั้นตอนที่ N" + badge "สถานะปัจจุบัน" แยกบรรทัด) เป็นบรรทัดเดียว "ขั้นตอนปัจจุบัน :: {ข้อความ}"
- * (รูปแบบ label "::" ค่า เดียวกับ "ผู้รับผิดชอบ ::" ที่ Timeline ใช้อยู่แล้ว) ไม่มี "ขั้นตอนที่ N" ตัวใหญ่/badge
- * แยกอีกต่อไป (ผู้ใช้บอกว่าซ้ำซ้อน) — ข้อความคือ owner label ของขั้นหลัก (ownerMainStepLabelFor_ จาก
- * parentStepOrder_(currentStation.station_order) ตรงๆ เหมือนรอบก่อน กันบั๊กเลขทศนิยมหลุดแบบเดียวกับที่เคยพังกับ
- * "ขั้นตอนที่ 3")
+ * การ์ด "ผลการพิจารณา" (2026-10-12 รอบ 15 ตามที่ผู้ใช้ขอ) — ตัด "ผู้รับผิดชอบ"/"อัปเดตล่าสุด" แบบ 2-column
+ * grid เดิม (miniRow) ออกทั้งหมด (ข้อ 1/2) ย้ายวันที่ "อัปเดตล่าสุด" (work.updated_at ฟิลด์เดิม ไม่ได้ลบ/
+ * เปลี่ยน แค่ย้ายตำแหน่งแสดงผล) ไปไว้เป็นบรรทัดเล็กสีเทา "อัปเดตเมื่อ ..." ใต้บรรทัด "ขั้นตอนปัจจุบัน :: ..."
+ * ทันที (ข้อ 3/4) — ผู้รับผิดชอบ (work.current_owner_org) เลิกแสดงในการ์ดนี้แล้วตามที่ผู้ใช้ขอ (field ยังอยู่ใน
+ * ฐานข้อมูลเหมือนเดิม ไม่ได้ลบ แค่ไม่ render ที่นี่) การ์ดจึงเตี้ยลง/compact ขึ้น ไม่มี grid 2 คอลัมน์/divider
+ * เหลืออยู่ท้ายการ์ดอีกต่อไป
  *
  * บรรทัดผลการพิจารณา (ถ้ามี, info.isSub=true เฉพาะ 7.1-7.4 เท่านั้น ไม่รวม 8.x/9.x ที่เป็นลำดับขั้นย่อยไม่ใช่ผล
  * ประเมิน) แสดงเป็นไอคอน+ข้อความบรรทัดเดียวเด่นกว่าปกติเล็กน้อย (สีตาม tone: ผ่าน=เขียว/แก้ไข=เหลืองส้ม/ไม่ผ่าน=
- * แดง) ไม่มีคำบรรยายยาวต่อท้ายแล้ว (descByTone เดิมตัดออก — ผู้ใช้ขอ "ไม่เพิ่ม card ซ้อน"/"ดูเรียบ") ถ้ายังไม่มีผล
- * (isSub=false เสมอสำหรับ state 1-6/8/9/10) ไม่ render บรรทัดนี้เลย ไม่เหลือช่องว่าง/placeholder ใดๆ
+ * แดง) ถ้ายังไม่มีผล (isSub=false เสมอสำหรับ state 1-6/8/9/10) ไม่ render บรรทัดนี้เลย ไม่เหลือช่องว่าง/
+ * placeholder ใดๆ
  */
 function renderOwnerResultCard_(work, info, currentStation, stationsMap) {
   var iconByTone = { done: '&#10003;', danger: '&#10007;', revision: '&#9888;', pending: '' };
@@ -716,6 +716,8 @@ function renderOwnerResultCard_(work, info, currentStation, stationsMap) {
   var currentLineHtml = '<div class="owner-result-current-line">' +
     '<span class="owner-result-current-label">ขั้นตอนปัจจุบัน ::</span> ' + escapeHtml_(mainLabel) + '</div>';
 
+  var updatedLineHtml = '<div class="owner-result-updated">อัปเดตเมื่อ ' + escapeHtml_(formatDateThShort_(work.updated_at)) + '</div>';
+
   var outcomeHtml = '';
   if (info.isSub) {
     var tone = info.subTone;
@@ -724,23 +726,12 @@ function renderOwnerResultCard_(work, info, currentStation, stationsMap) {
       '<span class="owner-result-outcome-icon">' + iconByTone[tone] + '</span> ' + escapeHtml_(resultLabel) + '</div>';
   }
 
-  var ownerOrgText = work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-');
-
-  function miniRow(icon, label, value) {
-    return '<div class="owner-result-row"><div class="owner-result-row-icon">' + icon + '</div>' +
-      '<div><div class="owner-result-row-label">' + escapeHtml_(label) + '</div>' +
-      '<div class="owner-result-row-value">' + escapeHtml_(value) + '</div></div></div>';
-  }
-
   return '' +
     '<div class="owner-result-card">' +
     currentLineHtml +
+    updatedLineHtml +
     outcomeHtml +
-    '<div class="owner-result-divider"></div>' +
-    '<div class="owner-result-grid">' +
-    miniRow('&#128100;', 'ผู้รับผิดชอบ', ownerOrgText) +
-    miniRow('&#128336;', 'อัปเดตล่าสุด', formatDateThShort_(work.updated_at)) +
-    '</div></div>';
+    '</div>';
 }
 
 /**
@@ -814,14 +805,16 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   var info = buildHeroDisplayInfo_(data.currentStation, data.stationsMap || {});
   var logoutUrl = baseUrl + '?page=owner-login&logout=1&osession=' + encodeURIComponent(sessionId);
 
-  // 1. PAGE HEADER — "← กลับหน้าหลัก" ไม่มีหน้า "หลัก" อื่นแยกต่างหากในระบบนี้ (Owner Dashboard เป็นหน้าเดียว
-  // หลัง login ทั้งหมด) ตีความเป็นออกจากระบบกลับไปหน้าแรก (เข้ากับ "หน้าหลัก" ได้ตรงที่สุด) — ย้ายปุ่ม
-  // "ออกจากระบบ" เดิมที่ท้ายหน้ามารวมเป็นจุดเดียวตรงนี้แทน (กันมีทางออกซ้ำ 2 จุด)
+  // 1. PAGE HEADER — 2026-10-12 ตามที่ผู้ใช้ขอ: เปลี่ยนปุ่ม "← กลับหน้าหลัก" เป็น "✕ ปิด" สีแดง (danger) ไม่มี
+  // route/navigation ใหม่ใดๆ — ใช้ logoutUrl เดิมตรงๆ (navigation function เดิมของระบบ, ข้อ 7) เพราะระบบนี้ไม่มี
+  // หน้า "หลัก"/"ก่อนหน้า" อื่นแยกให้กลับไปจริง (Owner Dashboard เป็นหน้าเดียวหลัง login ทั้งหมด ตามที่ยืนยันไว้
+  // ตั้งแต่รอบก่อน) การกด "ปิด" จึงยังพากลับไปหน้า Login เหมือนเดิมทุกประการ แค่เปลี่ยน label/สี ไม่ใช้
+  // window.close() (ซึ่งจะพังถ้า browser ไม่อนุญาตปิดแท็บที่ไม่ได้เปิดด้วย script)
   var headerHtml = '' +
     '<div class="owner-page-header">' +
     '<div><div class="owner-page-title">ผลการติดตามสถานะ</div>' +
     '<div class="owner-page-subtitle">ตรวจสอบความคืบหน้าและขั้นตอนถัดไปของผลงาน</div></div>' +
-    '<a class="owner-back-link" target="_top" href="' + escapeHtml_(logoutUrl) + '">&larr; กลับหน้าหลัก</a>' +
+    '<a class="owner-close-btn" target="_top" href="' + escapeHtml_(logoutUrl) + '">&#10005; ปิด</a>' +
     '</div>';
 
   // 2. OWNER SUMMARY CARD — 3 ช่องตามที่ผู้ใช้ขอ (เจ้าของผลงาน/เลขทะเบียน/วันที่รับผลงาน) ไม่มีชื่อผลงานในการ์ด
