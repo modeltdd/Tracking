@@ -215,32 +215,23 @@ function handleOwnerLoginSubmitPost_(ss, e, baseUrl) {
 }
 
 /**
- * form_action=owner_login_direct (POST) — 2026-10-06 หน้าแรกใหม่: Username (ชื่อ/นามสกุล — reuse
- * searchPublicRecordsByName_ เดิม ไม่สร้าง field ใหม่) + Password แยกช่อง รวมเป็น string เดียวฝั่ง client
- * แล้วส่งมาเป็น owner_login_code เดียวกับ flow เดิมทุกประการ ไม่มีขั้นเลือก record แยก (ต่างจาก
- * handleOwnerLoginSubmitPost_ เดิมที่ต้องเลือก work_id ก่อน) — แก้ปัญหาชื่อซ้ำด้วยการลองเทียบรหัสผ่านกับ
- * "ทุกรายการที่ชื่อตรงกัน" แล้ว login เข้ารายการแรกที่รหัสตรง (ของจริงรหัสเริ่มต้น = tracking_no ซึ่งไม่ซ้ำกัน
- * อยู่แล้วในตัว จึงแยกคนซ้ำชื่อได้โดยอัตโนมัติไม่ต้องให้ผู้ใช้เลือกเอง)
+ * ตรวจ credential ของ owner_login_direct แบบ core ล้วน ไม่ render/ไม่สร้าง session (2026-10-12 รอบ 19 แยกออก
+ * จาก handleOwnerLoginDirectPost_ เดิม) — ใช้ร่วมกันทั้ง handleOwnerLoginDirectPost_ (fallback ฟอร์ม POST ปกติ
+ * ตอน JS ปิด/พัง) และ ownerLoginRpc_ (SPA ผ่าน google.script.run ตอน JS เปิด) ไม่มี logic ตรวจรหัสผ่านซ้ำ 2 ที่
+ * คืน { ok, error } หรือ { ok:true, work }
  */
-function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
-  var p = (e && e.parameter) || {};
-  var username = normalizeSearchName_(p.owner_username || '');
-  var code = String(p.owner_login_code || '').trim();
-  var sessionToken = String(p.session_token || '').trim() || randomToken_(16);
-  var prevValues = { owner_username: username, session_token: sessionToken };
-
-  // 2026-10-07 รอบ 2 — เพิ่ม log ทุกขั้นตามที่ผู้ใช้ขอ (ข้อ 7: ห้าม log password) ไว้ตรวจได้จาก Apps Script
+function resolveOwnerLoginCredentials_(ss, username, code, sessionToken) {
+  // 2026-10-07 รอบ 2 — log ทุกขั้นตามที่ผู้ใช้ขอ (ข้อ 7: ห้าม log password) ไว้ตรวจได้จาก Apps Script
   // Editor > Executions เวลา login ไม่ redirect แล้วเกิดซ้ำอีก จะรู้ทันทีว่าหลุดตรงขั้นไหน
   Logger.log('[OwnerLogin] request received, username=' + username);
 
   if (checkOwnerLoginLock_(sessionToken)) {
     Logger.log('[OwnerLogin] blocked: rate-limit lock active for this session_token');
-    return renderPublicPage_('เข้าสู่ระบบ',
-      renderOwnerLoginDirectFormBody_(baseUrl, ['ลองเข้าสู่ระบบผิดเกินจำนวนที่กำหนด กรุณารอสักครู่แล้วลองใหม่อีกครั้ง'], [], prevValues));
+    return { ok: false, error: 'ลองเข้าสู่ระบบผิดเกินจำนวนที่กำหนด กรุณารอสักครู่แล้วลองใหม่อีกครั้ง' };
   }
   if (!username) {
     Logger.log('[OwnerLogin] rejected: username ว่าง');
-    return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['กรุณากรอก Username'], [], prevValues));
+    return { ok: false, error: 'กรุณากรอก Username' };
   }
   // ข้อ 8 — กรอกรหัสไม่ครบ (รูปแบบไม่ตรง __-___) ถือเป็นคนละเคสกับ login ไม่ผ่าน แจ้งข้อความเฉพาะ แต่ยังนับ
   // เป็นความพยายามผิด 1 ครั้งเพื่อกัน brute-force (ตรวจฝั่ง server เสมอ ไม่เชื่อ client — ข้อ 10)
@@ -248,7 +239,7 @@ function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
     Logger.log('[OwnerLogin] rejected: รูปแบบรหัสผ่านไม่ตรง NN-NNN (ไม่ log ค่าจริง)');
     registerOwnerLoginAttempt_(ss, sessionToken, false);
     writeOwnerLoginLog_(ss, '', username, 'failed', sessionToken);
-    return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['กรุณากรอกรหัสผ่านให้ครบ'], [], prevValues));
+    return { ok: false, error: 'กรุณากรอกรหัสผ่านให้ครบ' };
   }
 
   var candidates = searchPublicRecordsByName_(ss, username);
@@ -264,17 +255,93 @@ function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
 
   if (!ok) {
     // ข้อ 8 — ไม่บอกว่า username ถูกแต่ password ผิด (หรือกลับกัน) ใช้ข้อความเดียวกันเสมอ
-    return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง'], [], prevValues));
+    return { ok: false, error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' };
+  }
+  return { ok: true, work: matchedWork };
+}
+
+/**
+ * form_action=owner_login_direct (POST) — fallback เต็มรูปแบบตอน JS ปิด/พัง (progressive enhancement:
+ * ownerLoginRpc_ ด้านล่างคือเส้นทางหลักตอน JS เปิดปกติ ใช้ resolveOwnerLoginCredentials_ ร่วมกัน ไม่มี logic
+ * ตรวจรหัสซ้ำ) ไม่มีขั้นเลือก record แยก (ต่างจาก handleOwnerLoginSubmitPost_ เดิมที่ต้องเลือก work_id ก่อน)
+ */
+function handleOwnerLoginDirectPost_(ss, e, baseUrl) {
+  var p = (e && e.parameter) || {};
+  var username = normalizeSearchName_(p.owner_username || '');
+  var code = String(p.owner_login_code || '').trim();
+  var sessionToken = String(p.session_token || '').trim() || randomToken_(16);
+  var prevValues = { owner_username: username, session_token: sessionToken };
+
+  var result = resolveOwnerLoginCredentials_(ss, username, code, sessionToken);
+  if (!result.ok) {
+    return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, [result.error], [], prevValues));
   }
 
   // 2026-10-07 กลับมาใช้หน้า bounce + redirect (ดูเหตุผลที่ handleOwnerLoginSubmitPost_ ด้านบน — render
   // dashboard ตรงใน POST response ทำให้ refresh/ย้อนกลับ resubmit POST เดิมจน script.google.com ปฏิเสธการเชื่อมต่อ)
   // session ต้องสร้าง+บันทึกสำเร็จ "ก่อน" ส่ง response กลับเสมอ (บรรทัดถัดไปรันแบบ synchronous ใน Apps Script
   // อยู่แล้ว ไม่มีทาง race — createOwnerSession_ เขียนชีต OwnerSessions เสร็จก่อนบรรทัด return เสมอ)
-  var session = createOwnerSession_(ss, matchedWork);
+  var session = createOwnerSession_(ss, result.work);
+  if (!validateOwnerSession_(ss, session.id)) {
+    Logger.log('[OwnerLogin] verify session failed ทันทีหลังสร้าง session_id=' + session.id);
+    return renderPublicPage_('เข้าสู่ระบบ', renderOwnerLoginDirectFormBody_(baseUrl, ['เกิดข้อผิดพลาดในการสร้างเซสชัน กรุณาลองเข้าสู่ระบบใหม่อีกครั้ง'], [], {}));
+  }
   var redirectUrl = baseUrl + '?page=owner-dashboard&osession=' + encodeURIComponent(session.id);
   Logger.log('[OwnerLogin] session created: session_id=' + session.id + ', redirectUrl=' + redirectUrl);
   return renderPublicPage_('กำลังโหลดข้อมูล...', renderOwnerLoginBounceBody_(baseUrl, session.id));
+}
+
+/**
+ * RPC (google.script.run) ของ owner_login_direct — 2026-10-12 รอบ 19 ตามที่ผู้ใช้ขอ (ลอง SPA แทน navigation
+ * เพื่อเลี่ยงข้อจำกัดจริงของ iframe sandbox ที่บล็อก top-navigation แบบไม่มี user gesture — ดู root cause
+ * เต็มๆ ที่คอมเมนต์ renderOwnerLoginBounceBody_) เรียก resolveOwnerLoginCredentials_ เดียวกับ
+ * handleOwnerLoginDirectPost_ เป๊ะ ไม่มี logic ตรวจรหัสซ้ำ คืน plain object (ไม่ใช่ HtmlOutput เพราะ
+ * google.script.run ส่งได้แค่ค่า serializable) ฝั่ง client (OWNER_LOGIN_SPA_SCRIPT_) เอา sessionId ไปเรียก
+ * ownerDashboardRpc_ ต่อเองโดยไม่ navigate เลย
+ */
+function ownerLoginRpc_(params) {
+  var ss = getSpreadsheet_();
+  var p = params || {};
+  var username = normalizeSearchName_(p.owner_username || '');
+  var code = String(p.owner_login_code || '').trim();
+  var sessionToken = String(p.session_token || '').trim() || randomToken_(16);
+
+  var result = resolveOwnerLoginCredentials_(ss, username, code, sessionToken);
+  if (!result.ok) return { ok: false, error: result.error };
+
+  var session = createOwnerSession_(ss, result.work);
+  if (!validateOwnerSession_(ss, session.id)) {
+    Logger.log('[OwnerLoginRpc] verify session failed ทันทีหลังสร้าง session_id=' + session.id);
+    return { ok: false, error: 'เกิดข้อผิดพลาดในการสร้างเซสชัน กรุณาลองเข้าสู่ระบบใหม่อีกครั้ง' };
+  }
+  return { ok: true, sessionId: session.id };
+}
+
+/**
+ * RPC (google.script.run) ของ renderOwnerDashboardRoute_ — คืน { ok:true, html } (เนื้อหาการ์ด Owner View
+ * ล้วนๆ จาก renderOwnerDashboardBody_ เดิม ไม่มี logic render ซ้ำ) หรือ { ok:false, expired } ให้ฝั่ง client
+ * ตัดสินใจเองว่าจะโชว์ฟอร์ม login (expired=true) หรือปุ่ม "ลองใหม่" (expired=false, session ยัง valid แต่โหลด
+ * ข้อมูลพัง) — ใช้ validateOwnerSession_ เดียวกับ route เดิมทุกจุด (ข้อ 13 — ห้ามเชื่อ sessionId จาก client
+ * อย่างเดียว ต้อง verify ฝั่ง server เสมอ)
+ */
+function ownerDashboardRpc_(sessionId) {
+  var ss = getSpreadsheet_();
+  var work = validateOwnerSession_(ss, sessionId);
+  if (!work) return { ok: false, expired: true };
+  try {
+    var html = renderOwnerDashboardBody_(ss, work, getWebAppUrl_(), sessionId);
+    return { ok: true, html: html };
+  } catch (err) {
+    Logger.log('[OwnerDashboardRpc] โหลดข้อมูลผลงานล้มเหลว (session ผ่านแล้ว): ' + err);
+    return { ok: false, expired: false };
+  }
+}
+
+/** RPC (google.script.run) ของ logout เดิม — reuse destroyOwnerSession_ เดียวกับ handleOwnerLogoutGet_ ทุก
+ *  ประการ ไม่มี logic logout ซ้ำ */
+function ownerLogoutRpc_(sessionId) {
+  destroyOwnerSession_(getSpreadsheet_(), sessionId);
+  return { ok: true };
 }
 
 // ================= Render =================
@@ -305,7 +372,15 @@ function renderOwnerLoginDirectFormBody_(baseUrl, errors, notices, prevValues) {
     boxesHtml += '<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="one-time-code" class="owner-pass-box">';
   }
 
-  return '' + errorHtml + noticeHtml +
+  // 2026-10-12 รอบ 19 — ครอบด้วย <div id="owner-app-root"> (ตามที่ผู้ใช้เลือกหลังตรวจ root cause: iframe
+  // sandbox ของ Apps Script บล็อก top-navigation แบบไม่มี user gesture เสมอ — ลอง SPA ด้วย google.script.run
+  // แทน navigation จะเลี่ยงปัญหานี้ได้เพราะไม่มีการ navigate เกิดขึ้นเลย) OWNER_LOGIN_SPA_SCRIPT_ ด้านล่าง
+  // สลับเนื้อหาใน container นี้ระหว่าง ฟอร์ม login / "กำลังโหลดข้อมูล..." / Owner View จริง (ดึงมาจาก
+  // renderOwnerDashboardBody_ เดิมเป๊ะ ผ่าน ownerDashboardRpc_) โดยไม่มีการ navigate ของ browser เลย — ถ้า
+  // google.script.run ใช้งานไม่ได้ (เช่น JS ปิด) ฟอร์มนี้ยังเป็น <form method=post> ธรรมดา navigate ไปหน้า
+  // bounce เดิมได้ปกติทุกประการ (fallback เต็มรูปแบบ ไม่ใช่ระบบคู่ขนาน — ใช้ resolveOwnerLoginCredentials_/
+  // createOwnerSession_/validateOwnerSession_/renderOwnerDashboardBody_ ตัวเดียวกันทั้ง 2 เส้นทาง)
+  return '<div id="owner-app-root">' + errorHtml + noticeHtml +
     '<div class="detail-card owner-login-card">' +
     // 2026-10-12 — ตัดข้อความหัว "กรุณาเข้าสู่ระบบเพื่อติดตามผลงานของท่าน" ออกตามที่ผู้ใช้ขอ (ข้อ 3) ดึง
     // Username ขึ้นมาเป็นองค์ประกอบแรกของการ์ดทันที ไม่มีช่องว่างคั่นเหลือ
@@ -326,14 +401,22 @@ function renderOwnerLoginDirectFormBody_(baseUrl, errors, notices, prevValues) {
     // 2026-10-07 ผู้ใช้ขอตัดลิงก์ "ค้นหาสถานะแบบเดิม" + ปุ่มสแกน QR ออกจากหน้า Login ให้เหลือแค่ Username/
     // Password/ปุ่มเข้าสู่ระบบ (ตัดเฉพาะ UI หน้านี้ — ฟังก์ชันค้นหาเดิม/QR ยังอยู่ปกติที่ ?mode=search, Views.gs)
     '</div>' +
-    OWNER_LOGIN_PASSWORD_SCRIPT_;
+    '</div>' +
+    OWNER_LOGIN_SPA_SCRIPT_;
 }
 
 /** พฤติกรรมช่อง password แยกทีละตัว — auto-advance/backspace ย้อนกลับ/ลูกศรซ้าย-ขวา/paste กระจายอัตโนมัติ/
  *  Enter submit (ข้อ 3/5/14) รวมค่าทุกช่องเป็น "NN-NNN" ลง hidden input ก่อน submit เสมอ
  *  2026-10-12 — ตัด JS toggle แสดง/ซ่อนรหัส (toggleBtn) ออกตามที่ผู้ใช้ขอ (ปุ่ม "แสดงรหัส" ไม่มีใน UI แล้ว
  *  เพราะช่องรหัสเป็น type="text" แสดงค่าอยู่แล้วตั้งแต่แรก ไม่มีอะไรให้สลับ) ไม่กระทบ logic Login ฝั่ง server
- *  เลย (hidden input/syncHidden/form submit listener ด้านล่างเหมือนเดิมทุกจุด) */
+ *  เลย (hidden input/syncHidden/form submit listener ด้านล่างเหมือนเดิมทุกจุด)
+ *
+ * 2026-10-12 รอบ 19 — เลิกใช้ตัวนี้แล้ว (renderOwnerLoginDirectFormBody_ เปลี่ยนไป append
+ * OWNER_LOGIN_SPA_SCRIPT_ ด้านล่างแทน ซึ่งมี logic ชุดนี้ครบทุกจุดรวมอยู่ข้างในแล้ว + SPA orchestration เพิ่ม)
+ * เหตุผลที่ย้าย: initOwnerLoginForm_ ใน SPA script ต้องถูกเรียกซ้ำได้หลายครั้ง (ทุกครั้งที่สลับกลับมาโชว์ฟอร์ม
+ * login หลัง retry/session หมดอายุ ผ่าน innerHTML swap ซึ่งทำลาย event listener เดิมของ DOM เก่าหมด) ค่าคงที่
+ * นี้เป็น anonymous DOMContentLoaded ครั้งเดียว เรียกซ้ำไม่ได้ จึงต้องมีฟังก์ชันใหม่แทน ไม่ได้ลบตัวนี้ทิ้ง เผื่อ
+ * ใช้อ้างอิง/ย้อนกลับได้ */
 var OWNER_LOGIN_PASSWORD_SCRIPT_ = '' +
   '<script>' +
   'document.addEventListener("DOMContentLoaded", function () {' +
@@ -386,6 +469,142 @@ var OWNER_LOGIN_PASSWORD_SCRIPT_ = '' +
   '});' +
   '});' +
   '</script>';
+
+/**
+ * 2026-10-12 รอบ 19 — SPA orchestration ด้วย google.script.run (ตามที่ผู้ใช้เลือกหลังตรวจ root cause: iframe
+ * sandbox ของ Apps Script บล็อก top-navigation อัตโนมัติแบบไม่มี user gesture เสมอ — เลี่ยงได้โดยไม่ navigate
+ * เลยแทน) รวม logic ช่องรหัส (เดิมจาก OWNER_LOGIN_PASSWORD_SCRIPT_ — เลิกใช้ตัวนั้นแล้ว) + การยิง
+ * ownerLoginRpc_/ownerDashboardRpc_ ผ่าน google.script.run ไว้ในที่เดียว เพราะ initOwnerLoginForm_ ต้องถูก
+ * เรียกซ้ำได้ทุกครั้งที่สลับกลับมาโชว์ฟอร์ม login (หลัง retry/session หมดอายุ — root.innerHTML swap ทำลาย
+ * listener เดิมของ DOM เก่าหมดทุกครั้ง)
+ *
+ * ถ้า google.script.run ไม่พร้อมใช้งาน (เช่น JS ปิด) จะ "ไม่" preventDefault ตอน submit เลย — form เดิม
+ * (method=post ธรรมดา, ดู renderOwnerLoginDirectFormBody_) จะ navigate ไปหน้า bounce เดิมตามปกติทุกประการ
+ * (fallback เต็มรูปแบบ ไม่ใช่ระบบคู่ขนาน — ปลายทางเป็น handleOwnerLoginDirectPost_ ซึ่งใช้
+ * resolveOwnerLoginCredentials_ ตัวเดียวกับ ownerLoginRpc_ ด้านล่างนี้เป๊ะ)
+ */
+var OWNER_LOGIN_SPA_SCRIPT_ = '' +
+  '<script>(function () {' +
+  'var root = document.getElementById("owner-app-root");' +
+  'if (!root) return;' +
+  'var STORAGE_KEY = "owner_session_id";' +
+  'var loginSnapshotHtml = null;' +
+
+  'function initOwnerLoginForm_() {' +
+  'var boxes = Array.prototype.slice.call(document.querySelectorAll(".owner-pass-box"));' +
+  'var hidden = document.getElementById("owner_login_code_hidden");' +
+  'var form = document.getElementById("owner-login-direct-form");' +
+  'if (!boxes.length || !hidden || !form) return;' +
+  'if (loginSnapshotHtml === null) loginSnapshotHtml = root.innerHTML;' +
+  'function syncHidden() {' +
+  'var digits = boxes.map(function (b) { return b.value || ""; }).join("");' +
+  'hidden.value = digits.length > 2 ? (digits.slice(0, 2) + "-" + digits.slice(2)) : digits;' +
+  '}' +
+  'boxes.forEach(function (box, idx) {' +
+  'box.addEventListener("input", function () {' +
+  'box.value = box.value.replace(/[^0-9]/g, "").slice(-1);' +
+  'syncHidden();' +
+  'if (box.value && idx < boxes.length - 1) boxes[idx + 1].focus();' +
+  '});' +
+  'box.addEventListener("keydown", function (ev) {' +
+  'if (ev.key === "Backspace" && !box.value && idx > 0) { boxes[idx - 1].focus(); boxes[idx - 1].value = ""; syncHidden(); }' +
+  'else if (ev.key === "ArrowLeft" && idx > 0) { boxes[idx - 1].focus(); }' +
+  'else if (ev.key === "ArrowRight" && idx < boxes.length - 1) { boxes[idx + 1].focus(); }' +
+  'else if (ev.key === "Enter") {' +
+  'ev.preventDefault();' +
+  'syncHidden();' +
+  'if (hidden.value.length < 6) { alert("กรุณากรอกรหัสผ่านให้ครบ"); }' +
+  // 2026-10-12 — ใช้ requestSubmit() แทน submit() ตรงๆ (submit() ไม่ยิง "submit" event ตาม spec DOM เลย ทำให้
+  // listener ด้านล่างถูกข้ามไปตอนกด Enter — requestSubmit() ยิง event จริง ทำให้ Enter กับคลิกปุ่มพฤติกรรม
+  // เดียวกันเป๊ะ ทั้งคู่ไปเส้นทาง RPC เดียวกัน)
+  'else if (form.requestSubmit) { form.requestSubmit(); }' +
+  'else { form.submit(); }' +
+  '}' +
+  '});' +
+  'box.addEventListener("paste", function (ev) {' +
+  'ev.preventDefault();' +
+  'var text = (ev.clipboardData || window.clipboardData).getData("text").replace(/[^0-9]/g, "");' +
+  'for (var i = 0; i < boxes.length; i++) boxes[i].value = text.charAt(i) || "";' +
+  'syncHidden();' +
+  'var nextEmptyIdx = -1;' +
+  'for (var j = 0; j < boxes.length; j++) { if (!boxes[j].value) { nextEmptyIdx = j; break; } }' +
+  'boxes[nextEmptyIdx === -1 ? boxes.length - 1 : nextEmptyIdx].focus();' +
+  '});' +
+  '});' +
+  'boxes[0].focus();' +
+  'form.addEventListener("submit", function (ev) {' +
+  'syncHidden();' +
+  'if (hidden.value.length < 6) { ev.preventDefault(); alert("กรุณากรอกรหัสผ่านให้ครบ"); return; }' +
+  // ไม่มี google.script.run (JS ปิด/environment แปลกๆ) -> ปล่อยให้ native form POST ทำงานปกติ (fallback เดิม)
+  'if (!window.google || !google.script || !google.script.run) return;' +
+  'ev.preventDefault();' +
+  'var usernameInput = form.querySelector("input[name=owner_username]");' +
+  'var tokenInput = form.querySelector("input[name=session_token]");' +
+  'var params = { owner_username: usernameInput ? usernameInput.value : "", owner_login_code: hidden.value, session_token: tokenInput ? tokenInput.value : "" };' +
+  'showLoading_();' +
+  'google.script.run.withSuccessHandler(function (res) {' +
+  'if (res && res.ok) {' +
+  'try { localStorage.setItem(STORAGE_KEY, res.sessionId); } catch (e) {}' +
+  'loadDashboard_(res.sessionId);' +
+  '} else {' +
+  'showLoginAgain_((res && res.error) || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");' +
+  '}' +
+  '}).withFailureHandler(function () {' +
+  'showLoginAgain_("เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง");' +
+  '}).ownerLoginRpc_(params);' +
+  '});' +
+  '}' +
+
+  'function showLoading_() {' +
+  'root.innerHTML = ' + JSON.stringify(
+    '<div class="detail-card owner-bounce-loading"><div class="owner-bounce-spinner" aria-hidden="true"></div>' +
+    '<p class="owner-bounce-text">กำลังโหลดข้อมูล...</p></div>') + ';' +
+  '}' +
+  'function showLoginAgain_(notice) {' +
+  'try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}' +
+  'root.innerHTML = loginSnapshotHtml || "";' +
+  'initOwnerLoginForm_();' +
+  'if (notice) {' +
+  'var n = document.createElement("p");' +
+  'n.className = "hint";' +
+  'n.textContent = notice;' +
+  'root.insertBefore(n, root.firstChild);' +
+  '}' +
+  '}' +
+  'function showDataError_(sessionId) {' +
+  'root.innerHTML = ' + JSON.stringify(
+    '<div class="detail-card owner-login-card"><p>ไม่สามารถโหลดข้อมูลผลงานได้</p>' +
+    '<p><button type="button" class="btn-primary owner-retry-btn" style="display:inline-block">ลองใหม่</button></p></div>') + ';' +
+  'var retryBtn = root.querySelector(".owner-retry-btn");' +
+  'if (retryBtn) retryBtn.addEventListener("click", function () { loadDashboard_(sessionId); });' +
+  '}' +
+  'function loadDashboard_(sessionId) {' +
+  'showLoading_();' +
+  'google.script.run.withSuccessHandler(function (res) {' +
+  'if (res && res.ok) {' +
+  'root.innerHTML = res.html;' +
+  '} else if (res && res.expired) {' +
+  'showLoginAgain_("เซสชันหมดอายุหรือไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่อีกครั้ง");' +
+  '} else {' +
+  'showDataError_(sessionId);' +
+  '}' +
+  '}).withFailureHandler(function () {' +
+  'showDataError_(sessionId);' +
+  '}).ownerDashboardRpc_(sessionId);' +
+  '}' +
+
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'if (!window.google || !google.script || !google.script.run) { initOwnerLoginForm_(); return; }' +
+  'var savedId = null;' +
+  'try { savedId = localStorage.getItem(STORAGE_KEY); } catch (e) {}' +
+  'if (savedId) {' +
+  'loginSnapshotHtml = root.innerHTML;' +
+  'loadDashboard_(savedId);' +
+  '} else {' +
+  'initOwnerLoginForm_();' +
+  '}' +
+  '});' +
+  '})();</script>';
 
 function renderOwnerLoginFormBody_(baseUrl, errors, notices, prevValues) {
   prevValues = prevValues || {};
@@ -853,7 +1072,10 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
     '<div class="owner-page-header">' +
     '<div><div class="owner-page-title">ผลการติดตามสถานะ</div>' +
     '<div class="owner-page-subtitle">ตรวจสอบความคืบหน้าและขั้นตอนถัดไปของผลงาน</div></div>' +
-    '<a class="owner-close-btn" target="_top" href="' + escapeHtml_(logoutUrl) + '">&#10005; ปิด</a>' +
+    // 2026-10-12 รอบ 19 — onclick ล้าง localStorage ของ SPA flow (OWNER_LOGIN_SPA_SCRIPT_) ก่อน navigate ออก
+    // กันเคส login ใหม่/คนอื่นมาเปิดเครื่องเดียวกันแล้วเจอ session ค้างใน localStorage (ปุ่มนี้ยัง navigate ไป
+    // logoutUrl เดิมเหมือนเดิมทุกประการ — มี user gesture จริงจากการคลิก ไม่ใช่ auto-redirect ไม่ติด sandbox)
+    '<a class="owner-close-btn" target="_top" href="' + escapeHtml_(logoutUrl) + '" onclick="try{localStorage.removeItem(\'owner_session_id\')}catch(e){}">&#10005; ปิด</a>' +
     '</div>';
 
   // 2. OWNER SUMMARY CARD — 3 ช่องตามที่ผู้ใช้ขอ (เจ้าของผลงาน/เลขทะเบียน/วันที่รับผลงาน) ไม่มีชื่อผลงานในการ์ด
