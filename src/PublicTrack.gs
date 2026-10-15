@@ -432,6 +432,56 @@ function buildOwnerFullWorkflowWithSkips_(steps, stationsMap, work) {
   return fixed;
 }
 
+/**
+ * Timeline แบบ 4 "milestone" สำหรับ Owner View / Public Search เท่านั้น (2026-10-15 ตามที่ผู้ใช้ขอ) — แทนที่
+ * buildOwnerFullWorkflowWithSkips_ (1-10 เต็ม + skip logic) ด้วยลำดับย่อยที่ผู้ใช้ทั่วไปเข้าใจง่ายกว่า ไม่ใช่
+ * state code ใหม่ใดๆ แค่ "จัดกลุ่ม" เลข state ภายในเดิมเพื่อแสดงผลเท่านั้น (ห้ามเปลี่ยน WorkflowMaster/
+ * business logic — ยืนยันจากผู้ใช้) mapping คงที่ตามที่ผู้ใช้กำหนด (ไม่ขึ้นกับข้อมูลชีต เพราะเป็นการจัดกลุ่มของ
+ * "หมายเลขขั้นตอนหลัก" 1-10 ที่ fix อยู่แล้วในระบบนี้เสมอ ไม่ใช่เดา):
+ *   milestone 1 = internal main step 1-2, milestone 2 = 3-6, milestone 3 = 7 (+ 7.x), milestone 4 = 8-10
+ * สถานะ current milestone คำนวณจาก work.current_station_key จริง (ไม่ใช่เดาจาก steps) เหมือน
+ * renderOwnerResultCard_ (OwnerAuth.gs) ทุกประการ — "ผลการพิจารณา" ที่ milestone 3 (ถ้ามี) อ่านจาก
+ * OWNER_STATE_LABELS_ ของ state ย่อย 7.1-7.4 ที่ resolve แล้วจริงใน steps (ไม่มีเลขทศนิยมหลุดออกมาเลย) ไม่ว่า
+ * เส้นทางจริงจะผ่าน state 8/9 จริงหรือข้ามตรงไป 10 (ผล 7 = ผ่าน/ไม่ผ่าน) milestone 4 ก็ยังเป็นก้อนเดียวกันเสมอ
+ * ไม่ต้องมี skip logic แบบเดิมอีกต่อไป (รวม 8/9/10 เป็นก้อนเดียวแล้วในตัว)
+ */
+var OWNER_MILESTONE_RANGES_ = [
+  { order: 1, min: 1, max: 2, label: 'สำนักงานเขตรับเรื่องของท่านแล้ว' },
+  { order: 2, min: 3, max: 6, label: 'เอกสารถูกส่งเข้าสู่กระบวนการพิจารณาแล้ว' },
+  { order: 3, min: 7, max: 7, label: 'ผลการพิจารณา' },
+  { order: 4, min: 8, max: 10, label: 'แจ้งผลให้หน่วยงานต้นสังกัด' },
+];
+
+function buildOwnerMilestoneTimeline_(steps, stationsMap, work) {
+  if (!steps) return null;
+  var currentStation = (stationsMap || {})[work.current_station_key] || null;
+  var currentMain = currentStation ? (parseInt(parentStepOrder_(currentStation.station_order || ''), 10) || 0) : 0;
+
+  var milestones = OWNER_MILESTONE_RANGES_.map(function (r) {
+    var state = currentMain >= r.min && currentMain <= r.max ? 'current'
+      : currentMain > r.max ? 'done' : 'upcoming';
+    var entry = { order: r.order, label: r.label, state: state, isLastStep: r.order === 4 };
+    if (r.order === 3) {
+      // ผลการพิจารณาที่ milestone 3 — อ่านจาก state ย่อย 7.1-7.4 ที่ resolve แล้วจริงใน steps เท่านั้น (ไม่เดา)
+      var resolved = steps.filter(function (s) { return parentStepOrder_(s.order) === '7' && s.order !== '7'; })[0] || null;
+      if (resolved) {
+        entry.outcome = {
+          text: OWNER_STATE_LABELS_[resolved.key] || resolved.name,
+          tone: subStatusToneClass_(resolved.name),
+        };
+      }
+    }
+    return entry;
+  });
+
+  var seenUpcoming = false;
+  milestones.forEach(function (m) {
+    if (m.state === 'upcoming') { m.isNext = !seenUpcoming; seenUpcoming = true; }
+  });
+
+  return milestones;
+}
+
 /** สีของ "สถานะย่อย/ผลการดำเนินงาน" ตามคำในชื่อ state จริง (2026-09-24 ตามที่ผู้ใช้ขอ) — เช็ค "ไม่ผ่าน" ก่อน
  *  "ผ่าน" เสมอ (ไม่งั้น "ไม่ผ่าน" จะแมตช์ "ผ่าน" ก่อนผิดความหมาย) ใช้หลักการเดียวกันกับทุก state ทศนิยม */
 function subStatusToneClass_(stationName) {

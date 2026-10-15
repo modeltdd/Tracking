@@ -973,27 +973,23 @@ function renderOwnerTimelineItem_(entry) {
 }
 
 /**
- * หัวข้อ Timeline ภาษาคน + รายการ Timeline แนวตั้ง แบบ dynamic ตามผลที่ขั้นตอน 7 (2026-10-08 รอบ 14 ตามที่
- * ผู้ใช้ขอ) — ใช้ buildOwnerFullWorkflowWithSkips_ (PublicTrack.gs, backbone คงที่ 1-10 + flag
- * .skipped/.isNextAfterSkip) เป็นแหล่งข้อมูลเดียวเหมือนเดิม แต่ตอนนี้ "กรอง" (filter) ขั้นตอนที่ .skipped=true
- * ออกจากรายการที่ render จริง ไม่ render เลย (ก่อนหน้านี้ รอบ 9 ยังโชว์ 8/9 แบบเกรย์เอาท์ "ไม่ใช้ในกรณีนี้" —
- * ผู้ใช้ขอเปลี่ยนเป็นซ่อนไปเลยไม่ให้เห็น node เลยในรอบนี้):
- * - ผล state 7 = "ผ่าน/ไม่ผ่าน" (7.1/7.4) → skippedMainSteps {8,9} ถูกกรองออก → เห็น 1,2,3,4,5,6,7,10 เชื่อมตรง
- * - ผล state 7 = "แก้ไข" (7.2/7.3) หรือยังไม่ถึง/ไม่มีผล (state 1-6) → skippedMainSteps ว่าง → เห็นครบ 1-10
- * ไม่มีข้อความ "ข้ามขั้นตอน 8-9" ใดๆ (ตามที่ผู้ใช้ขอข้อ "UI Behavior" — เพียงซ่อนเฉยๆ ไม่ต้องอธิบาย) 10 (ถัดไป
- * จริงทันทีหลัง 8,9 ที่ถูกกรอง) ยังขึ้น "ขั้นตอนถัดไป" ตามเดิม (isNextAfterSkip คำนวณไว้ก่อนกรองแล้ว ไม่กระทบ)
- * buildOwnerActualPathTimeline_/renderOwnerTimelineItem_ (เส้นทางจริงแบบเก่า) เลิกใช้ในหน้านี้แล้ว ไม่ได้ลบ
- * ไฟล์ทิ้ง
+ * หัวข้อ Timeline ภาษาคน + รายการ Timeline แบบ 4 "milestone" (2026-10-15 รอบ 23 ตามที่ผู้ใช้ขอ) — แทนที่
+ * Timeline แบบ 1-10 เต็ม + skip logic เดิม (buildOwnerFullWorkflowWithSkips_/renderOwnerFullDetailItem_ —
+ * เลิกใช้ในหน้านี้แล้ว ไม่ได้ลบไฟล์ทิ้ง) ด้วย buildOwnerMilestoneTimeline_/renderOwnerMilestoneItem_
+ * (PublicTrack.gs/Views.gs) ที่จัดกลุ่ม state ภายในเดิมเป็น 4 ขั้นตอนที่ผู้ใช้ทั่วไปเข้าใจง่ายกว่า (1-2→1,
+ * 3-6→2, 7(+7.x)→3, 8-10→4) ไม่มี skip logic/ข้อความ "ไม่ใช้ในกรณีนี้" อีกต่อไป (milestone 4 รวม 8/9/10 เป็น
+ * ก้อนเดียวในตัวอยู่แล้ว ไม่ว่าเส้นทางจริงจะผ่าน 8/9 จริงหรือข้ามตรงไป 10 ก็ตาม) — Public Search
+ * (renderPublicResultBody_, Views.gs) ใช้ builder/renderer ชุดเดียวกันนี้ด้วย ส่วนหน้า Staff/Admin
+ * (renderWorkDetailBody_) ยังใช้ Timeline 1-10 เต็มเดิมเหมือนเดิมทุกประการ ไม่ถูกแตะ
  *
- * 2026-10-08 รอบ 10 — ผู้ใช้ขอให้ส่วนนี้ยุบ/ขยายได้ (ค่าเริ่มต้นยุบ ให้หน้ากระชับ เห็นผลการพิจารณาก่อน) ใช้
- * <details>/<summary> มาตรฐานตามข้อ 9 ของ requirement (กระทบโค้ดเดิมน้อยที่สุด ไม่ต้องเขียน JS ไม่ reload หน้า
- * รองรับ keyboard Enter/Space + focus state + aria-expanded ให้เองโดย browser เป็น native semantics ของ
- * <details>/<summary> อยู่แล้ว) ไม่มี "open" attribute เลย = ปิดเป็นค่าเริ่มต้นเสมอทั้ง desktop/mobile (ข้อ 1/7)
- * ยังใช้ class .owner-tl-section-title เดิมสำหรับหัวข้อ (ไม่กระทบเทส/โค้ดอื่นที่อ้าง class นี้)
+ * 2026-10-08 รอบ 10 — ส่วนนี้ยุบ/ขยายได้ (ค่าเริ่มต้นยุบ ให้หน้ากระชับ เห็นผลการพิจารณาก่อน) ใช้
+ * <details>/<summary> มาตรฐาน ไม่ต้องเขียน JS ไม่ reload หน้า รองรับ keyboard Enter/Space + focus state +
+ * aria-expanded ให้เองโดย browser เป็น native semantics ของ <details>/<summary> อยู่แล้ว ไม่มี "open"
+ * attribute เลย = ปิดเป็นค่าเริ่มต้นเสมอทั้ง desktop/mobile — ยังใช้ class .owner-tl-section-title เดิมสำหรับ
+ * หัวข้อ (ไม่กระทบเทส/โค้ดอื่นที่อ้าง class นี้)
  */
-function renderOwnerTimelineSection_(fullWithSkips) {
-  if (!fullWithSkips) return '';
-  var visibleEntries = fullWithSkips.filter(function (entry) { return !entry.skipped; });
+function renderOwnerTimelineSection_(milestones) {
+  if (!milestones) return '';
   return '' +
     '<details class="owner-tl-toggle">' +
     '<summary class="owner-tl-toggle-summary">' +
@@ -1003,7 +999,7 @@ function renderOwnerTimelineSection_(fullWithSkips) {
     '</span><span class="owner-tl-toggle-arrow">&#9660;</span>' +
     '</summary>' +
     '<div class="owner-tl-wrap"><div class="pub-timeline">' +
-    visibleEntries.map(renderOwnerFullDetailItem_).join('') + '</div></div>' +
+    milestones.map(renderOwnerMilestoneItem_).join('') + '</div></div>' +
     '</details>';
 }
 
@@ -1211,13 +1207,13 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   // next state ไม่ได้ถูกลบออกจากระบบ ยังคำนวณอยู่ใน Timeline เหมือนเดิมทุกประการ แค่ไม่ render เป็นการ์ดแยกแล้ว)
   var resultCardHtml = renderOwnerResultCard_(work, info, data.currentStation, data.stationsMap);
 
-  // 5/6. TIMELINE — Timeline หลักชุดเดียวของหน้า (2026-10-08 รอบ 9 ตามที่ผู้ใช้ขอ) โชว์ครบ 1-10 ขั้นตอนเสมอ
-  // (buildOwnerFullWorkflowWithSkips_ เดิม ก่อนรอบนี้ใช้แสดงในปุ่ม "ดูรายละเอียด 10 ขั้นตอน" ที่ซ้ำกับ Timeline
-  // เส้นทางจริงด้านบน — ตอนนี้กลายเป็น Timeline เดียวของหน้า buildOwnerActualPathTimeline_ เลิกใช้ในหน้านี้แล้ว)
-  var fullWithSkips = buildOwnerFullWorkflowWithSkips_(data.steps, data.stationsMap, work);
+  // 5/6. TIMELINE — Timeline หลักชุดเดียวของหน้า (2026-10-15 รอบ 23 ตามที่ผู้ใช้ขอ) โชว์ 4 milestone เสมอ
+  // (ดูคอมเมนต์เต็มที่ renderOwnerTimelineSection_) — buildOwnerFullWorkflowWithSkips_/
+  // buildOwnerActualPathTimeline_ (1-10 เต็มแบบเดิม) เลิกใช้ในหน้านี้แล้ว ไม่ได้ลบไฟล์ทิ้ง
+  var ownerMilestones = buildOwnerMilestoneTimeline_(data.steps, data.stationsMap, work);
   // 2026-10-08 รอบ 3 — ผู้ใช้ขอตัดกล่อง "ⓘ ข้อมูลเดิม" ออกจากหน้านี้โดยเฉพาะ (หน้าสาธารณะ/หน้ารายละเอียด
   // เจ้าหน้าที่/Workflow Checklist ยังมีเหมือนเดิม ไม่แตะ renderPubLegacyInfoBox_ เอง)
-  var timelineHtml = renderOwnerTimelineSection_(fullWithSkips);
+  var timelineHtml = renderOwnerTimelineSection_(ownerMilestones);
 
   var noteHtml = '';
   if (work.current_status_public === 'need_revision' && data.revisionInfo) {

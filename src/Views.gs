@@ -1433,7 +1433,12 @@ function renderPublicResultBody_(work, data, baseUrl) {
   ]);
 
   var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
-  var timelineHtml = renderPubTimelineSection_(data.fixedTimeline);
+  // 2026-10-15 ตามที่ผู้ใช้ขอ — Public Search (หน้านี้) เปลี่ยนจาก Timeline เต็ม 1-10 (renderPubTimelineSection_
+  // เดิม) เป็น 4 milestone แบบเข้าใจง่าย (buildOwnerMilestoneTimeline_, PublicTrack.gs) เหมือน Owner Dashboard
+  // — หน้า Staff/Admin (renderWorkDetailBody_) ยังใช้ renderPubTimelineSection_(data.fixedTimeline) เดิมเป๊ะ
+  // ไม่ถูกแตะ (คนละจุดเรียก ไม่ใช่ shared call site)
+  var ownerMilestones = buildOwnerMilestoneTimeline_(data.steps, data.stationsMap, work);
+  var timelineHtml = renderOwnerMilestoneTimelineSection_(ownerMilestones);
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
   var ownerHtml = '' +
@@ -1509,6 +1514,47 @@ function renderPubFixedTimelineItem_(entry) {
 
 function renderPubFixedTimeline_(fixedSteps) {
   return '<div class="pub-timeline">' + fixedSteps.map(renderPubFixedTimelineItem_).join('') + '</div>';
+}
+
+/**
+ * รายการเดียวของ Timeline 4 "milestone" (2026-10-15 ตามที่ผู้ใช้ขอ) — ใช้เฉพาะ Owner Dashboard/Public Search
+ * (buildOwnerMilestoneTimeline_, PublicTrack.gs) หน้า Staff/Admin (renderWorkDetailBody_) ยังใช้
+ * renderPubFixedTimelineItem_/buildFixedMainTimeline_ เดิม 1-10 เต็มไม่ถูกแตะเลย ไอคอน/badge/
+ * "รอดำเนินการ"/"ขั้นตอนถัดไป" ใช้ convention เดียวกับ Timeline เดิมทุกจุด (reuse class .pub-tl-*) ผลการพิจารณา
+ * ที่ milestone 3 (entry.outcome, ถ้ามี) ใช้ไอคอน+สีตาม tone เดียวกับการ์ด "ผลการพิจารณา" (owner-result-outcome-*)
+ */
+function renderOwnerMilestoneItem_(entry) {
+  var icon = entry.state === 'current' ? '&#9679;' : (entry.state === 'done' ? '&#10003;' : '&#9675;');
+  var badges = '';
+  if (entry.state === 'current') badges += '<span class="pub-tl-badge">สถานะปัจจุบัน</span>';
+  if (entry.isLastStep) badges += '<span class="pub-tl-badge pub-tl-badge-last">ขั้นตอนสุดท้าย</span>';
+
+  var outcomeHtml = '';
+  if (entry.outcome) {
+    var iconByTone = { done: '&#10003;', danger: '&#10007;', revision: '&#9888;', pending: '' };
+    outcomeHtml = '<div class="owner-result-outcome owner-result-outcome-' + entry.outcome.tone + '">' +
+      '<span class="owner-result-outcome-icon">' + iconByTone[entry.outcome.tone] + '</span> ' + escapeHtml_(entry.outcome.text) + '</div>';
+  }
+
+  var metaHtml = entry.state === 'upcoming'
+    ? '<span class="pub-tl-meta pub-tl-meta-pending">' + (entry.isNext ? 'ขั้นตอนถัดไป' : 'รอดำเนินการ') + '</span>'
+    : '';
+
+  return '<div class="pub-tl-item pub-tl-' + entry.state + '">' +
+    '<span class="pub-tl-icon">' + icon + '</span>' +
+    '<span class="pub-tl-text">' +
+    '<div class="owner-tl-station-name">ขั้นตอนที่ ' + entry.order + ' ' + escapeHtml_(entry.label) + badges + '</div>' +
+    outcomeHtml + metaHtml +
+    '</span></div>';
+}
+
+/** Timeline 4 milestone แบบไม่ยุบ/ขยาย (ใช้หน้า Public Search — ต่างจาก Owner Dashboard ที่มี
+ *  <details>/<summary> ยุบเก็บได้ของตัวเอง ดู renderOwnerTimelineSection_, OwnerAuth.gs) */
+function renderOwnerMilestoneTimelineSection_(milestones) {
+  if (!milestones) return '';
+  return '<div class="owner-tl-section-title">เส้นทางการดำเนินงาน</div>' +
+    '<div class="owner-tl-wrap"><div class="pub-timeline">' +
+    milestones.map(renderOwnerMilestoneItem_).join('') + '</div></div>';
 }
 
 /** ห่อ Timeline 10 ขั้นตอนไว้ใน <details open> — เปิดแสดงครบทุกขั้นตอนตามค่าเริ่มต้น (ข้อ 11: Desktop ต้องเห็น
