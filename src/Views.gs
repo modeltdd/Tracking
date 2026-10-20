@@ -540,7 +540,7 @@ function renderForwardListBody_(org, works, stationsMap, baseUrl) {
 }
 
 /** หน้าทะเบียนผลงานทั้งหมด (เฉพาะ ผู้รับผิดชอบ/Admin) — ช่องค้นหา + ตัวกรองสถานะ + ตาราง + pagination */
-function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts, baseUrl, flashMessage) {
+function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts, baseUrl, flashMessage, resultBuckets) {
   var flashHtml = flashMessage ? '<div class="success-banner">' + escapeHtml_(flashMessage) + '</div>' : '';
   var viewToggleHtml = renderRegistryViewToggle_(rp, baseUrl);
 
@@ -557,6 +557,21 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
       buildRegistryQuery_(rp, { bucket: t.key, p: 1 }) + '">' +
       '<span class="registry-tile-count">' + t.count + '</span><span class="registry-tile-label">' + escapeHtml_(t.label) + '</span></a>';
   }).join('') + '</div>';
+
+  // 2026-10-20 ตามที่ผู้ใช้ขอ — การ์ดสรุป "ผลการพิจารณา" 4 ช่อง (ผ่าน/รอแก้ไข 2 เดือน/รอแก้ไข 6 เดือน/ไม่ผ่าน)
+  // คลิกกรองตารางผ่าน rp.result เดิม (reuse ตัวกรองที่มีอยู่แล้ว ไม่ใช่ filter ใหม่) กดการ์ดที่ active อยู่แล้วซ้ำ
+  // = เคลียร์ตัวกรองนี้กลับไปแสดงทั้งหมด (ตามที่ผู้ใช้ขอ "กดซ้ำ...กลับมาแสดงทั้งหมด") จำนวนในแต่ละช่องมาจาก
+  // resultBuckets (computeRegistryResultBuckets_, Registry.gs) ซึ่งคำนวณตาม filter ปัจจุบันของหน้าอยู่แล้ว
+  var resultTilesHtml = resultBuckets ? '' +
+    '<div class="registry-result-section-title">ผลการพิจารณา</div>' +
+    '<div class="registry-result-tiles">' + REGISTRY_RESULT_TILES_.map(function (t) {
+      var isActive = rp.result === t.value;
+      var nextResult = isActive ? '' : t.value;
+      return '<a class="registry-result-tile registry-result-tile-' + t.tone + (isActive ? ' active' : '') + '" target="_top" href="' + baseUrl + '?' +
+        buildRegistryQuery_(rp, { result: nextResult, p: 1 }) + '">' +
+        '<span class="registry-result-tile-count">' + (resultBuckets[t.value] || 0) + '</span>' +
+        '<span class="registry-result-tile-label">' + escapeHtml_(t.label) + '</span></a>';
+    }).join('') + '</div>' : '';
 
   var stationsMap = getStationsMap_(ss);
   var allStates = listStationsSorted_(ss);
@@ -737,7 +752,7 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
       (hasFilter ? ' จาก ' + totalAllCount : '') + ')</span>' + nextLink + '</div>';
   }
 
-  return flashHtml + viewToggleHtml + tilesHtml +
+  return flashHtml + viewToggleHtml + tilesHtml + resultTilesHtml +
     '<details class="excel-filter-details">' + filterSummaryBarHtml + filterFormHtml + '</details>' +
     '<p class="hint" style="margin:10px 0">คลิก "ดูรายละเอียด/จัดการ" — เห็นได้ทุกรายการ แก้สถานะได้เฉพาะที่หน่วยงานตนรับผิดชอบ ณ สถานะปัจจุบันเท่านั้น</p>' +
     '<div class="excel-sheet">' + tableHtml + '</div>' + pagerHtml;
@@ -2592,6 +2607,28 @@ var STAFF_CSS_ = '' +
   '.registry-tile-label{display:block;font-size:.72rem;color:var(--muted);margin-top:2px;}' +
   '.registry-tile.active{border-color:var(--teal);background:#e8f6f6;}' +
   '.registry-tile.active .registry-tile-count{color:var(--teal);}' +
+  // 2026-10-20 ตามที่ผู้ใช้ขอ — การ์ดสรุป "ผลการพิจารณา" 4 ช่อง สีอ่อน/professional (ข้อ 5) desktop แถวเดียว
+  // 4 ช่อง มือถือ 2x2 (640px) และ 1 column ถ้าจอเล็กมาก (380px)
+  '.registry-result-section-title{font-size:.8rem;font-weight:700;color:var(--navy);margin:4px 0 8px;}' +
+  '.registry-result-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px;}' +
+  '@media (max-width:640px){.registry-result-tiles{grid-template-columns:repeat(2,1fr);}}' +
+  '@media (max-width:380px){.registry-result-tiles{grid-template-columns:1fr;}}' +
+  '.registry-result-tile{display:block;border-radius:10px;padding:10px 12px;text-decoration:none;text-align:center;border:1px solid transparent;}' +
+  '.registry-result-tile-count{display:block;font-size:1.3rem;font-weight:700;}' +
+  '.registry-result-tile-label{display:block;font-size:.72rem;margin-top:2px;}' +
+  '.registry-result-tile.active{border-width:2px;box-shadow:0 1px 4px rgba(20,40,55,.12);}' +
+  '.registry-result-tile-pass{background:#e8f6ee;border-color:#cdeadb;}' +
+  '.registry-result-tile-pass .registry-result-tile-count,.registry-result-tile-pass .registry-result-tile-label{color:#1f7a40;}' +
+  '.registry-result-tile-pass.active{border-color:#2f9e57;}' +
+  '.registry-result-tile-revision2{background:#fff8e1;border-color:#f2e2ad;}' +
+  '.registry-result-tile-revision2 .registry-result-tile-count,.registry-result-tile-revision2 .registry-result-tile-label{color:#8a6400;}' +
+  '.registry-result-tile-revision2.active{border-color:#e3b341;}' +
+  '.registry-result-tile-revision6{background:#fff1e6;border-color:#f3d2b3;}' +
+  '.registry-result-tile-revision6 .registry-result-tile-count,.registry-result-tile-revision6 .registry-result-tile-label{color:#95430a;}' +
+  '.registry-result-tile-revision6.active{border-color:#e08a3c;}' +
+  '.registry-result-tile-fail{background:#fdecec;border-color:#f3cfcf;}' +
+  '.registry-result-tile-fail .registry-result-tile-count,.registry-result-tile-fail .registry-result-tile-label{color:#b42318;}' +
+  '.registry-result-tile-fail.active{border-color:var(--danger);}' +
   '.pager{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px;font-size:.8rem;flex-wrap:wrap;}' +
   '.pager a{color:var(--teal);text-decoration:none;font-weight:600;}' +
   '.muted-link{color:var(--muted);}' +

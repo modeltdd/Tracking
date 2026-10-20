@@ -13,6 +13,17 @@
 var REGISTRY_PER_PAGE_OPTIONS_ = [10, 25, 50, 100];
 var REGISTRY_RESULT_OPTIONS_ = ['ผ่าน', 'ไม่ผ่าน', 'แก้ไข 2 เดือน', 'แก้ไข 6 เดือน'];
 
+// 2026-10-20 ตามที่ผู้ใช้ขอ — การ์ดสรุปผลการพิจารณา 4 ช่องบนหัวหน้าทะเบียน "value" คือค่าจริงที่เก็บใน
+// Works.evaluation_result เป๊ะ (เขียนตอน transition ผ่าน Actions.gs, result_value ของ WORKFLOW_TRANSITIONS_SEED
+// ที่ map มาจาก state 7.1-7.4 จริง — ดู Constants.gs) ไม่ใช่ข้อความหน้าจอที่เดาขึ้นมาใหม่ "label" ต่างจาก value
+// เฉพาะ 2 ช่องกลาง (เติม "รอ" นำหน้าให้อ่านง่ายขึ้นตามที่ผู้ใช้ขอ) — ไม่กระทบค่าจริงในฐานข้อมูล/ตัวกรองเดิมเลย
+var REGISTRY_RESULT_TILES_ = [
+  { value: 'ผ่าน', label: 'ผ่าน', tone: 'pass' },
+  { value: 'แก้ไข 2 เดือน', label: 'รอแก้ไข 2 เดือน', tone: 'revision2' },
+  { value: 'แก้ไข 6 เดือน', label: 'รอแก้ไข 6 เดือน', tone: 'revision6' },
+  { value: 'ไม่ผ่าน', label: 'ไม่ผ่าน', tone: 'fail' },
+];
+
 /** เฉพาะบัญชี staff ที่ login แล้ว (Admin หรือ ผู้รับผิดชอบ — ระบบมีแค่ 2 role นี้ตั้งแต่รวม role 2026-09-08) */
 function canAccessRegistry_(user) {
   return user.role === 'Admin' || user.role === 'ผู้รับผิดชอบ';
@@ -43,6 +54,21 @@ function computeRegistryBuckets_(ss, works) {
     if (dueBucketFor_(history, w, station) === 'overdue') { buckets.overdue++; overdueIds[w.work_id] = true; }
   });
   return { counts: buckets, overdueIds: overdueIds };
+}
+
+/** นับจำนวนตามผลการพิจารณา 4 ช่อง (2026-10-20 ตามที่ผู้ใช้ขอ) — ต้องสัมพันธ์กับ filter ปัจจุบันของหน้า (จังหวัด/
+ *  ปีงบ/เดือน/หน่วยงาน ฯลฯ) "ยกเว้น" ตัวกรองผลการพิจารณาเอง (rp.result) เพื่อให้เห็นจำนวนของทุกช่องพร้อมกันเสมอ
+ *  แม้กำลังเลือกช่องใดช่องหนึ่งอยู่ก็ตาม (เหมือนจุดประสงค์ของ tile filter ทั่วไป) ใช้ filterRegistryWorks_ เดิม
+ *  ทุกประการ ไม่เขียน logic กรองซ้ำ */
+function computeRegistryResultBuckets_(all, rp, overdueIds) {
+  var rpNoResult = {};
+  for (var k in rp) rpNoResult[k] = rp[k];
+  rpNoResult.result = '';
+  var scoped = filterRegistryWorks_(all, rpNoResult, overdueIds);
+  var counts = {};
+  REGISTRY_RESULT_TILES_.forEach(function (t) { counts[t.value] = 0; });
+  scoped.forEach(function (w) { if (counts.hasOwnProperty(w.evaluation_result)) counts[w.evaluation_result]++; });
+  return counts;
 }
 
 /** ปีงบประมาณไทย (ต.ค.-ก.ย.) ของวันที่ใดๆ — ตั้งชื่อตามปีปลาย (เช่น ต.ค.2568-ก.ย.2569 = ปีงบ 2569) ใช้กับ
@@ -178,8 +204,9 @@ function renderRegistryRoute_(ss, user, params, baseUrl, flashMessage) {
       user, 'registry', baseUrl);
   }
 
+  var resultBuckets = computeRegistryResultBuckets_(all, rp, bucketData.overdueIds);
   return renderStaffPage_('ทะเบียนผลงานทั้งหมด',
-    renderRegistryListBody_(ss, pageResult, rp, all.length, bucketData.counts, baseUrl, flashMessage), user, 'registry', baseUrl);
+    renderRegistryListBody_(ss, pageResult, rp, all.length, bucketData.counts, baseUrl, flashMessage, resultBuckets), user, 'registry', baseUrl);
 }
 
 /**
