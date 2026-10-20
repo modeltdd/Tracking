@@ -1618,6 +1618,16 @@ function renderScanWorkBody_(ss, work, eligible, eligibleTransitions, baseUrl, t
     '<div class="pub-name-received">วันที่รับผลงาน: ' + escapeHtml_(formatOwnerReceivedDate_(work.received_date)) + '</div>' +
     '</div>';
 
+  // 2026-10-20 — "ข้อมูลหนังสือนำส่ง" (เลขหนังสือนำส่ง/วันที่ส่งหนังสือ/วันที่ธุรการรับเรื่อง) แสดงเฉพาะตอนมี
+  // ข้อมูลจริงอย่างน้อย 1 ช่อง (งานเก่า/งานที่ยังไม่มีหนังสือนำส่งจะไม่เห็น section นี้เลย ไม่โชว์ "-" ว่างเปล่า)
+  var hasForwardingInfo = !!(work.forwarding_book_no || work.forwarding_book_date || work.admin_received_date);
+  var forwardingInfoHtml = hasForwardingInfo
+    ? '<div class="wf-section-title">ข้อมูลหนังสือนำส่ง</div>' +
+      (work.forwarding_book_no ? '<div class="detail-row"><span class="detail-label">เลขหนังสือนำส่ง</span><span class="detail-value">' + escapeHtml_(work.forwarding_book_no) + '</span></div>' : '') +
+      (work.forwarding_book_date ? '<div class="detail-row"><span class="detail-label">วันที่ส่งหนังสือ</span><span class="detail-value">' + escapeHtml_(formatDateDDMMYYYYBuddhist_(work.forwarding_book_date)) + '</span></div>' : '') +
+      (work.admin_received_date ? '<div class="detail-row"><span class="detail-label">วันที่ธุรการรับเรื่อง</span><span class="detail-value">' + escapeHtml_(formatDateDDMMYYYYBuddhist_(work.admin_received_date)) + '</span></div>' : '')
+    : '';
+
   var heroHtml = renderPubHero_(work, data.currentStation, stationsMap, data.steps);
 
   // B. เปลี่ยนสถานะ — checklist: done -> current -> [ปุ่มกดได้ x N จาก eligibleTransitions] -> locked (steps
@@ -1700,7 +1710,7 @@ function renderScanWorkBody_(ss, work, eligible, eligibleTransitions, baseUrl, t
     '<div class="pub-compact">' +
     errorHtml +
     '<div class="detail-card">' +
-    nameBlockHtml + heroHtml +
+    nameBlockHtml + forwardingInfoHtml + heroHtml +
     '<div class="wf-section-title">เปลี่ยนสถานะ</div>' +
     '<div class="wf-section-hint">กดสถานะถัดไปเพื่ออัปเดตเอกสาร</div>' +
     checklistHtml + moreActionsHtml +
@@ -1904,6 +1914,17 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '</div>' +
     '<div class="field" id="reg-committee-field" style="display:none">' +
     '<label>คณะกรรมการที่รับผิดชอบ</label><div id="reg-committee-info"></div></div>' +
+    '</div>' +
+
+    // 2026-10-20 — "ข้อมูลหนังสือนำส่ง" (ไม่บังคับกรอก) อยู่ก่อนหัวข้อ "ข้อมูลผลงาน" ตามที่ผู้ใช้ขอ 3 ช่อง
+    // สัดส่วน 40/30/30 บน desktop (.field-row-forwarding) เรียงลงมา 1 column บนมือถือ 2 ช่องวันที่ใช้
+    // <input type="date"> ให้เลือกจาก Calendar ล้วน ไม่ต้องพิมพ์เอง
+    '<div class="reg-section"><div class="reg-section-title">ข้อมูลหนังสือนำส่ง</div>' +
+    '<div class="field-row field-row-forwarding">' +
+    '<div class="field field-fwd-no"><label>เลขหนังสือนำส่ง</label><input class="input" name="reg_forwarding_book_no" value="' + v('forwarding_book_no') + '" placeholder="เช่น สธ 0211/1234"></div>' +
+    '<div class="field field-fwd-date"><label>วันที่ส่งหนังสือ</label><input class="input" type="date" name="reg_forwarding_book_date" value="' + v('forwarding_book_date') + '"></div>' +
+    '<div class="field field-admin-date"><label>วันที่ธุรการรับเรื่อง</label><input class="input" type="date" name="reg_admin_received_date" value="' + v('admin_received_date') + '"></div>' +
+    '</div>' +
     '</div>' +
 
     // 2026-10-07 ผู้ใช้ขอเอา "ประเภทผลงาน" ออกจากฟอร์มทั้งหมด — เหลือแค่ "ชื่อผลงาน" เป็นหัวข้อแรก/อย่างเดียว
@@ -2158,7 +2179,13 @@ var WF_CONFIRM_TOGGLE_SCRIPT_ = '' +
 
 /** หน้าสำเร็จหลังลงทะเบียน — แสดงเลขติดตาม + QR ให้พิมพ์แปะเอกสาร */
 function renderRegisterSuccessBody_(result, baseUrl) {
+  // 2026-10-20 — เตือนไม่บล็อกการบันทึก (ข้อ 10): วันที่ธุรการรับเรื่องก่อนวันที่ส่งหนังสือ — บันทึกไปแล้วจริง
+  // แค่เตือนให้ตรวจสอบ ไม่ย้อนกลับไปกันบันทึกเหมือน error ปกติ
+  var dateWarningHtml = result.dateOrderWarning
+    ? '<div class="warning-banner">วันที่ธุรการรับเรื่องไม่ควรก่อนวันที่ส่งหนังสือ กรุณาตรวจสอบข้อมูล</div>'
+    : '';
   return '' +
+    dateWarningHtml +
     '<div class="success-card">' +
     '<p class="success-title">ลงทะเบียนสำเร็จ</p>' +
     '<p class="tracking-big">' + escapeHtml_(result.tracking_no) + '</p>' +
@@ -2507,6 +2534,11 @@ var STAFF_CSS_ = '' +
   '.field-row-position{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;}' +
   '.field-row-position .field{margin-bottom:0;}' +
   '.field-branch select:disabled{background:#f2f4f6;color:var(--muted);}' +
+  // 2026-10-20 — "ข้อมูลหนังสือนำส่ง" เลขหนังสือนำส่ง | วันที่ส่งหนังสือ | วันที่ธุรการรับเรื่อง สัดส่วน
+  // 40:30:30 บน desktop ตามที่ผู้ใช้ขอ (ให้ fraction ตรงตัวเลยเพื่อสัดส่วนแม่นกว่า 1.4fr/1fr/1fr)
+  '.field-row-forwarding{display:grid;grid-template-columns:4fr 3fr 3fr;gap:10px;}' +
+  '.field-row-forwarding .field{margin-bottom:0;}' +
+  '@media (max-width:768px){.field-row-forwarding{grid-template-columns:1fr;}}' +
   // ข้อมูลหน่วยงาน (2026-10-07, Master Data เขตสุขภาพที่ 11) — ประเภทหน่วยงาน:ชื่อหน่วยงาน สัดส่วน 30:70 บน desktop
   // ประเภทหน่วยงาน | ชื่อหน่วยงาน | จังหวัด บรรทัดเดียวกันบน desktop (2026-10-07 รอบ 2 แก้ตาม requirement จริง —
   // เดิมจังหวัดอยู่คนละ row) สัดส่วน 25:50:25 ด้วย CSS Grid ตามที่ระบุ (relative position ของ .org-suggest ต้อง
@@ -2547,6 +2579,8 @@ var STAFF_CSS_ = '' +
   '.error-banner{background:#fdecec;border:1px solid var(--danger);color:var(--danger);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:.85rem;}' +
   '.error-banner ul{margin:6px 0 0;padding-left:18px;}' +
   '.success-banner{background:#e8f6ee;border:1px solid #2f9e57;color:#1f7a40;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:.85rem;font-weight:600;}' +
+  // 2026-10-20 — เตือนไม่บล็อก (เช่น วันที่ธุรการรับเรื่องก่อนวันที่ส่งหนังสือ) สีเหลือง/ส้มต่างจาก error สีแดง
+  '.warning-banner{background:#fff6e5;border:1px solid var(--revision);color:#8a5a00;border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:.85rem;}' +
   '.registry-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px;}' +
   '.registry-tile{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-decoration:none;text-align:center;}' +
   '.registry-tile-count{display:block;font-size:1.3rem;font-weight:700;color:var(--navy);}' +

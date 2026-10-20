@@ -42,6 +42,11 @@ function registerNewWork_(ss, user, e) {
   values.medical_domain = ''; // เลิกใช้แล้ว (2026-09-15 รอบ 3) — คอลัมน์เดิมยังอยู่ เขียนค่าว่างเสมอ
   values.specialty = String(p.reg_specialty || '').trim();
   values.organization_id = String(p.reg_organization_id || '').trim();
+  // 2026-10-20 — ส่วน "ข้อมูลหนังสือนำส่ง" (ไม่บังคับกรอก) เก็บ string ดิบไว้ใน values เสมอ (คืนค่าตอน error
+  // ให้ฟอร์ม <input type="date"> แสดงค่าเดิมถูกต้อง — ต้องเป็น "YYYY-MM-DD" ดิบ ไม่ใช่ Date object/dd-mm-yyyy)
+  values.forwarding_book_no = String(p.reg_forwarding_book_no || '').trim();
+  values.forwarding_book_date = String(p.reg_forwarding_book_date || '').trim();
+  values.admin_received_date = String(p.reg_admin_received_date || '').trim();
   // 2026-09-24: คำนำหน้าชื่อเปลี่ยนจาก text input เป็น dropdown — เลือก "อื่น ๆ" คู่กับช่อง custom
   // title_name ยัง free-text ไม่ validate ค่าตายตัวเหมือนเดิม
   if (values.title_name === 'อื่น ๆ' && p.reg_title_name_other) {
@@ -73,6 +78,22 @@ function registerNewWork_(ss, user, e) {
   REGISTER_REQUIRED_FIELDS_.forEach(function (f) {
     if (!values[f.key]) errors.push(f.label + 'ห้ามว่าง');
   });
+
+  // 2026-10-20 — วันที่ส่งหนังสือ/วันที่ธุรการรับเรื่อง ไม่บังคับกรอก แต่ถ้ากรอกต้องเป็นวันที่จริง (input
+  // type="date" ส่ง "YYYY-MM-DD" มาอยู่แล้วตามปกติ เช็คซ้ำฝั่ง server เผื่อ client ถูกแก้ไข/ปิด JS)
+  var forwardingBookDateObj = null;
+  if (values.forwarding_book_date) {
+    forwardingBookDateObj = new Date(values.forwarding_book_date);
+    if (isNaN(forwardingBookDateObj.getTime())) { errors.push('วันที่ส่งหนังสือไม่ถูกต้อง'); forwardingBookDateObj = null; }
+  }
+  var adminReceivedDateObj = null;
+  if (values.admin_received_date) {
+    adminReceivedDateObj = new Date(values.admin_received_date);
+    if (isNaN(adminReceivedDateObj.getTime())) { errors.push('วันที่ธุรการรับเรื่องไม่ถูกต้อง'); adminReceivedDateObj = null; }
+  }
+  // ถ้ามีทั้งสองวันที่และลำดับผิดปกติ (ธุรการรับเรื่องก่อนวันที่ส่งหนังสือ) แค่ "เตือน" ไม่บังคับห้ามบันทึก
+  // (ผู้ใช้ยืนยันแล้ว — อาจมีกรณีย้อนหลังพิเศษจริงในทางปฏิบัติ) ส่งต่อ flag ไปแสดงเตือนที่หน้าสำเร็จแทน
+  var dateOrderWarning = !!(forwardingBookDateObj && adminReceivedDateObj && adminReceivedDateObj.getTime() < forwardingBookDateObj.getTime());
 
   // 2026-09-15 รอบ 3: ตำแหน่งต้อง valid ตาม MasterPositions จริง — "ด้าน/สาขา" เป็น dropdown ชั้นเดียว generic
   // ผูกกับตำแหน่งที่เลือก (MasterSpecialties.position_code) ไม่ใช่แค่นายแพทย์อีกต่อไป (พบจากข้อมูลจริง 244 ราย
@@ -163,6 +184,9 @@ function registerNewWork_(ss, user, e) {
     committee_code: values.committee_code,
     organization_id: values.organization_id,
     organization_code: values.organization_code,
+    forwarding_book_no: values.forwarding_book_no,
+    forwarding_book_date: forwardingBookDateObj || '',
+    admin_received_date: adminReceivedDateObj || '',
   });
 
   var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
@@ -191,6 +215,7 @@ function registerNewWork_(ss, user, e) {
     tracking_no: trackingNo,
     qr_token: qrToken,
     qr_image_url: buildQrImageUrl_(ss, qrToken),
+    dateOrderWarning: dateOrderWarning,
   };
 }
 

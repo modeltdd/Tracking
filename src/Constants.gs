@@ -66,6 +66,10 @@ SHEET_HEADERS[SHEET.WORKS] = [
   // (organization_id = รหัสหน่วยงาน9หลัก) org_from/province เดิมยังเขียนค่าเหมือนเดิมทุกประการ (ชื่อ/จังหวัดจริง
   // จาก master ที่เลือก) ไม่ทำให้ข้อมูลเดิมเสีย งานเก่าก่อนหน้านี้จะมีค่าว่างใน 2 คอลัมน์นี้ (ยังไม่เคยผูก master)
   'organization_id', 'organization_code',
+  // เพิ่ม 2026-10-20 (ฟอร์ม Admin "รับเอกสารใหม่" — ส่วน "ข้อมูลหนังสือนำส่ง") — ฟิลด์ใหม่จริง ไม่เคยมีในระบบ
+  // มาก่อน ไม่บังคับกรอก (งานเก่า/งานที่ยังไม่มีหนังสือนำส่งจะมีค่าว่าง) forwarding_book_date/admin_received_date
+  // เก็บเป็น Date จริง (ไม่ใช่ string dd/mm/yyyy) — ความหมายคนละอย่างกับ received_date เดิม ห้ามใช้แทนกัน
+  'forwarding_book_no', 'forwarding_book_date', 'admin_received_date',
 ];
 SHEET_HEADERS[SHEET.STATUS_HISTORY] = [
   'history_id', 'work_id', 'tracking_no', 'action', 'from_station', 'to_station', 'from_org', 'to_org',
