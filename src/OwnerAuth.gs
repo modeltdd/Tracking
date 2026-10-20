@@ -990,12 +990,13 @@ function renderOwnerTimelineItem_(entry) {
  */
 function renderOwnerTimelineSection_(milestones) {
   if (!milestones) return '';
+  // 2026-10-20 ตามที่ผู้ใช้ขอ — ตัดข้อความรอง "ดูขั้นตอนทั้งหมดของผลงาน" ใต้หัวข้อออก (คำอธิบายทั่วไป
+  // ซ้ำซ้อน) เหลือแค่หัวข้อ "เส้นทางการดำเนินงาน" เดี่ยวๆ (class .owner-tl-toggle-sub ใน CSS ยังอยู่ ไม่ลบ)
   return '' +
     '<details class="owner-tl-toggle">' +
     '<summary class="owner-tl-toggle-summary">' +
     '<span class="owner-tl-toggle-text">' +
     '<span class="owner-tl-section-title">เส้นทางการดำเนินงาน</span>' +
-    '<span class="owner-tl-toggle-sub">ดูขั้นตอนทั้งหมดของผลงาน</span>' +
     '</span><span class="owner-tl-toggle-arrow">&#9660;</span>' +
     '</summary>' +
     '<div class="owner-tl-wrap"><div class="pub-timeline">' +
@@ -1177,10 +1178,12 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   // หน้า "หลัก"/"ก่อนหน้า" อื่นแยกให้กลับไปจริง (Owner Dashboard เป็นหน้าเดียวหลัง login ทั้งหมด ตามที่ยืนยันไว้
   // ตั้งแต่รอบก่อน) การกด "ปิด" จึงยังพากลับไปหน้า Login เหมือนเดิมทุกประการ แค่เปลี่ยน label/สี ไม่ใช้
   // window.close() (ซึ่งจะพังถ้า browser ไม่อนุญาตปิดแท็บที่ไม่ได้เปิดด้วย script)
+  // 2026-10-20 ตามที่ผู้ใช้ขอ — ตัดข้อความรอง "ตรวจสอบความคืบหน้าและขั้นตอนถัดไปของผลงาน" ใต้หัวข้อ
+  // ออกทั้งหมด (คำอธิบายทั่วไปซ้ำซ้อน ไม่ช่วยตัดสินใจ/บอกสถานะ) เหลือแค่หัวข้อ "ผลการติดตามสถานะ" เดี่ยวๆ
+  // (class .owner-page-subtitle ใน CSS ยังอยู่ ไม่ลบ เผื่อย้อนใช้ภายหลัง — ไม่มีจุดอื่นอ้างอิง class นี้อีก)
   var headerHtml = '' +
     '<div class="owner-page-header">' +
-    '<div><div class="owner-page-title">ผลการติดตามสถานะ</div>' +
-    '<div class="owner-page-subtitle">ตรวจสอบความคืบหน้าและขั้นตอนถัดไปของผลงาน</div></div>' +
+    '<div><div class="owner-page-title">ผลการติดตามสถานะ</div></div>' +
     // 2026-10-12 รอบ 19 — onclick ล้าง localStorage ของ SPA flow (OWNER_LOGIN_SPA_SCRIPT_) ก่อน navigate ออก
     // กันเคส login ใหม่/คนอื่นมาเปิดเครื่องเดียวกันแล้วเจอ session ค้างใน localStorage (ปุ่มนี้ยัง navigate ไป
     // logoutUrl เดิมเหมือนเดิมทุกประการ — มี user gesture จริงจากการคลิก ไม่ใช่ auto-redirect ไม่ติด sandbox)
