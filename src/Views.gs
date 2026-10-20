@@ -558,18 +558,19 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
       '<span class="registry-tile-count">' + t.count + '</span><span class="registry-tile-label">' + escapeHtml_(t.label) + '</span></a>';
   }).join('') + '</div>';
 
-  // 2026-10-20 ตามที่ผู้ใช้ขอ — การ์ดสรุป "ผลการพิจารณา" 4 ช่อง (ผ่าน/รอแก้ไข 2 เดือน/รอแก้ไข 6 เดือน/ไม่ผ่าน)
-  // คลิกกรองตารางผ่าน rp.result เดิม (reuse ตัวกรองที่มีอยู่แล้ว ไม่ใช่ filter ใหม่) กดการ์ดที่ active อยู่แล้วซ้ำ
-  // = เคลียร์ตัวกรองนี้กลับไปแสดงทั้งหมด (ตามที่ผู้ใช้ขอ "กดซ้ำ...กลับมาแสดงทั้งหมด") จำนวนในแต่ละช่องมาจาก
-  // resultBuckets (computeRegistryResultBuckets_, Registry.gs) ซึ่งคำนวณตาม filter ปัจจุบันของหน้าอยู่แล้ว
+  // 2026-10-20 แก้บั๊กขึ้น 0 (root cause: evaluation_result ว่างเกือบหมดสำหรับงาน legacy — ดู
+  // REGISTRY_RESULT_TILES_/computeRegistryResultBuckets_, Registry.gs) เปลี่ยนมานับ+กรองจาก state code จริง
+  // 7.1-7.4 (current_station_key) แทน — คลิกกรองผ่าน rp.state เดิม (reuse dropdown "สถานะ" ที่มีอยู่แล้ว ไม่ใช่
+  // label text) กดการ์ดที่ active อยู่แล้วซ้ำ = เคลียร์กลับไปแสดงทั้งหมด จำนวนในแต่ละช่องมาจาก resultBuckets
+  // (computeRegistryResultBuckets_, Registry.gs) ซึ่งคำนวณตาม filter ปัจจุบันของหน้าอยู่แล้ว (ยกเว้น rp.state เอง)
   var resultTilesHtml = resultBuckets ? '' +
     '<div class="registry-result-section-title">ผลการพิจารณา</div>' +
     '<div class="registry-result-tiles">' + REGISTRY_RESULT_TILES_.map(function (t) {
-      var isActive = rp.result === t.value;
-      var nextResult = isActive ? '' : t.value;
+      var isActive = rp.state === t.stationKey;
+      var nextState = isActive ? '' : t.stationKey;
       return '<a class="registry-result-tile registry-result-tile-' + t.tone + (isActive ? ' active' : '') + '" target="_top" href="' + baseUrl + '?' +
-        buildRegistryQuery_(rp, { result: nextResult, p: 1 }) + '">' +
-        '<span class="registry-result-tile-count">' + (resultBuckets[t.value] || 0) + '</span>' +
+        buildRegistryQuery_(rp, { state: nextState, p: 1 }) + '">' +
+        '<span class="registry-result-tile-count">' + (resultBuckets[t.stateCode] || 0) + '</span>' +
         '<span class="registry-result-tile-label">' + escapeHtml_(t.label) + '</span></a>';
     }).join('') + '</div>' : '';
 

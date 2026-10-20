@@ -13,16 +13,28 @@
 var REGISTRY_PER_PAGE_OPTIONS_ = [10, 25, 50, 100];
 var REGISTRY_RESULT_OPTIONS_ = ['ผ่าน', 'ไม่ผ่าน', 'แก้ไข 2 เดือน', 'แก้ไข 6 เดือน'];
 
-// 2026-10-20 ตามที่ผู้ใช้ขอ — การ์ดสรุปผลการพิจารณา 4 ช่องบนหัวหน้าทะเบียน "value" คือค่าจริงที่เก็บใน
-// Works.evaluation_result เป๊ะ (เขียนตอน transition ผ่าน Actions.gs, result_value ของ WORKFLOW_TRANSITIONS_SEED
-// ที่ map มาจาก state 7.1-7.4 จริง — ดู Constants.gs) ไม่ใช่ข้อความหน้าจอที่เดาขึ้นมาใหม่ "label" ต่างจาก value
-// เฉพาะ 2 ช่องกลาง (เติม "รอ" นำหน้าให้อ่านง่ายขึ้นตามที่ผู้ใช้ขอ) — ไม่กระทบค่าจริงในฐานข้อมูล/ตัวกรองเดิมเลย
+// 2026-10-20 แก้บั๊กจริงที่ผู้ใช้รายงาน (การ์ดขึ้น 0 ทั้ง 4 ช่อง) — root cause ยืนยันจากโค้ดจริงแล้ว (ไม่เดา):
+// รอบก่อนนับจาก Works.evaluation_result ซึ่ง "ไม่ใช่" field ที่มีค่าจริงครบถ้วน — migrateLegacyRegistrations_
+// (LegacyMigration.gs บรรทัด evaluation_result: '') เขียนค่าว่างเสมอให้ทุกแถวที่ import มาจาก LegacyImport
+// (ข้อมูลจริงส่วนใหญ่ในระบบ ~240+ แถว) ไม่ว่า current_station_key จะเป็น 7.1-7.4 จริงแค่ไหนก็ตาม evaluation_result
+// จึงว่างเกือบทั้งหมด นับได้ 0 ทุกช่อง — field ที่มีค่าจริงครบถ้วนและเชื่อถือได้คือ current_station_key ->
+// WorkflowStates.station_order (จริงตาม WORKFLOW_STATES_SEED, Constants.gs: s7_1 order="7.1"/s7_2="7.2"/
+// s7_3="7.3"/s7_4="7.4") ใช้ "state code" นี้แทนตามที่ผู้ใช้ระบุ ไม่ใช่ label/evaluation_result อีกต่อไป
 var REGISTRY_RESULT_TILES_ = [
-  { value: 'ผ่าน', label: 'ผ่าน', tone: 'pass' },
-  { value: 'แก้ไข 2 เดือน', label: 'รอแก้ไข 2 เดือน', tone: 'revision2' },
-  { value: 'แก้ไข 6 เดือน', label: 'รอแก้ไข 6 เดือน', tone: 'revision6' },
-  { value: 'ไม่ผ่าน', label: 'ไม่ผ่าน', tone: 'fail' },
+  { stationKey: 's7_1', stateCode: '7.1', label: 'ผ่าน', tone: 'pass' },
+  { stationKey: 's7_2', stateCode: '7.2', label: 'รอแก้ไข 2 เดือน', tone: 'revision2' },
+  { stationKey: 's7_3', stateCode: '7.3', label: 'รอแก้ไข 6 เดือน', tone: 'revision6' },
+  { stationKey: 's7_4', stateCode: '7.4', label: 'ไม่ผ่าน', tone: 'fail' },
 ];
+
+/** normalize state code ก่อนเทียบ (ข้อ 5/6 ที่ผู้ใช้ขอ) — บังคับเป็น string + trim เสมอ (กันเทียบ number กับ
+ *  string แล้วหาไม่เจอ) และดึงเฉพาะเลขนำหน้าออกมาถ้ามีข้อความต่อท้ายปนมา เช่น "7.1 ผ่าน" -> "7.1" (เผื่อข้อมูล
+ *  legacy บางจุดปนข้อความมา — ไม่แก้ข้อมูลต้นฉบับ แค่ normalize ตอนเทียบในหน่วยความจำเท่านั้น) */
+function normalizeStateCodeForCompare_(raw) {
+  var s = String(raw === null || raw === undefined ? '' : raw).trim();
+  var m = s.match(/^\d+(\.\d+)?/);
+  return m ? m[0] : s;
+}
 
 /** เฉพาะบัญชี staff ที่ login แล้ว (Admin หรือ ผู้รับผิดชอบ — ระบบมีแค่ 2 role นี้ตั้งแต่รวม role 2026-09-08) */
 function canAccessRegistry_(user) {
@@ -56,18 +68,52 @@ function computeRegistryBuckets_(ss, works) {
   return { counts: buckets, overdueIds: overdueIds };
 }
 
-/** นับจำนวนตามผลการพิจารณา 4 ช่อง (2026-10-20 ตามที่ผู้ใช้ขอ) — ต้องสัมพันธ์กับ filter ปัจจุบันของหน้า (จังหวัด/
- *  ปีงบ/เดือน/หน่วยงาน ฯลฯ) "ยกเว้น" ตัวกรองผลการพิจารณาเอง (rp.result) เพื่อให้เห็นจำนวนของทุกช่องพร้อมกันเสมอ
- *  แม้กำลังเลือกช่องใดช่องหนึ่งอยู่ก็ตาม (เหมือนจุดประสงค์ของ tile filter ทั่วไป) ใช้ filterRegistryWorks_ เดิม
- *  ทุกประการ ไม่เขียน logic กรองซ้ำ */
-function computeRegistryResultBuckets_(all, rp, overdueIds) {
-  var rpNoResult = {};
-  for (var k in rp) rpNoResult[k] = rp[k];
-  rpNoResult.result = '';
-  var scoped = filterRegistryWorks_(all, rpNoResult, overdueIds);
+/** Diagnostic เท่านั้น (2026-10-20, ตอบข้อ 2 ที่ผู้ใช้ขอ "log ตัวอย่าง record จริงอย่างน้อย 5 รายการ") —
+ *  รันเองจาก Apps Script Editor เพื่อดูค่าจริงในชีตจริงว่า current_station_key/station_order/evaluation_result
+ *  เป็นอย่างไรจริงๆ (ยืนยัน root cause: evaluation_result ว่างสำหรับงาน legacy แม้ current_station_key ชี้ไป
+ *  7.1-7.4 จริงก็ตาม) ไม่แก้/ไม่ลบข้อมูลใดๆ อ่านอย่างเดียว ปลอดภัยรันซ้ำได้เสมอ */
+function logRegistryResultFieldSamples() {
+  var ss = getSpreadsheet_();
+  var stationsMap = getStationsMap_(ss);
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var samples = works.filter(function (w) {
+    var station = stationsMap[w.current_station_key];
+    var code = station ? normalizeStateCodeForCompare_(station.station_order) : '';
+    return ['7.1', '7.2', '7.3', '7.4'].indexOf(code) !== -1;
+  }).slice(0, 5);
+  if (!samples.length) {
+    Logger.log('ไม่พบ record ที่ current_station_key ชี้ไป state 7.1-7.4 เลยในชีต Works ขณะนี้');
+    return;
+  }
+  samples.forEach(function (w) {
+    var station = stationsMap[w.current_station_key];
+    Logger.log('registration_no=' + w.tracking_no +
+      ' | current_station_key=' + w.current_station_key +
+      ' | station_order=' + JSON.stringify(station ? station.station_order : null) +
+      ' (typeof=' + (station ? typeof station.station_order : 'n/a') + ')' +
+      ' | evaluation_result=' + JSON.stringify(w.evaluation_result) +
+      ' | current_status_public=' + w.current_status_public);
+  });
+}
+
+/** นับจำนวนตามผลการพิจารณา 4 ช่อง จาก state code จริง 7.1/7.2/7.3/7.4 (ไม่ใช่ evaluation_result — ดูเหตุผลที่
+ *  REGISTRY_RESULT_TILES_) ต้องสัมพันธ์กับ filter ปัจจุบันของหน้า (จังหวัด/ปีงบ/เดือน/หน่วยงาน ฯลฯ ข้อ 7 ที่
+ *  ผู้ใช้ขอ) "ยกเว้น" ตัวกรอง state เอง (rp.state — การ์ดนี้คลิกแล้วไปตั้งค่า rp.state ตรงๆ ใช้ dropdown
+ *  "สถานะ" เดิมร่วมกัน ไม่สร้างตัวกรองใหม่) เพื่อให้เห็นจำนวนของทุกช่องพร้อมกันเสมอแม้กำลังเลือกช่องใดช่องหนึ่งอยู่
+ *  ก็ตาม ใช้ filterRegistryWorks_ เดิมทุกประการ ไม่เขียน logic กรองซ้ำ */
+function computeRegistryResultBuckets_(all, rp, overdueIds, stationsMap) {
+  var rpNoState = {};
+  for (var k in rp) rpNoState[k] = rp[k];
+  rpNoState.state = '';
+  var scoped = filterRegistryWorks_(all, rpNoState, overdueIds);
   var counts = {};
-  REGISTRY_RESULT_TILES_.forEach(function (t) { counts[t.value] = 0; });
-  scoped.forEach(function (w) { if (counts.hasOwnProperty(w.evaluation_result)) counts[w.evaluation_result]++; });
+  REGISTRY_RESULT_TILES_.forEach(function (t) { counts[t.stateCode] = 0; });
+  scoped.forEach(function (w) {
+    var station = stationsMap[w.current_station_key];
+    if (!station) return;
+    var code = normalizeStateCodeForCompare_(station.station_order);
+    if (counts.hasOwnProperty(code)) counts[code]++;
+  });
   return counts;
 }
 
@@ -204,7 +250,7 @@ function renderRegistryRoute_(ss, user, params, baseUrl, flashMessage) {
       user, 'registry', baseUrl);
   }
 
-  var resultBuckets = computeRegistryResultBuckets_(all, rp, bucketData.overdueIds);
+  var resultBuckets = computeRegistryResultBuckets_(all, rp, bucketData.overdueIds, stationsMap);
   return renderStaffPage_('ทะเบียนผลงานทั้งหมด',
     renderRegistryListBody_(ss, pageResult, rp, all.length, bucketData.counts, baseUrl, flashMessage, resultBuckets), user, 'registry', baseUrl);
 }
