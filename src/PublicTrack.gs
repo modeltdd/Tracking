@@ -452,6 +452,13 @@ var OWNER_MILESTONE_RANGES_ = [
   { order: 4, min: 8, max: 10, label: 'แจ้งผลให้หน่วยงานต้นสังกัด' },
 ];
 
+/** state ย่อย 7.1-7.4 ที่ resolve แล้วจริงใน steps (ผลรอบที่ 1 ของขั้นตอน "ผลการพิจารณา") — คืน null ถ้ายังไม่
+ *  ถึง/ยังไม่มีผล (ไม่เดา) reuse ร่วมกันระหว่าง buildOwnerMilestoneTimeline_ (เส้นทางผ่าน/ไม่ผ่านตรง) และ
+ *  buildOwnerRevisionTimeline_ (เส้นทางต้องแก้ไข, 2026-10-20) */
+function getResolvedFirstRoundStep_(steps) {
+  return steps.filter(function (s) { return parentStepOrder_(s.order) === '7' && s.order !== '7'; })[0] || null;
+}
+
 function buildOwnerMilestoneTimeline_(steps, stationsMap, work) {
   if (!steps) return null;
   var currentStation = (stationsMap || {})[work.current_station_key] || null;
@@ -463,7 +470,7 @@ function buildOwnerMilestoneTimeline_(steps, stationsMap, work) {
     var entry = { order: r.order, label: r.label, state: state, isLastStep: r.order === 4 };
     if (r.order === 3) {
       // ผลการพิจารณาที่ milestone 3 — อ่านจาก state ย่อย 7.1-7.4 ที่ resolve แล้วจริงใน steps เท่านั้น (ไม่เดา)
-      var resolved = steps.filter(function (s) { return parentStepOrder_(s.order) === '7' && s.order !== '7'; })[0] || null;
+      var resolved = getResolvedFirstRoundStep_(steps);
       if (resolved) {
         entry.outcome = {
           text: OWNER_STATE_LABELS_[resolved.key] || resolved.name,
@@ -480,6 +487,80 @@ function buildOwnerMilestoneTimeline_(steps, stationsMap, work) {
   });
 
   return milestones;
+}
+
+/**
+ * 2026-10-20 ตามที่ผู้ใช้ขอ — กรณีผลรอบที่ 1 (state 7) เป็น "ต้องแก้ไข" (s7_2/s7_3) งานจะเดินเข้าสู่ loop แก้ไข
+ * จริงใน WorkflowTransitions (s7_2/s7_3 -> s8_1 -> s8_2 -> s8_3 -> s8_4 -> s8_5 -> s8_6 -> s9_1 -> s9_2 -> s9_3
+ * -> s9_4 -> s10) ซึ่งมีรายละเอียดภายในมากกว่าที่ผู้ใช้ทั่วไปต้องเห็น — ย่อให้เหลือ 8 ขั้นตอนสำหรับ Owner/Public
+ * ตาม mapping ที่ผู้ใช้ระบุเป๊ะ: 1=1-2, 2=3-6, 3=7(+7.x), 4=8.1, 5=8.5, 6=8.6, 7=9.4, 8=10 (state 8.2/8.3/8.4
+ * และ 9.1/9.2/9.3 ไม่มีเลขขั้นตอน Owner ของตัวเอง — ถือเป็นส่วนหนึ่งของขั้นตอนก่อนหน้าที่ยังไม่ถึงจุดถัดไป เช่น
+ * 8.2-8.4 นับรวมอยู่ใน "ขั้นตอนที่ 4" จนกว่าจะถึง 8.5 จริง) ตรงข้ามกับ "ผ่าน"/"ไม่ผ่าน" ตรง (s7_1/s7_4) ที่ไม่
+ * เคยเข้า loop นี้เลยและยังใช้ buildOwnerMilestoneTimeline_/OWNER_MILESTONE_RANGES_ (4 milestone) เดิมตามปกติ
+ * — ดู ownerTimelineNeedsRevisionPath_ สำหรับจุดตัดสินใจเลือกใช้ builder ไหน ไม่แก้ state code/WorkflowMaster/
+ * StatusHistory ใดๆ เป็นแค่ mapping การแสดงผลเพิ่มอีกชุดเท่านั้น (เหมือน milestone เดิมทุกประการ)
+ */
+var OWNER_REVISION_TIMELINE_STEPS_ = [
+  { order: 1, min: 1, max: 2, label: 'สำนักงานเขตรับเรื่องของท่านแล้ว' },
+  { order: 2, min: 3, max: 6.99, label: 'เอกสารถูกส่งเข้าสู่กระบวนการพิจารณาแล้ว' },
+  { order: 3, min: 7, max: 7.99, label: 'ผลการพิจารณา' },
+  { order: 4, min: 8.1, max: 8.49, label: 'สำนักงานเขตส่งเรื่องแก้ไขให้หน่วยงานต้นสังกัดแล้ว' },
+  { order: 5, min: 8.5, max: 8.59, label: 'หน่วยงานต้นสังกัดส่งเอกสารที่แก้ไขแล้วกลับมายังสำนักงานเขต' },
+  { order: 6, min: 8.6, max: 9.39, label: 'สำนักงานเขตส่งเอกสารที่แก้ไขแล้วให้คณะกรรมการพิจารณาอีกครั้ง' },
+  { order: 7, min: 9.4, max: 9.49, label: 'ผลการพิจารณาครั้งที่ 2 ถูกส่งมายังสำนักงานเขตแล้ว' },
+  { order: 8, min: 10, max: 10, label: 'แจ้งผลให้หน่วยงานต้นสังกัด' },
+];
+
+/** true เฉพาะเมื่อผลรอบที่ 1 (state 7) resolve แล้วเป็น "ต้องแก้ไข" จริง (s7_2/s7_3) — ตรวจจาก WorkflowTransitions
+ *  จริงแล้วว่ามีแค่ 2 state นี้เท่านั้นที่เดินเข้า loop 8.x/9.x ต่อ (s7_1="ผ่าน"/s7_4="ไม่ผ่าน" ไปตรง s10 เสมอ ไม่
+ *  เคยเข้า loop นี้ — ไม่เดา ยึดจาก WORKFLOW_TRANSITIONS_SEED จริงที่ไม่มี s7_4_s8_1 เลย) */
+function ownerTimelineNeedsRevisionPath_(steps) {
+  if (!steps) return false;
+  var resolved = getResolvedFirstRoundStep_(steps);
+  return !!resolved && (resolved.key === 's7_2' || resolved.key === 's7_3');
+}
+
+function buildOwnerRevisionTimeline_(steps, stationsMap, work) {
+  if (!steps) return null;
+  var currentStation = (stationsMap || {})[work.current_station_key] || null;
+  var currentOrderNum = currentStation ? (parseFloat(currentStation.station_order || '0') || 0) : 0;
+
+  var entries = OWNER_REVISION_TIMELINE_STEPS_.map(function (r) {
+    var state = currentOrderNum >= r.min && currentOrderNum <= r.max ? 'current'
+      : currentOrderNum > r.max ? 'done' : 'upcoming';
+    var entry = { order: r.order, label: r.label, state: state, isLastStep: r.order === 8 };
+
+    if (r.order === 3) {
+      var resolved = getResolvedFirstRoundStep_(steps);
+      if (resolved) {
+        entry.outcome = {
+          text: OWNER_STATE_LABELS_[resolved.key] || resolved.name,
+          tone: subStatusToneClass_(resolved.name),
+        };
+      }
+    }
+
+    // ผลการพิจารณาครั้งที่ 2 (ขั้นตอนที่ 7) — ไม่มี state ย่อยของตัวเองแบบ 7.1-7.4 (s9_4 ไปตรง s10 ทั้ง
+    // ผ่าน/ไม่ผ่าน) ใช้ work.evaluation_result จริงที่ถูกเขียนตอน transition s9_4->s10 เท่านั้น (ปลอดภัย ไม่
+    // ชนกับผลรอบ 1 เพราะรอบ 1 ของเส้นทางนี้เขียนค่าเป็น "แก้ไข 2 เดือน"/"แก้ไข 6 เดือน" เสมอ ไม่ใช่ "ผ่าน"/
+    // "ไม่ผ่าน" ตรงตัว — ค่าจะกลายเป็น "ผ่าน"/"ไม่ผ่าน" ตรงตัวก็ตอนรอบ 2 เขียนทับแล้วเท่านั้น)
+    if (r.order === 7 && currentOrderNum >= 9.4 && (work.evaluation_result === 'ผ่าน' || work.evaluation_result === 'ไม่ผ่าน')) {
+      var pass2 = work.evaluation_result === 'ผ่าน';
+      entry.outcome = {
+        text: pass2 ? 'ผ่านการประเมินจากคณะกรรมการ (รอบที่ 2)' : 'ไม่ผ่านการประเมิน (รอบที่ 2)',
+        tone: pass2 ? 'done' : 'danger',
+      };
+    }
+
+    return entry;
+  });
+
+  var seenUpcoming = false;
+  entries.forEach(function (e) {
+    if (e.state === 'upcoming') { e.isNext = !seenUpcoming; seenUpcoming = true; }
+  });
+
+  return entries;
 }
 
 /** สีของ "สถานะย่อย/ผลการดำเนินงาน" ตามคำในชื่อ state จริง (2026-09-24 ตามที่ผู้ใช้ขอ) — เช็ค "ไม่ผ่าน" ก่อน

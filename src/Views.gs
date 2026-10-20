@@ -1437,7 +1437,12 @@ function renderPublicResultBody_(work, data, baseUrl) {
   // เดิม) เป็น 4 milestone แบบเข้าใจง่าย (buildOwnerMilestoneTimeline_, PublicTrack.gs) เหมือน Owner Dashboard
   // — หน้า Staff/Admin (renderWorkDetailBody_) ยังใช้ renderPubTimelineSection_(data.fixedTimeline) เดิมเป๊ะ
   // ไม่ถูกแตะ (คนละจุดเรียก ไม่ใช่ shared call site)
-  var ownerMilestones = buildOwnerMilestoneTimeline_(data.steps, data.stationsMap, work);
+  // 2026-10-20 ตามที่ผู้ใช้ขอ — ผลรอบ 1 เป็น "ต้องแก้ไข" (s7_2/s7_3) ใช้เส้นทาง 8 ขั้นตอนแทน (ดูเหตุผลเต็มที่
+  // ownerTimelineNeedsRevisionPath_/buildOwnerRevisionTimeline_, PublicTrack.gs) ผลเป็น "ผ่าน"/"ไม่ผ่าน" ตรง
+  // ยังใช้ 4 milestone เดิม — Public Search ใช้ builder ชุดเดียวกับ Owner Dashboard เป๊ะ ไม่มี logic แยก
+  var ownerMilestones = ownerTimelineNeedsRevisionPath_(data.steps)
+    ? buildOwnerRevisionTimeline_(data.steps, data.stationsMap, work)
+    : buildOwnerMilestoneTimeline_(data.steps, data.stationsMap, work);
   var timelineHtml = renderOwnerMilestoneTimelineSection_(ownerMilestones);
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
