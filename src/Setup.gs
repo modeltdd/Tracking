@@ -930,6 +930,18 @@ function migrateOwnerLoginFeature() {
 }
 
 /**
+ * "วันครบกำหนดแก้ไข" (2026-10-21, ข้อแก้ไขผู้บริหาร — ดู Actions.gs performStateTransition_) — รันครั้งเดียว
+ * จาก Editor บนชีตจริง: เพิ่มคอลัมน์ revision_due_date ใน Works (reuse migrateAddWorksColumns_() เดิม)
+ * ไม่มี underscore ต่อท้ายชื่อฟังก์ชันเจตนา (migrateAddWorksColumns_ เองมี _ ต่อท้าย จึงไม่ขึ้นใน dropdown
+ * "เรียกใช้ฟังก์ชัน" ของ Apps Script Editor ให้เลือกรันตรงๆ ได้ — ต้องมี wrapper สาธารณะแบบนี้เสมอ ตาม
+ * pattern เดียวกับ migrateOwnerLoginFeature()/migrateAddOrganizationMaster() ด้านล่าง) idempotent รันซ้ำได้
+ */
+function migrateAddRevisionDueDateColumn() {
+  migrateAddWorksColumns_();
+  Logger.log('=== migrateAddRevisionDueDateColumn เสร็จ — เพิ่มคอลัมน์ revision_due_date ใน Works เรียบร้อย (หรือมีอยู่แล้วข้ามไป) ===');
+}
+
+/**
  * สร้าง+seed ชีต OrganizationMaster (2026-10-07, ข้อมูลหน่วยงานเขตสุขภาพที่ 11 จาก Excel จริง — ดู
  * OrganizationMasterSeed.gs) + เพิ่มคอลัมน์ organization_id/organization_code ใน Works (reuse
  * migrateAddWorksColumns_() เดิม) รันครั้งเดียวจาก Editor บนชีตจริง idempotent — ถ้าชีตมีข้อมูลอยู่แล้วข้าม
