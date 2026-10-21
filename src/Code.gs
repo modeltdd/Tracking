@@ -249,6 +249,25 @@ function doPost(e) {
       renderWorkDetailBody_(ss, refreshedWork, refreshedHistory, refreshedStationsMap, baseUrl, user, codeErrors), user, 'search', baseUrl);
   }
 
+  if (formAction === 'admin_set_revision_due_date') {
+    // 2026-10-21 ตามข้อแก้ไขผู้บริหาร ข้อ 8 — "ถ้า record เก่ายังไม่มีวันครบกำหนด ... ให้ Staff/Admin สามารถ
+    // เข้าไปกำหนดวันย้อนหลังได้" Admin เท่านั้น (เช็คสิทธิ์ที่นี่เหมือน admin_set_owner_code เดิม — ส่วน validate/
+    // บันทึกจริงอยู่ใน performSetRevisionDueDate_, Actions.gs ตาม pattern เดียวกับ performStateTransition_/
+    // performWorkAction_ — แยกออกมาให้ test ได้ตรงๆ ไม่ต้องผ่าน doPost ทั้งก้อน)
+    if (user.role !== 'Admin') {
+      return renderStaffPage_('ไม่มีสิทธิ์', renderStubBody_('เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น', baseUrl), user, 'admin', baseUrl);
+    }
+    var dueResult = performSetRevisionDueDate_(ss, user, e);
+    if (!dueResult.work) {
+      return renderStaffPage_('ไม่พบรายการ', renderStubBody_('ไม่พบงานที่ระบุ (work_id: ' + e.parameter.work_id + ')', baseUrl), user, 'search', baseUrl);
+    }
+    var refreshedDueWork = findWorkById_(ss, dueResult.work_id);
+    var refreshedDueHistory = getHistoryForWork_(ss, dueResult.work_id);
+    var refreshedDueStationsMap = getStationsMap_(ss);
+    return renderStaffPage_('รายละเอียดผลงาน',
+      renderWorkDetailBody_(ss, refreshedDueWork, refreshedDueHistory, refreshedDueStationsMap, baseUrl, user, [], dueResult.errors), user, 'search', baseUrl);
+  }
+
   if (formAction === 'admin_station_save' || formAction === 'admin_user_save' || formAction === 'admin_master_save') {
     if (user.role !== 'Admin') {
       return renderStaffPage_('ไม่มีสิทธิ์', renderStubBody_('เฉพาะผู้ดูแลระบบ (Admin) เท่านั้น', baseUrl), user, 'admin', baseUrl);

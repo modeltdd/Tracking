@@ -1088,7 +1088,7 @@ function renderSearchResultList_(works, stationsMap, baseUrl) {
  * ด้านล่าง (ใครทำอะไรเมื่อไร+หมายเหตุ) ไม่ลบทิ้ง — ตัดออกจากหน้านี้เฉพาะการแสดงผล: เลขบัตรประชาชน/เบอร์โทร/
  * อีเมล/ระดับ/ผู้ดำเนินการล่าสุด (คอลัมน์เดิมในชีตยังอยู่ครบ ไม่ได้ลบข้อมูลจริง)
  */
-function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, errors) {
+function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, errors, dueDateErrors) {
   var ownerName = ((work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')).trim();
   var data = buildPublicResultData_(ss, work);
 
@@ -1161,6 +1161,29 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
       '</form>' : '') +
     '</div></details>' : '';
 
+  // 2026-10-21 ตามข้อแก้ไขผู้บริหาร ข้อ 8 — งานเก่าที่ผลรอบ 1 เป็น "แก้ไข 2/6 เดือน" (s7_2/s7_3) แต่ยังไม่มี
+  // revision_due_date (transition เกิดก่อนมี feature นี้) ให้ Admin กำหนดย้อนหลังได้ที่นี่ (ไม่ใช่ state
+  // transition ใหม่ — reuse getResolvedFirstRoundStep_/REVISION_DUE_DATE_STATE_KEYS_ เดิมจาก buildOwnerRevisionTimeline_
+  // ไม่สร้าง logic คำนวณคู่ขนาน) แสดงตลอดเส้นทางแก้ไข ไม่ใช่แค่ตอนปัจจุบันอยู่ 7.2/7.3 เป๊ะ (ต่างจาก resultCard
+  // ของ Owner ที่หายไปตอนเข้าสู่ 8.x — ที่นี่ต้องแก้ได้แม้งานเดินไปไกลแล้ว เพราะ Timeline ยัง reference ค่านี้อยู่)
+  var dueResolvedStep = getResolvedFirstRoundStep_(data.steps);
+  var dueDateErrorHtml = (dueDateErrors && dueDateErrors.length)
+    ? '<div class="error-banner"><ul>' + dueDateErrors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+  var revisionDueDateHtml = (user && user.role === 'Admin' && dueResolvedStep && REVISION_DUE_DATE_STATE_KEYS_[dueResolvedStep.key]) ? '' +
+    '<details class="pub-details"><summary>กำหนด/แก้ไขวันครบกำหนดแก้ไข (Admin)</summary>' +
+    '<div class="pub-details-body">' + dueDateErrorHtml +
+    '<p class="hint">' + (work.revision_due_date
+      ? 'ปัจจุบันตั้งไว้ที่ ' + escapeHtml_(formatDateDDMMYYYYBuddhist_(work.revision_due_date))
+      : 'งานนี้ยังไม่เคยกำหนดวันครบกำหนดแก้ไข (อาจเป็นงานเก่าก่อนมี feature นี้)') + '</p>' +
+    '<form method="post" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;">' +
+    '<input type="hidden" name="form_action" value="admin_set_revision_due_date">' +
+    '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
+    '<div class="field"><label>วันครบกำหนดแก้ไข</label>' +
+    '<input class="input" type="date" name="revision_due_date" value="' + escapeHtml_(formatDateYYYYMMDD_(work.revision_due_date)) + '" required></div>' +
+    '<button type="submit" class="btn-outline">บันทึกวันครบกำหนดแก้ไข</button>' +
+    '</form></div></details>' : '';
+
   // ประวัติละเอียดทุกแถวจริง (ใครทำอะไรเมื่อไร+หมายเหตุ) — พับด้วย <details> ไม่ให้ดูเหมือน log ดิบกลางหน้า
   // + แปล LEGACY_IMPORT_MARKER_ เป็นข้อความอ่านง่าย ไม่โชว์ email ภายในดิบๆ (2026-09-24) ไม่ลบข้อมูลจริง แค่จัดรูปแบบ
   var auditLogHtml = history.length
@@ -1186,7 +1209,7 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
   return '' +
     '<div class="pub-compact">' +
     '<div class="detail-card">' +
-    nameBlockHtml + heroHtml + actionHtml + infoGridHtml + progressHtml + timelineHtml + noteHtml + auditLogHtml + infoHtml + coverHtml + ownerCodeHtml +
+    nameBlockHtml + heroHtml + actionHtml + infoGridHtml + progressHtml + timelineHtml + noteHtml + auditLogHtml + infoHtml + coverHtml + ownerCodeHtml + revisionDueDateHtml +
     '<p style="margin-top:12px"><a class="btn-outline" target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
     '</div>' +
     '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>' +

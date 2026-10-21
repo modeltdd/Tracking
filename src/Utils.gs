@@ -152,6 +152,16 @@ function formatDateDDMMYYYYBuddhist_(date) {
   return day + '/' + month + '/' + year;
 }
 
+/** วันที่แบบ YYYY-MM-DD (ค.ศ., ไม่มีเวลา) — 2026-10-21 ใช้เติมค่าเดิมกลับเข้า <input type="date"> ตอน Admin
+ *  แก้ไข "วันครบกำหนดแก้ไข" ย้อนหลัง (renderWorkDetailBody_) — HTML date input ต้องการ format นี้เป๊ะ คืนค่า
+ *  ว่าง '' ถ้าไม่มีวันที่จริง/invalid เหมือน formatDateDDMMYYYYBuddhist_ ด้านบน */
+function formatDateYYYYMMDD_(date) {
+  if (!date) return '';
+  var d = new Date(date);
+  if (isNaN(d.getTime())) return '';
+  return d.getFullYear() + '-' + padLeft_(d.getMonth() + 1, 2) + '-' + padLeft_(d.getDate(), 2);
+}
+
 /** ปกปิดชื่อ-สกุลสำหรับแสดงบนหน้าสาธารณะ (docs/DESIGN.md A10) — 2 ตัวอักษรแรกของชื่อ/สกุล ตามด้วย "***"
  *  เช่น "นาย นภ*** ทุม***" — คำนำหน้าไม่ใช่ข้อมูลระบุตัวตน แสดงเต็มได้ ใช้กับหน้าติดตามสถานะสาธารณะเท่านั้น
  *  (หน้าเจ้าหน้าที่/Admin ยังเห็นชื่อเต็มตามเดิม ไม่เปลี่ยน) */

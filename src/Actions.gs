@@ -124,6 +124,65 @@ function performStateTransition_(ss, user, e) {
 }
 
 /**
+ * Diagnostic (2026-10-21, ข้อแก้ไขผู้บริหาร ข้อ 3 — ตรวจ data flow จริง ไม่เดา) — log เฉพาะ 4 ค่าที่ผู้ใช้ขอ
+ * ของงาน 1 รายการ ตาม tracking_no: registration_no/current_state/result/revision_due_date รันจาก Editor
+ * โดยตรง (ไม่มี _ ต่อท้ายชื่อฟังก์ชัน — ขึ้นใน dropdown "เรียกใช้ฟังก์ชัน" ได้เลย) ไม่ระบุ tracking_no จะใช้
+ * ค่าเริ่มต้น "69-220" (ตัวอย่างที่ผู้ใช้อ้างถึง) — ชี้ชัดในผล log ว่าปัญหาอยู่ที่ขั้นตอน Save หรือขั้นตอน
+ * render ของ Owner View กันเดา
+ */
+function logWorkRevisionDueDate(trackingNo) {
+  trackingNo = trackingNo || '69-220';
+  var ss = getSpreadsheet_();
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var work = works.filter(function (w) { return String(w.tracking_no || '').trim() === String(trackingNo).trim(); })[0];
+  if (!work) { Logger.log('=== ไม่พบงาน tracking_no="' + trackingNo + '" ==='); return; }
+  var stationsMap = getStationsMap_(ss);
+  var station = stationsMap[work.current_station_key];
+  Logger.log('registration_no = ' + work.tracking_no);
+  Logger.log('current_state = ' + (station ? station.station_order : '(ไม่พบ station)') + ' (station_key: ' + work.current_station_key + ')');
+  Logger.log('result (evaluation_result) = ' + JSON.stringify(work.evaluation_result));
+  Logger.log('revision_due_date = ' + JSON.stringify(work.revision_due_date) + ' (typeof: ' + typeof work.revision_due_date + ')');
+  if (!work.revision_due_date) {
+    Logger.log('=== revision_due_date ว่าง/ไม่มีค่า — root cause อยู่ที่ขั้นตอน "Save" จริง (transition นี้เกิดขึ้นก่อนมี feature นี้ หรือตอน transition ไม่ได้กรอกวันที่) ไม่ใช่ปัญหาการแสดงผล Owner View — ใช้กล่อง "กำหนด/แก้ไขวันครบกำหนดแก้ไข (Admin)" ในหน้ารายละเอียดผลงานกำหนดย้อนหลังได้ ===');
+  } else {
+    Logger.log('=== revision_due_date มีค่าจริงแล้ว ถ้า Owner View ยังไม่แสดง "ภายในวันที่" root cause อยู่ที่ขั้นตอน render/Owner View แทน ไม่ใช่ Save ===');
+  }
+}
+
+/**
+ * 2026-10-21 ตามข้อแก้ไขผู้บริหาร ข้อ 8 — Admin กำหนด/แก้ไข "วันครบกำหนดแก้ไข" ย้อนหลังให้งานที่ผลรอบ 1 เป็น
+ * "แก้ไข 2/6 เดือน" (s7_2/s7_3) อยู่แล้ว แต่ revision_due_date ยังว่าง (เช่น transition เกิดขึ้นก่อนมี feature
+ * นี้) ไม่ใช่ state transition ใหม่ — ไม่แตะ current_station_key/current_status_public/evaluation_result เลย
+ * แก้แค่ revision_due_date เท่านั้น ไม่อัปเดต updated_at ด้วย (ไม่ใช่เหตุการณ์ความคืบหน้าจริงของ workflow —
+ * ถ้าปล่อยให้ updated_at ขยับ จะกระทบบรรทัด "วันที่ ::" บนการ์ดผลการพิจารณาของ Owner ให้เข้าใจผิดว่ามีการ
+ * อัปเดตสถานะใหม่) ตรวจสิทธิ์ (Admin เท่านั้น) ทำที่ doPost (Code.gs) ก่อนเรียกฟังก์ชันนี้เสมอ — ที่นี่ตรวจซ้ำ
+ * เฉพาะเงื่อนไข business (ต้องอยู่เส้นทางแก้ไขจริง + วันที่ต้อง valid) คืน { ok, work_id, work, errors }
+ */
+function performSetRevisionDueDate_(ss, user, e) {
+  var p = (e && e.parameter) || {};
+  var workId = String(p.work_id || '').trim();
+  var work = findWorkById_(ss, workId);
+  if (!work) return { ok: false, errors: ['ไม่พบงานที่ระบุ'], work: null };
+
+  var resolved = getResolvedFirstRoundStep_(buildPublicResultData_(ss, work).steps);
+  if (!resolved || !REVISION_DUE_DATE_STATE_KEYS_[resolved.key]) {
+    return { ok: false, errors: ['งานนี้ไม่ได้อยู่ในเส้นทาง "แก้ไข 2/6 เดือน" — ไม่สามารถกำหนดวันครบกำหนดแก้ไขได้'], work: work, work_id: work.work_id };
+  }
+
+  var rawDueDate = String(p.revision_due_date || '').trim();
+  var dueDateObj = rawDueDate ? new Date(rawDueDate) : null;
+  if (!rawDueDate || isNaN(dueDateObj.getTime())) {
+    return { ok: false, errors: ['กรุณาระบุวันครบกำหนดแก้ไข'], work: work, work_id: work.work_id };
+  }
+
+  var oldDueText = formatDateDDMMYYYYBuddhist_(work.revision_due_date) || '(ยังไม่เคยกำหนด)';
+  updateWorkRow_(ss, work.work_id, { revision_due_date: dueDateObj, updated_at: work.updated_at });
+  writeAuditLog_(user.user_email, 'revision_due_date_edit', work.work_id, 'revision_due_date', oldDueText, formatDateDDMMYYYYBuddhist_(dueDateObj));
+
+  return { ok: true, work_id: work.work_id, work: work, errors: [] };
+}
+
+/**
  * ประมวลผล action ที่ส่งมาจากฟอร์ม (e.parameter) — ตรวจสิทธิ์ซ้ำ, validate ฟิลด์เฉพาะ action,
  * อัปเดตแถว Works + บันทึก StatusHistory เสมอ (append-only)
  * คืน { ok:true, work_id, action } หรือ { ok:false, errors:[...] }
