@@ -537,6 +537,11 @@ function buildOwnerRevisionTimeline_(steps, stationsMap, work) {
           text: OWNER_STATE_LABELS_[resolved.key] || resolved.name,
           tone: subStatusToneClass_(resolved.name),
         };
+        // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — วันครบกำหนดแก้ไข แสดงเฉพาะ s7_2/s7_3 เท่านั้น คงอยู่ตลอดเส้นทางแก้ไข
+        // (ขั้นตอนนี้ resolve จาก history ไม่ใช่ station ปัจจุบัน จึงยังโชว์ต่อแม้งานเดินไปถึง 8.x/9.x แล้วก็ตาม)
+        if (REVISION_DUE_DATE_STATE_KEYS_[resolved.key]) {
+          entry.outcome.dueDateText = formatDateDDMMYYYYBuddhist_(work.revision_due_date);
+        }
       }
     }
 

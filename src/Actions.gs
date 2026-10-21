@@ -81,6 +81,17 @@ function performStateTransition_(ss, user, e) {
     return { ok: false, errors: ['กรุณาระบุหมายเหตุ'], work: work };
   }
 
+  // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — ผลการพิจารณาเป็น "แก้ไข 2 เดือน"/"แก้ไข 6 เดือน" (transition ไป s7_2/s7_3)
+  // ต้องให้เจ้าหน้าที่ระบุ "วันครบกำหนดแก้ไข" เองจากปฏิทินเสมอ ห้ามคำนวณอัตโนมัติจาก 2/6 เดือน (ตามที่ผู้บริหารสั่ง
+  // ชัดเจน) ตรวจจาก transition.to_state (workflow code จริง) ไม่ใช่ label/ข้อความปุ่ม — กันกระทบ transition อื่น
+  var revisionDueDateObj = null;
+  if (REVISION_DUE_DATE_STATE_KEYS_[transition.to_state]) {
+    var rawDueDate = String(p.revision_due_date || '').trim();
+    if (!rawDueDate) return { ok: false, errors: ['กรุณาระบุวันครบกำหนดแก้ไข'], work: work };
+    revisionDueDateObj = new Date(rawDueDate);
+    if (isNaN(revisionDueDateObj.getTime())) return { ok: false, errors: ['กรุณาระบุวันครบกำหนดแก้ไข'], work: work };
+  }
+
   var newState = stationsMap[transition.to_state];
   if (!newState) return { ok: false, errors: ['ไม่พบ state ปลายทาง (' + transition.to_state + ')'], work: work };
 
@@ -92,6 +103,9 @@ function performStateTransition_(ss, user, e) {
     current_handler_name: user.display_name || user.user_email, next_step_text: newState.public_hint || '',
   };
   if (transition.result_value) updates.evaluation_result = transition.result_value;
+  // 2026-10-21 — เขียนวันครบกำหนดแก้ไขที่เจ้าหน้าที่เลือกเองลง Works (เฉพาะ transition s7_2/s7_3 เท่านั้น ตัวแปร
+  // เป็น null สำหรับ transition อื่นทั้งหมด จึงไม่กระทบ/เขียนทับค่าเดิมของ transition อื่นเลย)
+  if (revisionDueDateObj) updates.revision_due_date = revisionDueDateObj;
   updateWorkRow_(ss, work.work_id, updates);
 
   appendRowByHeader_(ss.getSheetByName(SHEET.STATUS_HISTORY), SHEET_HEADERS[SHEET.STATUS_HISTORY], {
@@ -100,7 +114,10 @@ function performStateTransition_(ss, user, e) {
     from_org: work.current_owner_org, to_org: newOwnerOrg,
     action_by: user.user_email, action_by_org: user.organization, action_date: nowTs,
     note: transition.button_label + (note ? ' — ' + note : ''),
-    revision_reasons: '', revision_due_date: '', attachment_url: '', created_at: nowTs,
+    // revision_due_date: คอลัมน์นี้มีอยู่แล้วแต่เดิมเขียนค่าว่างเสมอ (ยังไม่เคยมี feature ใช้จริง) ตอนนี้บันทึกค่า
+    // จริงเป็น audit trail ของการตั้งวันครบกำหนดแก้ไขแต่ละครั้ง (ข้อ 9 — ผู้แก้ไข/วันเวลา มีอยู่แล้วใน action_by/
+    // action_date คอลัมน์เดิมของแถวนี้)
+    revision_reasons: '', revision_due_date: revisionDueDateObj || '', attachment_url: '', created_at: nowTs,
   });
 
   return { ok: true, work_id: work.work_id, to_station: newState.station_key, action: 'transition' };

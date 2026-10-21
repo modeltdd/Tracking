@@ -1092,6 +1092,14 @@ function renderOwnerResultCard_(work, info, currentStation, stationsMap) {
     var resultLabel = ownerLabelForStation_(info.subStation);
     outcomeHtml = '<div class="owner-result-outcome owner-result-outcome-' + tone + '">' +
       '<span class="owner-result-outcome-icon">' + iconByTone[tone] + '</span> ' + escapeHtml_(resultLabel) + '</div>';
+    // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — ผลการพิจารณาเป็น "แก้ไข 2/6 เดือน" (s7_2/s7_3 เท่านั้น) ต้องแสดงวัน
+    // ครบกำหนดแก้ไขที่เจ้าหน้าที่เลือกไว้ด้วย รูปแบบ dd/mm/yyyy ปี พ.ศ. ไม่มีเวลา (formatDateDDMMYYYYBuddhist_
+    // คืน '' ถ้าไม่มีค่าจริง/invalid — ซ่อนบรรทัดทั้งหมดอัตโนมัติ ไม่แสดง "ภายในวันที่ :: -")
+    var subKey = info.subStation ? info.subStation.station_key : '';
+    var dueDateText = REVISION_DUE_DATE_STATE_KEYS_[subKey] ? formatDateDDMMYYYYBuddhist_(work.revision_due_date) : '';
+    if (dueDateText) {
+      outcomeHtml += '<div class="owner-result-outcome-duedate">ภายในวันที่ :: ' + escapeHtml_(dueDateText) + '</div>';
+    }
   }
 
   return '' +

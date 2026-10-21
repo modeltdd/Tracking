@@ -1176,6 +1176,9 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
           '<div class="pub-audit-meta">' + escapeHtml_(actorText) + '</div>' +
           (h.note ? '<div class="pub-audit-note">' + escapeHtml_(h.note) + '</div>' : '') +
           (h.revision_reasons ? '<div class="pub-audit-note">เหตุผล: ' + escapeHtml_(h.revision_reasons) + '</div>' : '') +
+          // 2026-10-21 ตามข้อแก้ไขผู้บริหาร (ข้อ 9 — audit trail) แสดงวันครบกำหนดแก้ไขที่บันทึกไว้ในประวัติแถวนี้
+          // ด้วย (ผู้แก้ไข/วันเวลาแก้ไข มีอยู่แล้วใน actorText/action_date ด้านบนของ item เดียวกัน)
+          (h.revision_due_date ? '<div class="pub-audit-note">วันครบกำหนดแก้ไข: ' + escapeHtml_(formatDateDDMMYYYYBuddhist_(h.revision_due_date)) + '</div>' : '') +
           '</div>';
       }).join('') + '</div></details>'
     : '';
@@ -1557,6 +1560,11 @@ function renderOwnerMilestoneItem_(entry) {
     var iconByTone = { done: '&#10003;', danger: '&#10007;', revision: '&#9888;', pending: '' };
     outcomeHtml = '<div class="owner-result-outcome owner-result-outcome-' + entry.outcome.tone + '">' +
       '<span class="owner-result-outcome-icon">' + iconByTone[entry.outcome.tone] + '</span> ' + escapeHtml_(entry.outcome.text) + '</div>';
+    // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — บรรทัด "ภายในวันที่ :: dd/mm/yyyy" ต่อท้าย (เฉพาะ s7_2/s7_3 ที่มีวัน
+    // ครบกำหนดแก้ไขจริงเท่านั้น — buildOwnerRevisionTimeline_ เป็นผู้กำหนด entry.outcome.dueDateText)
+    if (entry.outcome.dueDateText) {
+      outcomeHtml += '<div class="owner-result-outcome-duedate">ภายในวันที่ :: ' + escapeHtml_(entry.outcome.dueDateText) + '</div>';
+    }
   }
 
   var metaHtml = entry.state === 'upcoming'
@@ -1688,6 +1696,13 @@ function renderScanWorkBody_(ss, work, eligible, eligibleTransitions, baseUrl, t
       '<span class="wf-step-actionable-hint">กดเพื่ออัปเดตเป็นขั้นตอนนี้</span>' +
       '</button>';
 
+    // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — transition ไป s7_2/s7_3 ("แก้ไข 2/6 เดือน") ต้องบังคับให้เจ้าหน้าที่เลือก
+    // "วันครบกำหนดแก้ไข" เองจากปฏิทินก่อนบันทึกเสมอ (เช็คจาก t.to_state จริง ไม่ใช่ label — กันกระทบ transition อื่น)
+    var dueDateFieldHtml = REVISION_DUE_DATE_STATE_KEYS_[t.to_state]
+      ? '<div class="field"><label>วันครบกำหนดแก้ไข</label>' +
+        '<input class="input" type="date" name="revision_due_date" required></div>'
+      : '';
+
     confirmPanelsHtml += '' +
       '<div class="wf-confirm" id="' + escapeHtml_(confirmId) + '">' +
       '<div class="wf-confirm-title">กำลังเปลี่ยนสถานะ</div>' +
@@ -1698,6 +1713,7 @@ function renderScanWorkBody_(ss, work, eligible, eligibleTransitions, baseUrl, t
       '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
       '<input type="hidden" name="transition_id" value="' + escapeHtml_(t.transition_id) + '">' +
       '<input type="hidden" name="qr_token" value="' + escapeHtml_(token) + '">' +
+      dueDateFieldHtml +
       '<div class="field"><label>หมายเหตุ' + (t.requires_note ? '' : ' (ถ้ามี)') + '</label>' +
       '<textarea class="input" name="note" rows="2"></textarea></div>' +
       '<div class="wf-confirm-actions">' +
@@ -1806,6 +1822,14 @@ function renderTransitionFormBody_(work, transition, baseUrl, token, errors, pre
   var noteFieldHtml = '<div class="field"><label>หมายเหตุ' + (transition.requires_note ? '' : ' (ถ้ามี)') + '</label>' +
     '<textarea class="input" name="note" rows="3">' + escapeHtml_(prevValues.note || '') + '</textarea></div>';
 
+  // 2026-10-21 — ข้อ 8 "Edit Mode" ตามที่ผู้บริหารขอ: validate ไม่ผ่าน (เช่น ลืมกรอกหมายเหตุที่บังคับ) ต้อง
+  // reload วันครบกำหนดแก้ไขที่กรอกไว้แล้วกลับมาในช่องปฏิทิน ห้ามหายไปตอน re-render หน้าเดิม (prevValues =
+  // e.parameter เดิมจาก Code.gs ซึ่งมี revision_due_date ดิบ "YYYY-MM-DD" ที่ submit มาอยู่แล้ว)
+  var dueDateFieldHtml = REVISION_DUE_DATE_STATE_KEYS_[transition.to_state]
+    ? '<div class="field"><label>วันครบกำหนดแก้ไข</label>' +
+      '<input class="input" type="date" name="revision_due_date" value="' + escapeHtml_(prevValues.revision_due_date || '') + '" required></div>'
+    : '';
+
   return errorHtml +
     '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form">' +
     '<h3 class="action-form-title">' + escapeHtml_(transition.button_label) + '</h3>' +
@@ -1814,6 +1838,7 @@ function renderTransitionFormBody_(work, transition, baseUrl, token, errors, pre
     '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
     '<input type="hidden" name="transition_id" value="' + escapeHtml_(transition.transition_id) + '">' +
     '<input type="hidden" name="qr_token" value="' + escapeHtml_(token) + '">' +
+    dueDateFieldHtml +
     noteFieldHtml +
     '<button class="btn-primary" type="submit">ยืนยัน' + escapeHtml_(transition.button_label) + '</button>' +
     '</form>' +
@@ -3127,6 +3152,9 @@ var PUBLIC_CSS_ = '' +
   '.owner-result-outcome-revision{color:var(--revision);}' +
   '.owner-result-outcome-danger{color:var(--danger);}' +
   '.owner-result-outcome-icon{display:inline-block;}' +
+  // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — บรรทัด "ภายในวันที่ :: dd/mm/yyyy" รองจากบรรทัดผลการพิจารณา (เบากว่า
+  // เล็กน้อย ไม่ชิง tone สีเดียวกับบรรทัดบน กันสับสนว่าเป็นอีก tone หนึ่ง)
+  '.owner-result-outcome-duedate{font-size:.9rem;font-weight:600;color:var(--text);margin-top:2px;}' +
   // 2026-10-08 รอบ 12 — คลาสเดิมของรอบก่อน (ตัวใหญ่ "ขั้นตอนที่ N"/badge/คำบรรยายยาว) เลิกใช้ในหน้านี้แล้ว ไม่ได้
   // ลบ rule ทิ้ง (เผื่อใช้ที่อื่นภายหลัง): .owner-result-current-main, .owner-result-current-desc,
   // .owner-result-sub-label, .owner-result-head, .owner-result-icon*, .owner-result-main, .owner-result-desc

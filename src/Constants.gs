@@ -70,6 +70,11 @@ SHEET_HEADERS[SHEET.WORKS] = [
   // มาก่อน ไม่บังคับกรอก (งานเก่า/งานที่ยังไม่มีหนังสือนำส่งจะมีค่าว่าง) forwarding_book_date/admin_received_date
   // เก็บเป็น Date จริง (ไม่ใช่ string dd/mm/yyyy) — ความหมายคนละอย่างกับ received_date เดิม ห้ามใช้แทนกัน
   'forwarding_book_no', 'forwarding_book_date', 'admin_received_date',
+  // เพิ่ม 2026-10-21 (ข้อแก้ไขผู้บริหาร — "วันครบกำหนดแก้ไข" กรณีผลการพิจารณาเป็นแก้ไข 2/6 เดือน) ฟิลด์ใหม่จริง
+  // เจ้าหน้าที่เลือกเองจากปฏิทินเสมอ ห้ามคำนวณอัตโนมัติ — เขียนตอน transition s7->s7_2/s7_3 เท่านั้น (ดู
+  // performStateTransition_, Actions.gs) งานเก่า/ยังไม่เคยผ่านขั้นนี้จะมีค่าว่าง เก็บเป็น Date จริง (ไม่ใช่
+  // string dd/mm/yyyy — รูปแบบเดียวกับ forwarding_book_date/admin_received_date ด้านบน)
+  'revision_due_date',
 ];
 SHEET_HEADERS[SHEET.STATUS_HISTORY] = [
   'history_id', 'work_id', 'tracking_no', 'action', 'from_station', 'to_station', 'from_org', 'to_org',
@@ -253,6 +258,12 @@ var OWNER_STATE_LABELS_ = {
   // (ยังไม่เกิดขึ้นจริง) ความหมายเดิมยังคงอยู่ แค่ตัดกาลอดีตออก ตรงกับ acceptance test "แจ้งผลให้หน่วยงาน" ด้วย
   s10: 'แจ้งผลให้หน่วยงานต้นสังกัด',
 };
+
+// 2026-10-21 (ข้อแก้ไขผู้บริหาร — "วันครบกำหนดแก้ไข") state ที่ผลการพิจารณาเป็น "แก้ไข 2 เดือน"/"แก้ไข 6 เดือน"
+// เท่านั้น (s7_1="ผ่าน"/s7_4="ไม่ผ่าน" ไม่ต้องมีวันครบกำหนด) ใช้ร่วมกันทั้ง validate ฝั่ง server
+// (performStateTransition_, Actions.gs), เงื่อนไขแสดงช่องกรอกวันที่ (Views.gs) และเงื่อนไขแสดงผล Owner View
+// (PublicTrack.gs/OwnerAuth.gs) — รวมจุดเดียวกันความหมายเดียว กัน typo รหัส state กระจายหลายไฟล์
+var REVISION_DUE_DATE_STATE_KEYS_ = { s7_2: true, s7_3: true };
 
 // เส้นทาง (transition) ระหว่าง state — 1 state ไปได้หลายทางถ้ามีมากกว่า 1 แถวที่ from ตรงกัน (จุดตัดสินใจ)
 // result_value: ถ้าไม่ว่าง จะเขียนลง Works.evaluation_result ตอนกดปุ่มนี้ (ใช้เป็นตัวกรอง "ผลการพิจารณา")
