@@ -300,11 +300,39 @@ function findOrganizationMasterById_(ss, organizationId) {
   if (!organizationId) return null;
   var sheet = ss.getSheetByName(SHEET.ORGANIZATION_MASTER);
   if (!sheet) return null;
+  // 2026-10-21 แก้บั๊กจริง (ผู้ใช้รายงาน "ไม่พบหน่วยงานที่ตรงกับที่เลือก" แม้เลือกจากรายการถูกต้อง) — เดิมเทียบ
+  // organization_id ด้วย === ตรงๆ ถ้าแถวไหนใน OrganizationMaster ถูกแก้ไขตรงในชีตด้วยมือ (พิมพ์รหัส9หลักที่ขึ้น
+  // ต้นด้วย 0 ใหม่) Google Sheets จะ auto-convert ค่าเป็นตัวเลข (ตัดเลข 0 นำหน้า+เปลี่ยน type เป็น Number) ขณะที่
+  // client ส่ง organization_id มาเป็น String เสมอ (String(p.reg_organization_id)) ทำให้ === ไม่ตรงกันตลอด แก้ให้
+  // normalize เป็น string (trim) ทั้งสองฝั่งก่อนเทียบ กันปัญหานี้แม้ค่าบนชีตจะถูกแก้เป็น Number ภายหลัง
+  var target = String(organizationId).trim();
   var rows = readSheetAsObjects_(sheet);
   for (var i = 0; i < rows.length; i++) {
-    if (rows[i].organization_id === organizationId) return rows[i];
+    if (String(rows[i].organization_id).trim() === target) return rows[i];
   }
   return null;
+}
+
+/**
+ * 2026-10-21 — diagnostic เช็คว่ามีแถวไหนใน OrganizationMaster ที่ organization_id ไม่ใช่ string ที่ถูกต้อง
+ * (เช่น ถูก Google Sheets auto-convert เป็นตัวเลขตอนแก้ไขตรงในชีตด้วยมือ ตัดเลข 0 นำหน้าออก) ซึ่งคือ root cause
+ * ของบั๊ก "กรุณาเลือกหน่วยงานจากรายการ (ไม่พบหน่วยงานที่ตรงกับที่เลือก)" ที่ผู้ใช้รายงาน — รันจาก Editor
+ * โดยตรง (ไม่มี underscore ต่อท้าย เลยเลือกรันจาก dropdown ได้) ดู Log ว่ามีแถวผิดปกติกี่แถว/แถวไหนบ้าง
+ */
+function logOrganizationMasterIdIssues() {
+  var ss = getSpreadsheet_();
+  var sheet = ss.getSheetByName(SHEET.ORGANIZATION_MASTER);
+  if (!sheet) { Logger.log('=== ไม่พบชีต OrganizationMaster เลย ==='); return; }
+  var rows = readSheetAsObjects_(sheet);
+  Logger.log('จำนวนแถวทั้งหมด: ' + rows.length);
+  var bad = rows.filter(function (r) {
+    return typeof r.organization_id !== 'string' || r.organization_id.length !== 9 || /[^0-9]/.test(r.organization_id);
+  });
+  if (!bad.length) { Logger.log('=== ไม่พบแถวผิดปกติ — organization_id ทุกแถวเป็น string 9 หลักปกติ ==='); return; }
+  Logger.log('=== พบ ' + bad.length + ' แถวที่ organization_id ผิดปกติ (typeof ไม่ใช่ string และ/หรือไม่ครบ 9 หลัก) ===');
+  bad.forEach(function (r) {
+    Logger.log('organization_name=' + r.organization_name + ' organization_id=' + JSON.stringify(r.organization_id) + ' typeof=' + typeof r.organization_id);
+  });
 }
 
 /**
