@@ -759,13 +759,15 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
     '<div class="excel-sheet">' + tableHtml + '</div>' + pagerHtml;
 }
 
-/** ปุ่มสลับ [มุมมองการ์ด] [มุมมอง Excel] (2026-09-25 ตามที่ผู้ใช้ขอข้อ 10) — ข้อมูล/filter/permission ชุดเดียวกัน
- *  ต่างแค่การแสดงผล ใช้ร่วมกันทั้ง 2 ฟังก์ชัน render */
+/** ปุ่มสลับ [ภาพรวมผลงาน] [ทะเบียนแบบ Excel] (2026-09-25 ตามที่ผู้ใช้ขอข้อ 10, 2026-10-21 เปลี่ยน label ให้
+ *  ผู้บริหารเข้าใจง่ายขึ้นตามที่ผู้ใช้ขอ — เดิม "มุมมองการ์ด"/"มุมมอง Excel" — แก้แค่ข้อความที่แสดงผล route/
+ *  query param (view=card/view=excel)/function/permission/data source/filter/export logic เดิมทั้งหมดไม่แตะ) —
+ *  ข้อมูล/filter/permission ชุดเดียวกัน ต่างแค่การแสดงผล ใช้ร่วมกันทั้ง 2 ฟังก์ชัน render */
 function renderRegistryViewToggle_(rp, baseUrl) {
   var isExcel = rp.view === 'excel';
   return '<div class="registry-view-toggle">' +
-    '<a class="registry-view-btn' + (isExcel ? '' : ' active') + '" target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { view: 'card', p: 1 }) + '">มุมมองการ์ด</a>' +
-    '<a class="registry-view-btn' + (isExcel ? ' active' : '') + '" target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { view: 'excel', p: 1 }) + '">มุมมอง Excel</a>' +
+    '<a class="registry-view-btn' + (isExcel ? '' : ' active') + '" target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { view: 'card', p: 1 }) + '">ภาพรวมผลงาน</a>' +
+    '<a class="registry-view-btn' + (isExcel ? ' active' : '') + '" target="_top" href="' + baseUrl + '?' + buildRegistryQuery_(rp, { view: 'excel', p: 1 }) + '">ทะเบียนแบบ Excel</a>' +
     '</div>';
 }
 
@@ -2682,8 +2684,10 @@ var STAFF_CSS_ = '' +
   // มุมมอง Excel ของหน้าทะเบียน (2026-09-25 เพิ่มครั้งแรก, 2026-10-06 ปรับรอบ 2 ตามที่ผู้ใช้ขอ — เน้น "หน้าตา/
   // อารมณ์แบบ Excel จริงๆ" พื้นขาว เส้น grid ชัด ลดความรู้สึก dashboard/card ลง) header ติดด้านบน + freeze 3
   // คอลัมน์แรก ด้วย CSS ล้วน (position:sticky) ไม่มี JS แถวสลับสีอ่อนมากอ่านง่ายแบบ spreadsheet จริง
-  '.registry-view-toggle{display:flex;gap:8px;margin-bottom:12px;}' +
-  '.registry-view-btn{padding:7px 16px;border-radius:999px;border:1px solid var(--border);background:#fff;color:var(--muted);text-decoration:none;font-size:.82rem;font-weight:600;}' +
+  // 2026-10-21 ตามที่ผู้ใช้ขอ — เปลี่ยน label เป็น "ภาพรวมผลงาน"/"ทะเบียนแบบ Excel" (ยาวกว่าเดิมเล็กน้อย) เพิ่ม
+  // flex-wrap+white-space:nowrap กันข้อความล้น/ตัดคำผิด/เกิด horizontal scroll บนมือถือจอแคบมาก
+  '.registry-view-toggle{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}' +
+  '.registry-view-btn{padding:7px 16px;border-radius:999px;border:1px solid var(--border);background:#fff;color:var(--muted);text-decoration:none;font-size:.82rem;font-weight:600;white-space:nowrap;}' +
   '.registry-view-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}' +
   // Toolbar (ข้อ 2/10) — พื้นอ่อนบางๆ แยกจากตัวตารางที่ต้องขาวล้วน ไม่ใช้การ์ดหนา/เงา
   '.excel-toolbar-buttons{display:flex;gap:8px;align-items:center;margin-top:4px;}' +
