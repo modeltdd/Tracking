@@ -146,6 +146,41 @@ function buildLegacyUpdate1012Report_(seedRows) {
 }
 
 /**
+ * 2026-10-22 — diagnostic หา root cause ว่าทำไมกลุ่ม B (ข้อมูลเปลี่ยนแปลง) ขึ้นสูงผิดปกติ (244/244 — ควรมีบาง
+ * แถวตรงเป๊ะไม่เปลี่ยนเลยด้วย) log field/ค่าเดิม/ค่าใหม่แบบเต็มของ legacy_seq ที่ระบุ (ตรวจไฟล์จริงมาแล้วว่า
+ * seq 1/7/8 เนื้อหาควรตรงเป๊ะกับที่เคย import — ถ้า log นี้บอกว่าต่าง จะเห็นชัดว่า field ไหน/ค่าอะไรที่ไม่ตรง)
+ * รันจาก Editor ได้ตรงๆ (ไม่มี underscore ต่อท้าย) ไม่แก้ไขข้อมูลใดๆ เลย
+ */
+function logLegacyUpdate1012SampleDiff() {
+  var seqList = ['1', '7', '8', '100', '244'];
+  var ss = getSpreadsheet_();
+  var seedRows = getLegacyUpdate1012Seed_();
+  var positionRows = getActiveMasterRows_(ss, SHEET.MASTER_POSITIONS);
+  var stationOrderIndex = buildLegacyStationOrderIndex_(ss);
+  var provinceList = getSettingList_(ss, 'district11_provinces', []);
+  var liveWorks = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var liveBySeq = {};
+  liveWorks.forEach(function (w) { if (w.legacy_seq) liveBySeq[String(w.legacy_seq)] = w; });
+
+  seqList.forEach(function (seq) {
+    var rawRow = seedRows.filter(function (row) { return String(row[LEGACY_COL_.SEQ]).trim() === seq; })[0];
+    if (!rawRow) { Logger.log('seq=' + seq + ' — ไม่พบในไฟล์ Excel (seed) เลย'); return; }
+    var r = analyzeLegacyRow_(ss, rawRow, positionRows, stationOrderIndex, provinceList, undefined);
+    var work = liveBySeq[seq];
+    Logger.log('--- seq=' + seq + ' ---');
+    if (!work) { Logger.log('  ไม่พบใน Works เลย (legacy_seq นี้ยังไม่เคย import)'); return; }
+    Logger.log('  work_id=' + work.work_id + ' tracking_no=' + work.tracking_no);
+    var changes = diffLegacyIdentityFields1012_(work, r);
+    if (!changes.length) { Logger.log('  ไม่มี diff เลย (ตรงกันทุก field)'); return; }
+    changes.forEach(function (c) {
+      Logger.log('  field=' + c.field +
+        ' | เดิม=' + JSON.stringify(c.old) + ' (typeof ' + typeof c.old + (c.old instanceof Date ? ', Date' : '') + ')' +
+        ' | ใหม่=' + JSON.stringify(c.newVal) + ' (typeof ' + typeof c.newVal + (c.newVal instanceof Date ? ', Date' : '') + ')');
+    });
+  });
+}
+
+/**
  * ขั้นที่ 1 (รันได้ปลอดภัยไม่จำกัดจำนวนครั้ง ไม่แก้ข้อมูลใดๆ เลย) — สรุปตัวเลข Dry Run ตามข้อ 10 ลง Logger +
  * รายละเอียดทุกแถว (เฉพาะ field ที่เปลี่ยนจริงสำหรับกลุ่ม B ตามข้อ 11) ลงชีต "ReconcileDryRun1012" (ล้างของเก่าทิ้ง
  * ทุกครั้งที่รัน) ให้ตรวจสอบก่อนรัน applyLegacyUpdate1012() จริง — seedRowsOverride ใช้เฉพาะเทส (harness) ให้สลับ
