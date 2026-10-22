@@ -49,13 +49,31 @@ function computeLegacyTrackingNo1012_(receivedDate, legacySeq) {
   return shortBuddhistYear_(getBuddhistYear_(new Date(receivedDate))) + '-' + padLeft_(legacySeqNumericPart1012_(legacySeq), 3);
 }
 
-function normalizeLegacyCompareText1012_(v) {
-  return String(v === null || v === undefined ? '' : v).trim();
+/** เทียบค่าข้อความ/ตัวเลข — ถ้า parse เป็นเลขได้ทั้งคู่ เทียบด้วยค่าตัวเลข (กัน false positive จาก floating-point
+ *  string noise ที่มาจาก Excel จริง เช่น legacy_team "1.13" ถูกเก็บในไฟล์เป็น "1.1299999999999999") ไม่งั้นเทียบ
+ *  string ที่ trim แล้ว (2026-10-22 — เจอจริงจาก dry run บนข้อมูลจริง: seq=244 legacy_team ถูก flag ผิดเพราะเรื่องนี้) */
+function normalizeLegacyCompareValue1012_(v) {
+  var s = String(v === null || v === undefined ? '' : v).trim();
+  if (s !== '' && /^-?\d+(\.\d+)?$/.test(s)) return Number(s);
+  return s;
+}
+
+/** เทียบวันที่แบบ "วันปฏิทินเดียวกันหรือไม่" (ปี/เดือน/วัน ตาม timezone ของ Apps Script project) ไม่ใช่ timestamp
+ *  ตรงๆ — เพราะค่าที่มาจาก excelSerialToDate_() (เที่ยงคืน UTC ตรงๆ) กับค่าที่มาจาก migrateLegacyRegistrations()
+ *  เดิม (new Date(y,m,d) ตีความตาม timezone โปรเจกต์ = เที่ยงคืนกรุงเทพ) คือ "วันเดียวกันจริง" แต่ getTime() ต่างกัน
+ *  7 ชั่วโมงเสมอ — เจอจริงจาก dry run: ทุกแถวที่ match ถูก flag กลุ่ม B ผิดพลาดเพราะเทียบ timestamp ตรงๆ
+ *  (2026-10-22) */
+function sameCalendarDate1012_(a, b) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  var da = new Date(a), db = new Date(b);
+  if (isNaN(da.getTime()) || isNaN(db.getTime())) return false;
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
 }
 
 /** เทียบฟิลด์ "ข้อมูลตัวตน" ระหว่างงานที่มีอยู่แล้ว (work, จาก Works จริง) กับข้อมูลใหม่จาก Excel (r, ผลจาก
  *  analyzeLegacyRow_) คืน array ของ { field, old, new } เฉพาะฟิลด์ที่ค่าต่างกันจริง (trim แล้วเทียบ exact —
- *  ไม่ fuzzy/ไม่เดาว่า "คล้ายกัน" คือค่าเดียวกัน) received_date เทียบแบบวันที่จริง ไม่ใช่ string */
+ *  ไม่ fuzzy/ไม่เดาว่า "คล้ายกัน" คือค่าเดียวกัน) received_date เทียบแบบวันปฏิทิน ไม่ใช่ timestamp ตรงๆ */
 function diffLegacyIdentityFields1012_(work, r) {
   var changes = [];
   var textFieldMap = {
@@ -65,15 +83,13 @@ function diffLegacyIdentityFields1012_(work, r) {
     org_from: r.org_from, requested_org_position: r.requested_org_position,
   };
   Object.keys(textFieldMap).forEach(function (field) {
-    var oldN = normalizeLegacyCompareText1012_(work[field]);
-    var newN = normalizeLegacyCompareText1012_(textFieldMap[field]);
+    var oldN = normalizeLegacyCompareValue1012_(work[field]);
+    var newN = normalizeLegacyCompareValue1012_(textFieldMap[field]);
     if (oldN !== newN) changes.push({ field: field, old: work[field], newVal: textFieldMap[field] });
   });
-  var oldDate = work.received_date ? new Date(work.received_date) : null;
-  var newDate = r.received_date ? new Date(r.received_date) : null;
-  var oldTime = oldDate && !isNaN(oldDate.getTime()) ? oldDate.getTime() : null;
-  var newTime = newDate && !isNaN(newDate.getTime()) ? newDate.getTime() : null;
-  if (oldTime !== newTime) changes.push({ field: 'received_date', old: work.received_date, newVal: r.received_date });
+  if (!sameCalendarDate1012_(work.received_date, r.received_date)) {
+    changes.push({ field: 'received_date', old: work.received_date, newVal: r.received_date });
+  }
   return changes;
 }
 
