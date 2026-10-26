@@ -387,3 +387,45 @@ function applyLegacyUpdate1012(seedRowsOverride) {
     duplicateTrackingAfter: dupTrackingAfter,
   };
 }
+
+/**
+ * สุ่มเช็คผล applyLegacyUpdate1012() หลังรันจริง (2026-10-26, ตามคำขอผู้ใช้ "สุ่มเช็คให้หน่อย") — read-only,
+ * ไม่แก้ข้อมูล กลุ่ม B: ดึง AuditLog action='legacy_update_1012' (ชื่อ action ไม่ซ้ำกับที่อื่น จึงกรองได้ตรง) หัว/
+ * กลาง/ท้ายของชุด เทียบ old/new ที่บันทึกไว้กับค่าจริงปัจจุบันใน Works ว่าตรงกัน กลุ่ม C: ใช้ 14 แถวท้ายสุดของชีต
+ * Works (insert ด้วย appendRowByHeader_ ต่อท้ายเสมอ แถวท้ายจึงเป็นกลุ่ม C แน่นอน ไม่ต้องเดา)
+ */
+function logLegacyUpdate1012SpotCheck() {
+  var ss = getSpreadsheet_();
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var works = readSheetAsObjects_(worksSheet);
+  var worksById = {};
+  works.forEach(function (w) { worksById[w.work_id] = w; });
+
+  Logger.log('=== สุ่มเช็คกลุ่ม B (update จริง) จาก AuditLog action=legacy_update_1012 ===');
+  var auditLog = readSheetAsObjects_(ss.getSheetByName(SHEET.AUDIT_LOG));
+  var bEntries = auditLog.filter(function (a) { return a.action === 'legacy_update_1012'; });
+  Logger.log('พบ AuditLog กลุ่ม B ทั้งหมด: ' + bEntries.length + ' แถว');
+  var sampleIdx = [0, Math.floor(bEntries.length / 2), bEntries.length - 1];
+  sampleIdx.forEach(function (idx) {
+    var a = bEntries[idx];
+    if (!a) return;
+    var w = worksById[a.work_id];
+    Logger.log('--- work_id=' + a.work_id + ' tracking_no=' + (w ? w.tracking_no : '(ไม่พบใน Works!)') +
+      ' ชื่อ=' + (w ? (w.title_name + w.first_name + ' ' + w.last_name) : '') + ' ---');
+    Logger.log('  AuditLog เดิม: ' + a.old_value);
+    Logger.log('  AuditLog ใหม่ (ที่บันทึกไว้ตอน apply): ' + a.new_value);
+    if (w) {
+      Logger.log('  ค่าจริงใน Works ตอนนี้: received_date=' + formatDateTh_(w.received_date) +
+        ' legacy_team=' + w.legacy_team + ' position=' + w.position + ' province=' + w.province +
+        ' secretary=' + w.secretary + ' org_from=' + w.org_from + ' requested_org_position=' + w.requested_org_position);
+    }
+  });
+
+  Logger.log('=== สุ่มเช็คกลุ่ม C (insert ใหม่) — 14 แถวท้ายสุดของชีต Works ===');
+  var lastN = works.slice(-14);
+  lastN.forEach(function (w) {
+    Logger.log('legacy_seq=' + w.legacy_seq + ' tracking_no=' + w.tracking_no + ' ชื่อ=' + w.title_name + w.first_name + ' ' + w.last_name +
+      ' ตำแหน่ง=' + w.position + ' จังหวัด=' + w.province + ' received_date=' + formatDateTh_(w.received_date) +
+      ' station=' + w.current_station_key + ' status=' + w.current_status_public);
+  });
+}
