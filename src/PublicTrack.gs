@@ -736,3 +736,44 @@ function handlePublicTrackPost_(ss, e) {
   var data = buildPublicResultData_(ss, result.work);
   return renderPublicPage_('ผลการตรวจสอบสถานะ', renderPublicResultBody_(result.work, data, baseUrl));
 }
+
+/**
+ * Diagnostic (2026-10-27, ตามที่ผู้ใช้รายงาน: Owner Timeline ของ tracking_no 69-220 ยังแสดงแค่ 4 ขั้นตอน ทั้งที่
+ * มีข้อความ "เริ่มกระบวนการแก้ไข (2 เดือน)" แสดงว่าควรเข้าเส้นทาง 8 ขั้นตอน buildOwnerRevisionTimeline_) —
+ * ตรวจ ownerTimelineNeedsRevisionPath_(data.steps) จริงว่า true/false และเหตุผล ไม่เดา/ไม่แก้อะไร อ่านอย่างเดียว
+ */
+function logOwnerTimelineDebug(trackingNo) {
+  trackingNo = trackingNo || '69-220';
+  var ss = getSpreadsheet_();
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var work = works.filter(function (w) { return w.tracking_no === trackingNo; })[0];
+  if (!work) { Logger.log('ไม่พบ tracking_no=' + trackingNo); return; }
+
+  Logger.log('=== work ===');
+  Logger.log('current_station_key=' + work.current_station_key + ' current_status_public=' + work.current_status_public +
+    ' evaluation_result=' + work.evaluation_result + ' next_step_text=' + work.next_step_text);
+
+  var data = buildPublicResultData_(ss, work);
+  Logger.log('=== data.steps (' + (data.steps ? data.steps.length : 0) + ' แถว) ===');
+  (data.steps || []).forEach(function (s) {
+    Logger.log('  key=' + s.key + ' order=' + JSON.stringify(s.order) + ' (typeof ' + typeof s.order + ') state=' + s.state + ' name=' + s.name);
+  });
+
+  var resolved = getResolvedFirstRoundStep_(data.steps);
+  Logger.log('=== getResolvedFirstRoundStep_ ===');
+  Logger.log(resolved ? ('key=' + resolved.key + ' order=' + JSON.stringify(resolved.order)) : 'null (ไม่พบ)');
+
+  var needsRevision = ownerTimelineNeedsRevisionPath_(data.steps);
+  Logger.log('=== ownerTimelineNeedsRevisionPath_ === ' + needsRevision);
+
+  var ownerMilestones = needsRevision
+    ? buildOwnerRevisionTimeline_(data.steps, data.stationsMap, work)
+    : buildOwnerMilestoneTimeline_(data.steps, data.stationsMap, work);
+  Logger.log('=== ownerMilestones ที่จะ render จริง (' + (ownerMilestones ? ownerMilestones.length : 0) + ' ขั้นตอน) ===');
+  (ownerMilestones || []).forEach(function (m) { Logger.log('  order=' + m.order + ' label=' + m.label + ' state=' + m.state); });
+
+  Logger.log('=== stationsMap[current_station_key] ===');
+  var st = (data.stationsMap || {})[work.current_station_key];
+  Logger.log(st ? ('station_order=' + JSON.stringify(st.station_order) + ' (typeof ' + typeof st.station_order + ') station_name=' + st.station_name)
+    : '(ไม่พบใน stationsMap!)');
+}
