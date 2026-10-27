@@ -429,3 +429,74 @@ function logLegacyUpdate1012SpotCheck() {
       ' station=' + w.current_station_key + ' status=' + w.current_status_public);
   });
 }
+
+/**
+ * แก้ 2 รายการผิดปกติที่เจอจาก logLegacyUpdate1012SpotCheck() (2026-10-27, ยืนยันกับผู้ใช้แล้วทั้ง 2 จุด —
+ * ห้ามเดา, ยืนยันทีละจุดก่อนแก้):
+ *   1) legacy_seq="145" (นายสุภาพ ทรัพย์แก้ว): เลขา cell ในไฟล์ Excel จริงเป็น "0" (ไม่ใช่ parse พลาด) แต่ "0"
+ *      ไม่ใช่ชื่อคน — ผู้ใช้ยืนยันให้คืนค่าเดิม "นางเมธิตา พุทธชาติ" ที่มีอยู่ก่อน apply (ดู backup
+ *      Works_backup_20261022_1604)
+ *   2) legacy_seq="6/70" (นายกานต์ ธีระสัมพันธ์): serial วันที่ลงรับในไฟล์ (46300) ต่างจากแถวพี่น้องชุดเดียวกัน
+ *      (≈244624-244634) พอดี ~543 ปีเป็นวัน — คนกรอก Excel แถวนี้พิมพ์ปี ค.ศ. ตรงๆ ไม่ใช่ พ.ศ.แบบแถวอื่น ทำให้
+ *      correctLegacyReceivedDate_() ลบ 543 ปีซ้ำ ได้ 26/09/1483 (ผิด) ผู้ใช้ยืนยันให้แก้เป็น 26/09/2026 +
+ *      คำนวณ tracking_no ใหม่จากวันที่ที่แก้แล้ว
+ * Idempotent: เช็คค่าปัจจุบันตรงกับสภาพ "ผิด" ที่รู้อยู่แล้วก่อนแก้ทุกครั้ง รันซ้ำได้ไม่กระทบ เขียน AuditLog
+ * ทุกจุดที่แก้ ไม่แตะ field อื่น/ไม่แตะ Workflow (current_station_key ฯลฯ)
+ */
+function fixLegacyUpdate1012Anomalies() {
+  var ss = getSpreadsheet_();
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var works = readSheetAsObjects_(worksSheet);
+  var headers = worksSheet.getRange(1, 1, 1, worksSheet.getLastColumn()).getValues()[0];
+  var legacySeqCol = headers.indexOf('legacy_seq');
+  var secretaryCol = headers.indexOf('secretary');
+  var receivedDateCol = headers.indexOf('received_date');
+  var trackingNoCol = headers.indexOf('tracking_no');
+  var dataRange = worksSheet.getRange(2, 1, worksSheet.getLastRow() - 1, headers.length);
+  var data = dataRange.getValues();
+  var fixed = [];
+
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var seq = String(row[legacySeqCol] || '').trim();
+
+    if (seq === '145' && normalizeLegacyCompareValue1012_(row[secretaryCol]) === 0) {
+      var oldSecretary = row[secretaryCol];
+      row[secretaryCol] = 'นางเมธิตา พุทธชาติ';
+      writeAuditLog_(LEGACY_IMPORT_MARKER_, 'legacy_update_1012_fix', row[headers.indexOf('work_id')],
+        'secretary', oldSecretary, row[secretaryCol]);
+      fixed.push('seq=145 secretary: "' + oldSecretary + '" -> "' + row[secretaryCol] + '"');
+    }
+
+    if (seq === '6/70') {
+      var oldDate = row[receivedDateCol];
+      var oldDateObj = oldDate ? new Date(oldDate) : null;
+      // เช็คสภาพ "ผิด" ที่รู้อยู่แล้ว (ปี ค.ศ. < 2000 = ผลจากลบ 543 ปีซ้ำ) ก่อนแก้ — กันแก้ซ้ำ/แก้ผิดแถว
+      if (oldDateObj && !isNaN(oldDateObj.getTime()) && oldDateObj.getFullYear() < 2000) {
+        var newDate = new Date(oldDateObj.getFullYear() + 543, oldDateObj.getMonth(), oldDateObj.getDate());
+        var newTrackingNo = computeLegacyTrackingNo1012_(newDate, seq);
+        var conflict = works.filter(function (w) { return w.tracking_no === newTrackingNo && w.legacy_seq !== seq; })[0];
+        if (conflict) {
+          Logger.log('seq=6/70: หยุดแก้ — tracking_no ใหม่ "' + newTrackingNo + '" ชนกับงานเดิม work_id=' + conflict.work_id + ' (ต้องตรวจมือ)');
+        } else {
+          var oldTrackingNo = row[trackingNoCol];
+          row[receivedDateCol] = newDate;
+          row[trackingNoCol] = newTrackingNo;
+          writeAuditLog_(LEGACY_IMPORT_MARKER_, 'legacy_update_1012_fix', row[headers.indexOf('work_id')],
+            'received_date', formatDateTh_(oldDateObj), formatDateTh_(newDate));
+          writeAuditLog_(LEGACY_IMPORT_MARKER_, 'legacy_update_1012_fix', row[headers.indexOf('work_id')],
+            'tracking_no', oldTrackingNo, newTrackingNo);
+          fixed.push('seq=6/70 received_date: "' + formatDateTh_(oldDateObj) + '" -> "' + formatDateTh_(newDate) + '", tracking_no: "' + oldTrackingNo + '" -> "' + newTrackingNo + '"');
+        }
+      }
+    }
+  }
+
+  dataRange.setValues(data);
+  Logger.log('=== fixLegacyUpdate1012Anomalies เสร็จ ===');
+  if (fixed.length) {
+    fixed.forEach(function (f) { Logger.log('แก้แล้ว: ' + f); });
+  } else {
+    Logger.log('ไม่พบอะไรต้องแก้ (อาจแก้ไปแล้วก่อนหน้า หรือไม่พบแถวที่ตรงเงื่อนไข)');
+  }
+}
