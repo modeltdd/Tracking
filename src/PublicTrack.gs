@@ -513,11 +513,20 @@ var OWNER_REVISION_TIMELINE_STEPS_ = [
 
 /** true เฉพาะเมื่อผลรอบที่ 1 (state 7) resolve แล้วเป็น "ต้องแก้ไข" จริง (s7_2/s7_3) — ตรวจจาก WorkflowTransitions
  *  จริงแล้วว่ามีแค่ 2 state นี้เท่านั้นที่เดินเข้า loop 8.x/9.x ต่อ (s7_1="ผ่าน"/s7_4="ไม่ผ่าน" ไปตรง s10 เสมอ ไม่
- *  เคยเข้า loop นี้ — ไม่เดา ยึดจาก WORKFLOW_TRANSITIONS_SEED จริงที่ไม่มี s7_4_s8_1 เลย) */
+ *  เคยเข้า loop นี้ — ไม่เดา ยึดจาก WORKFLOW_TRANSITIONS_SEED จริงที่ไม่มี s7_4_s8_1 เลย)
+ *  2026-10-27 แก้บั๊กจริง (เจอจาก tracking_no 69-220 ผ่าน logOwnerTimelineDebug()): StatusHistory ของงานนี้ขาด
+ *  แถวตอนเข้า s7_2 ไปเลย (evaluation_result ก็ว่าง) ทำให้ getResolvedFirstRoundStep_ หาไม่เจอ ทั้งที่
+ *  current_station_key=s8_1 อยู่ใน loop แก้ไขจริงอยู่แล้ว — เพิ่ม fallback: ถ้า history หา step 7.x ไม่เจอ ให้เช็ค
+ *  จาก current station ตรงๆ แทน (main step 8/9 มีแต่เส้นทางแก้ไขเท่านั้นที่เคยไปถึง ตามข้อเท็จจริงเดียวกันข้างบน
+ *  ไม่ใช่การเดาเพิ่ม) กัน record ที่ประวัติไม่ครบ (แก้ไขตรงจาก Sheet/import เก่า) ตกไปใช้ 4-milestone ผิด */
 function ownerTimelineNeedsRevisionPath_(steps) {
   if (!steps) return false;
   var resolved = getResolvedFirstRoundStep_(steps);
-  return !!resolved && (resolved.key === 's7_2' || resolved.key === 's7_3');
+  if (resolved) return resolved.key === 's7_2' || resolved.key === 's7_3';
+  var current = steps.filter(function (s) { return s.state === 'current'; })[0] || null;
+  if (!current) return false;
+  var mainStep = parentStepOrder_(current.order);
+  return mainStep === '8' || mainStep === '9';
 }
 
 function buildOwnerRevisionTimeline_(steps, stationsMap, work) {
