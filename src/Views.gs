@@ -3194,6 +3194,13 @@ var PUBLIC_CSS_ = '' +
   // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — บรรทัด "ภายในวันที่ :: dd/mm/yyyy" รองจากบรรทัดผลการพิจารณา (เบากว่า
   // เล็กน้อย ไม่ชิง tone สีเดียวกับบรรทัดบน กันสับสนว่าเป็นอีก tone หนึ่ง)
   '.owner-result-outcome-duedate{font-size:.9rem;font-weight:600;color:var(--text);margin-top:2px;}' +
+  // 2026-10-28 รอบ 17 — Badge ผลการพิจารณาของ Banner Owner (renderOwnerResultCard_, OwnerAuth.gs) เท่านั้น
+  // (ไม่แตะ .owner-result-outcome เดิมของ Timeline Step 3) ขนาดกะทัดรัดแบบ pill ไม่เต็มความกว้าง ตามที่ผู้ใช้ขอ
+  // ใช้ร่วมกับคลาสสี owner-result-outcome-* เดิม (background/border/color) — multi-class ไม่ใช่ sub-selector
+  // จึงไม่กระทบ .owner-result-outcome เดิม — wrap ได้/ไม่ล้น container บนมือถือ (white-space ปกติ + max-width)
+  '.owner-result-badge{display:inline-block;max-width:100%;box-sizing:border-box;white-space:normal;' +
+  'font-size:.85rem;font-weight:600;padding:6px 14px;border-radius:999px;border:1px solid transparent;' +
+  'margin-top:8px;}' +
   // 2026-10-08 รอบ 12 — คลาสเดิมของรอบก่อน (ตัวใหญ่ "ขั้นตอนที่ N"/badge/คำบรรยายยาว) เลิกใช้ในหน้านี้แล้ว ไม่ได้
   // ลบ rule ทิ้ง (เผื่อใช้ที่อื่นภายหลัง): .owner-result-current-main, .owner-result-current-desc,
   // .owner-result-sub-label, .owner-result-head, .owner-result-icon*, .owner-result-main, .owner-result-desc

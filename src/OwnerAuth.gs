@@ -1058,20 +1058,25 @@ function renderOwnerFullDetailSection_(fullWithSkips) {
 }
 
 /**
- * การ์ด "ผลการพิจารณา" (2026-10-12 รอบ 16 ตามที่ผู้ใช้ขอ) — ตัด "ผู้รับผิดชอบ"/"อัปเดตล่าสุด" แบบ 2-column
- * grid เดิม (miniRow) ออกทั้งหมด (รอบ 15) ย้ายวันที่ (work.updated_at ฟิลด์เดิม — "วันที่อัปเดตสถานะล่าสุดจาก
- * ข้อมูลจริง" ไม่ใช่ receive_date ซึ่งคือ "วันที่รับผลงาน" คนละความหมาย ไม่ได้ลบ/เปลี่ยน field แค่ย้ายตำแหน่ง/
- * รูปแบบแสดงผล) ไปไว้เป็นบรรทัด "วันที่ :: dd/mm/yyyy" (ปี พ.ศ., วัน/เดือน 2 หลักเสมอ, ไม่มีเวลา — ใช้
- * formatDateDDMMYYYYBuddhist_ ใหม่, Utils.gs) ใต้บรรทัด "ขั้นตอนปัจจุบัน :: ..." ทันที (รอบ 16 — เปลี่ยนจาก
- * label/รูปแบบ "อัปเดตเมื่อ 8 ต.ค. 2569 เวลา 10.24 น." ของรอบ 15) ถ้าไม่มีวันที่จริง/invalid ไม่ render บรรทัด
- * นี้เลย (formatDateDDMMYYYYBuddhist_ คืน '' ให้เช็คแล้วซ่อนทั้งบรรทัด ห้ามแสดง "วันที่ :: -"/"null"/
- * "Invalid Date") ผู้รับผิดชอบ (work.current_owner_org) เลิกแสดงในการ์ดนี้แล้วตามที่ผู้ใช้ขอ (field ยังอยู่ใน
- * ฐานข้อมูลเหมือนเดิม ไม่ได้ลบ แค่ไม่ render ที่นี่)
+ * การ์ด "ผลการพิจารณา" (2026-10-28 รอบ 17 ตามข้อกำหนดล่าสุด) — ผลการพิจารณาเปลี่ยนจากบรรทัดข้อความธรรมดาเป็น
+ * Badge/Pill สีเขียว (ขนาดกะทัดรัด ไม่เต็มความกว้าง, class .owner-result-badge ใหม่ — ไม่แตะ .owner-result-outcome
+ * เดิมที่ Timeline Step 3 ใช้อยู่ (renderOwnerMilestoneItem_, Views.gs) เพื่อไม่ให้กระทบ Timeline logic/หน้าตา
+ * ตามที่ผู้ใช้กำชับห้ามแก้) และวันที่ (work.updated_at ฟิลด์เดิม — "วันที่อัปเดตสถานะล่าสุดจากข้อมูลจริง" ไม่ใช่
+ * received_date ซึ่งคือ "วันที่รับผลงาน" คนละความหมาย ไม่ได้ลบ/เปลี่ยน field) ย้ายไปอยู่ใต้ Badge เป็นบรรทัด
+ * "วันที่ผ่านขั้นตอนนี้ :: dd/mm/yyyy" (เฉพาะตอนมีผลการพิจารณา — ขั้นตอนอื่นที่ไม่มีผลยังใช้ label เดิม "วันที่ ::"
+ * ตามตำแหน่งเดิม ไม่เปลี่ยนความหมายของบรรทัดนี้ในกรณีทั่วไปที่ไม่เกี่ยวกับผลการพิจารณา) ถ้าไม่มีวันที่จริง/invalid
+ * ไม่ render บรรทัดนี้เลย (formatDateDDMMYYYYBuddhist_ คืน '')
+ *
+ * สี Badge ใช้ tone เดียวกับ OWNER_RESULT_OUTCOME_ (PublicTrack.gs) ที่ Timeline Step 3 ใช้อยู่แล้ว — ยึดจาก
+ * station_key จริง (s7_1=pass/s7_2=revision2/s7_3=revision3/s7_4=fail) ไม่ใช่เดาจากคำในชื่อ state เหมือนเดิม
+ * (subStatusToneClass_ แยกแค่ 3 สี ไม่พอกับ 4 ผลตามข้อกำหนดใหม่) ให้ Banner กับ Timeline ใช้ data source
+ * เดียวกันตามที่ผู้ใช้ระบุ — ส่วนข้อความ Badge ยังคงใช้ ownerLabelForStation_/OWNER_STATE_LABELS_ เดิม (ยาวกว่า
+ * ข้อความสั้นที่ Timeline ใช้ — คนละจุดประสงค์ ผู้ใช้ยืนยัน mockup ของ Banner ต้องการข้อความยาวนี้) ถ้า key ไม่อยู่
+ * ใน OWNER_RESULT_OUTCOME_ (ไม่เคยเกิดจริงเพราะ isSub=true มีแค่ 7.x) fallback ไปใช้ subStatusToneClass_ เดิม
  *
  * บรรทัดผลการพิจารณา (ถ้ามี, info.isSub=true เฉพาะ 7.1-7.4 เท่านั้น ไม่รวม 8.x/9.x ที่เป็นลำดับขั้นย่อยไม่ใช่ผล
- * ประเมิน) แสดงเป็นไอคอน+ข้อความบรรทัดเดียวเด่นกว่าปกติเล็กน้อย (สีตาม tone: ผ่าน=เขียว/แก้ไข=เหลืองส้ม/ไม่ผ่าน=
- * แดง) ถ้ายังไม่มีผล (isSub=false เสมอสำหรับ state 1-6/8/9/10) ไม่ render บรรทัดนี้เลย ไม่เหลือช่องว่าง/
- * placeholder ใดๆ
+ * ประเมิน) ถ้ายังไม่มีผล (isSub=false เสมอสำหรับ state 1-6/8/9/10) ไม่ render ทั้ง Badge และบรรทัดวันที่แบบใหม่เลย
+ * ไม่เหลือช่องว่าง/placeholder ใดๆ
  */
 function renderOwnerResultCard_(work, info, currentStation, stationsMap) {
   var iconByTone = { done: '&#10003;', danger: '&#10007;', revision: '&#9888;', pending: '' };
@@ -1081,32 +1086,33 @@ function renderOwnerResultCard_(work, info, currentStation, stationsMap) {
   var currentLineHtml = '<div class="owner-result-current-line">' +
     '<span class="owner-result-current-label">ขั้นตอนปัจจุบัน ::</span> ' + escapeHtml_(mainLabel) + '</div>';
 
-  var updatedDateText = formatDateDDMMYYYYBuddhist_(work.updated_at);
-  var updatedLineHtml = updatedDateText
-    ? '<div class="owner-result-updated"><span class="owner-result-updated-label">วันที่ ::</span> ' + escapeHtml_(updatedDateText) + '</div>'
-    : '';
-
   var outcomeHtml = '';
   if (info.isSub) {
-    var tone = info.subTone;
+    var subKey = info.subStation ? info.subStation.station_key : '';
+    var tone = OWNER_RESULT_OUTCOME_[subKey] ? OWNER_RESULT_OUTCOME_[subKey].tone : info.subTone;
     var resultLabel = ownerLabelForStation_(info.subStation);
-    outcomeHtml = '<div class="owner-result-outcome owner-result-outcome-' + tone + '">' +
-      '<span class="owner-result-outcome-icon">' + iconByTone[tone] + '</span> ' + escapeHtml_(resultLabel) + '</div>';
+    outcomeHtml = '<div class="owner-result-badge owner-result-outcome-' + tone + '">' +
+      '<span class="owner-result-outcome-icon">' + iconByTone[info.subTone] + '</span> ' + escapeHtml_(resultLabel) + '</div>';
     // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — ผลการพิจารณาเป็น "แก้ไข 2/6 เดือน" (s7_2/s7_3 เท่านั้น) ต้องแสดงวัน
     // ครบกำหนดแก้ไขที่เจ้าหน้าที่เลือกไว้ด้วย รูปแบบ dd/mm/yyyy ปี พ.ศ. ไม่มีเวลา (formatDateDDMMYYYYBuddhist_
     // คืน '' ถ้าไม่มีค่าจริง/invalid — ซ่อนบรรทัดทั้งหมดอัตโนมัติ ไม่แสดง "ภายในวันที่ :: -")
-    var subKey = info.subStation ? info.subStation.station_key : '';
     var dueDateText = REVISION_DUE_DATE_STATE_KEYS_[subKey] ? formatDateDDMMYYYYBuddhist_(work.revision_due_date) : '';
     if (dueDateText) {
       outcomeHtml += '<div class="owner-result-outcome-duedate">ภายในวันที่ :: ' + escapeHtml_(dueDateText) + '</div>';
     }
   }
 
+  var updatedDateText = formatDateDDMMYYYYBuddhist_(work.updated_at);
+  var updatedLabel = info.isSub ? 'วันที่ผ่านขั้นตอนนี้ ::' : 'วันที่ ::';
+  var updatedLineHtml = updatedDateText
+    ? '<div class="owner-result-updated"><span class="owner-result-updated-label">' + updatedLabel + '</span> ' + escapeHtml_(updatedDateText) + '</div>'
+    : '';
+
   return '' +
     '<div class="owner-result-card">' +
     currentLineHtml +
-    updatedLineHtml +
     outcomeHtml +
+    updatedLineHtml +
     '</div>';
 }
 
