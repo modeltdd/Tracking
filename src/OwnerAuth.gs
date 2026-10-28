@@ -1237,10 +1237,28 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
 
   var noteHtml = '';
   if (work.current_status_public === 'need_revision' && data.revisionInfo) {
+    // 2026-10-28 รอบ 18 ตามที่ผู้ใช้ขอ — data.revisionInfo.due_date เป็นฟิลด์จากโมเดลเก่า (action
+    // 'revision_requested') ที่โมเดล 24-state ปัจจุบันไม่เคยเขียนแล้ว (เป็น '' เสมอ, ดู getLatestRevisionInfo_
+    // คอมเมนต์เดิม PublicTrack.gs) จึงไม่เคยแสดงวันครบกำหนดจริงให้เจ้าของผลงานเห็นเลยตอนผลเป็น 7.2/7.3 — เพิ่ม
+    // บรรทัดนี้แยกต่างหาก อ่านจาก work.revision_due_date ตรงๆ (ฟิลด์จริงที่เจ้าหน้าที่/Admin บันทึกไว้ ตัวเดียวกับ
+    // ที่ Timeline Step 3/Banner ผลการพิจารณาใช้อยู่แล้ว ไม่สร้าง field ใหม่) resolve ว่าเป็น 2 หรือ 6 เดือนจาก
+    // getResolvedFirstRoundStep_(steps) จริง (เหมือน buildOwnerRevisionTimeline_) ไม่เดา ไม่คำนวณวันเอง ถ้ายังไม่
+    // มีวันที่จริง (Admin ยังไม่บันทึก) ไม่แสดงส่วน "ภายในวันที่ ..." เลย (formatDateDDMMYYYYBuddhist_ คืน '' ให้
+    // เช็คแล้วซ่อน ไม่แสดง null/undefined/Invalid Date) ถ้าผลไม่ใช่ 7.2/7.3 (เช่น state 3.2/3.3 รุ่นเก่า) ไม่แสดง
+    // บรรทัดนี้เลย ของเดิม (reasons/due_date จากโมเดลเก่า) ยังอยู่เหมือนเดิมทุกประการ ไม่ได้ลบ/แก้
+    var revisionDurationHtml = '';
+    var resolvedForRevisionBox = getResolvedFirstRoundStep_(data.steps);
+    if (resolvedForRevisionBox && (resolvedForRevisionBox.key === 's7_2' || resolvedForRevisionBox.key === 's7_3')) {
+      var revisionMonthsText = resolvedForRevisionBox.key === 's7_2' ? '2 เดือน' : '6 เดือน';
+      var revisionDueText = formatDateDDMMYYYYBuddhist_(work.revision_due_date);
+      revisionDurationHtml = '<p><b>เริ่มกระบวนการแก้ไข (' + revisionMonthsText + ')' +
+        (revisionDueText ? ' ภายในวันที่ ' + escapeHtml_(revisionDueText) : '') + '</b></p>';
+    }
     noteHtml = '' +
       '<div class="revision-box">' +
       '<p class="revision-title">รายการที่ต้องแก้ไข</p>' +
       '<p>' + escapeHtml_(data.revisionInfo.reasons || '-') + '</p>' +
+      revisionDurationHtml +
       (data.revisionInfo.due_date ? '<p>กรุณาส่งฉบับแก้ไขกลับภายใน <b>' + escapeHtml_(data.revisionInfo.due_date) + '</b></p>' : '') +
       '</div>';
   } else if (data.latestNote) {

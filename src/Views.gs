@@ -1498,10 +1498,22 @@ function renderPublicResultBody_(work, data, baseUrl) {
 
   var noteHtml = '';
   if (work.current_status_public === 'need_revision' && data.revisionInfo) {
+    // 2026-10-28 รอบ 18 — เหมือน renderOwnerDashboardBody_ (OwnerAuth.gs) เป๊ะ ทำ parity กับ Owner Dashboard
+    // ตามหลักการเดิมของโปรเจกต์ (เช่นรอบ 59 C6 ที่ยืนยันว่า Public Search ต้องเห็นวันครบกำหนดแก้ไขเหมือน Owner
+    // Dashboard) — ดูคอมเมนต์เต็มที่ renderOwnerDashboardBody_
+    var revisionDurationHtml = '';
+    var resolvedForRevisionBox = getResolvedFirstRoundStep_(data.steps);
+    if (resolvedForRevisionBox && (resolvedForRevisionBox.key === 's7_2' || resolvedForRevisionBox.key === 's7_3')) {
+      var revisionMonthsText = resolvedForRevisionBox.key === 's7_2' ? '2 เดือน' : '6 เดือน';
+      var revisionDueText = formatDateDDMMYYYYBuddhist_(work.revision_due_date);
+      revisionDurationHtml = '<p><b>เริ่มกระบวนการแก้ไข (' + revisionMonthsText + ')' +
+        (revisionDueText ? ' ภายในวันที่ ' + escapeHtml_(revisionDueText) : '') + '</b></p>';
+    }
     noteHtml = '' +
       '<div class="revision-box">' +
       '<p class="revision-title">รายการที่ต้องแก้ไข</p>' +
       '<p>' + escapeHtml_(data.revisionInfo.reasons || '-') + '</p>' +
+      revisionDurationHtml +
       (data.revisionInfo.due_date ? '<p>กรุณาส่งฉบับแก้ไขกลับภายใน <b>' + escapeHtml_(data.revisionInfo.due_date) + '</b></p>' : '') +
       '</div>';
   } else if (data.latestNote) {
