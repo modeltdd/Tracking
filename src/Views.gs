@@ -1478,15 +1478,13 @@ function renderPublicResultBody_(work, data, baseUrl) {
 
   var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
   // 2026-10-15 ตามที่ผู้ใช้ขอ — Public Search (หน้านี้) เปลี่ยนจาก Timeline เต็ม 1-10 (renderPubTimelineSection_
-  // เดิม) เป็น 4 milestone แบบเข้าใจง่าย (buildOwnerMilestoneTimeline_, PublicTrack.gs) เหมือน Owner Dashboard
+  // เดิม) เป็น Timeline ย่อแบบเข้าใจง่าย (buildOwnerRevisionTimeline_, PublicTrack.gs) เหมือน Owner Dashboard
   // — หน้า Staff/Admin (renderWorkDetailBody_) ยังใช้ renderPubTimelineSection_(data.fixedTimeline) เดิมเป๊ะ
   // ไม่ถูกแตะ (คนละจุดเรียก ไม่ใช่ shared call site)
-  // 2026-10-20 ตามที่ผู้ใช้ขอ — ผลรอบ 1 เป็น "ต้องแก้ไข" (s7_2/s7_3) ใช้เส้นทาง 8 ขั้นตอนแทน (ดูเหตุผลเต็มที่
-  // ownerTimelineNeedsRevisionPath_/buildOwnerRevisionTimeline_, PublicTrack.gs) ผลเป็น "ผ่าน"/"ไม่ผ่าน" ตรง
-  // ยังใช้ 4 milestone เดิม — Public Search ใช้ builder ชุดเดียวกับ Owner Dashboard เป๊ะ ไม่มี logic แยก
-  var ownerMilestones = ownerTimelineNeedsRevisionPath_(data.steps)
-    ? buildOwnerRevisionTimeline_(data.steps, data.stationsMap, work)
-    : buildOwnerMilestoneTimeline_(data.steps, data.stationsMap, work);
+  // 2026-10-28 ตามข้อกำหนดล่าสุด — ทุกเส้นทางต้องแสดง 8 ขั้นตอนเสมอ (ดูเหตุผลเต็มที่ buildOwnerRevisionTimeline_,
+  // PublicTrack.gs) เลิกแยก branch 4-milestone (buildOwnerMilestoneTimeline_) แล้ว — Public Search ใช้ builder
+  // ชุดเดียวกับ Owner Dashboard เป๊ะ ไม่มี logic แยก
+  var ownerMilestones = buildOwnerRevisionTimeline_(data.steps, data.stationsMap, work);
   var timelineHtml = renderOwnerMilestoneTimelineSection_(ownerMilestones);
   if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
 
@@ -1567,20 +1565,27 @@ function renderPubFixedTimeline_(fixedSteps) {
 
 /**
  * รายการเดียวของ Timeline 4 "milestone" (2026-10-15 ตามที่ผู้ใช้ขอ) — ใช้เฉพาะ Owner Dashboard/Public Search
- * (buildOwnerMilestoneTimeline_, PublicTrack.gs) หน้า Staff/Admin (renderWorkDetailBody_) ยังใช้
+ * (buildOwnerRevisionTimeline_, PublicTrack.gs) หน้า Staff/Admin (renderWorkDetailBody_) ยังใช้
  * renderPubFixedTimelineItem_/buildFixedMainTimeline_ เดิม 1-10 เต็มไม่ถูกแตะเลย ไอคอน/badge/
  * "รอดำเนินการ"/"ขั้นตอนถัดไป" ใช้ convention เดียวกับ Timeline เดิมทุกจุด (reuse class .pub-tl-*) ผลการพิจารณา
- * ที่ milestone 3 (entry.outcome, ถ้ามี) ใช้ไอคอน+สีตาม tone เดียวกับการ์ด "ผลการพิจารณา" (owner-result-outcome-*)
+ * ที่ step 3 (entry.outcome, ถ้ามี) ใช้ไอคอน+สีตาม tone เดียวกับการ์ด "ผลการพิจารณา" (owner-result-outcome-*)
+ * 2026-10-28 ตามข้อกำหนดล่าสุด — เพิ่ม entry.skipped (step 4-7 ตอนผลเป็น "ผ่าน"/"ไม่ผ่าน" ตรง ไม่มีการแก้ไขจริง)
+ * reuse class .owner-tl-skip เดิม (เคยใช้กับ renderOwnerFullDetailItem_ อยู่แล้ว ไม่สร้าง CSS ใหม่) + เพิ่ม 4 tone
+ * ใหม่ (pass/revision2/revision3/fail) ให้ entry.outcome
  */
 function renderOwnerMilestoneItem_(entry) {
   var icon = entry.state === 'current' ? '&#9679;' : (entry.state === 'done' ? '&#10003;' : '&#9675;');
+  var stateClass = entry.skipped ? 'upcoming owner-tl-skip' : entry.state;
   var badges = '';
   if (entry.state === 'current') badges += '<span class="pub-tl-badge">สถานะปัจจุบัน</span>';
   if (entry.isLastStep) badges += '<span class="pub-tl-badge pub-tl-badge-last">ขั้นตอนสุดท้าย</span>';
 
   var outcomeHtml = '';
   if (entry.outcome) {
-    var iconByTone = { done: '&#10003;', danger: '&#10007;', revision: '&#9888;', pending: '' };
+    var iconByTone = {
+      done: '&#10003;', danger: '&#10007;', revision: '&#9888;', pending: '',
+      pass: '&#10003;', revision2: '&#9888;', revision3: '&#9888;', fail: '&#10007;',
+    };
     outcomeHtml = '<div class="owner-result-outcome owner-result-outcome-' + entry.outcome.tone + '">' +
       '<span class="owner-result-outcome-icon">' + iconByTone[entry.outcome.tone] + '</span> ' + escapeHtml_(entry.outcome.text) + '</div>';
     // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — บรรทัด "ภายในวันที่ :: dd/mm/yyyy" ต่อท้าย (เฉพาะ s7_2/s7_3 ที่มีวัน
@@ -1590,11 +1595,13 @@ function renderOwnerMilestoneItem_(entry) {
     }
   }
 
-  var metaHtml = entry.state === 'upcoming'
-    ? '<span class="pub-tl-meta pub-tl-meta-pending">' + (entry.isNext ? 'ขั้นตอนถัดไป' : 'รอดำเนินการ') + '</span>'
-    : '';
+  var metaHtml = entry.skipped
+    ? '<span class="owner-tl-skip-reason">' + escapeHtml_(entry.skipReason || 'ไม่ใช้ในกรณีนี้') + '</span>'
+    : entry.state === 'upcoming'
+      ? '<span class="pub-tl-meta pub-tl-meta-pending">' + (entry.isNext ? 'ขั้นตอนถัดไป' : 'รอดำเนินการ') + '</span>'
+      : '';
 
-  return '<div class="pub-tl-item pub-tl-' + entry.state + '">' +
+  return '<div class="pub-tl-item pub-tl-' + stateClass + '">' +
     '<span class="pub-tl-icon">' + icon + '</span>' +
     '<span class="pub-tl-text">' +
     '<div class="owner-tl-station-name">ขั้นตอนที่ ' + entry.order + ' ' + escapeHtml_(entry.label) + badges + '</div>' +
@@ -3170,10 +3177,19 @@ var PUBLIC_CSS_ = '' +
   '.owner-result-updated{font-size:.74rem;color:var(--muted);margin-top:3px;}' +
   '.owner-result-updated-label{font-weight:600;}' +
   // บรรทัดผลการพิจารณา (ถ้ามี) — เด่นกว่าปกติเล็กน้อยด้วยสี tone + น้ำหนักตัวหนา ไม่มี card ซ้อน/ไอคอนวงกลมแล้ว
-  '.owner-result-outcome{font-size:1rem;font-weight:700;margin-top:6px;}' +
-  '.owner-result-outcome-done{color:var(--done);}' +
-  '.owner-result-outcome-revision{color:var(--revision);}' +
-  '.owner-result-outcome-danger{color:var(--danger);}' +
+  // 2026-10-28 ตามข้อกำหนดล่าสุด — เพิ่ม background/border ให้เป็น "result block" ตามที่ผู้ใช้ระบุ (เดิมมีแค่สี
+  // ข้อความ) ใช้ร่วมกับทั้ง tone เดิม (done/revision/danger — ผลการพิจารณาครั้งที่ 2) และ tone ใหม่ 4 แบบ
+  // (pass/revision2/revision3/fail — ผลการพิจารณาครั้งที่ 1 ที่ Owner เห็น ห้ามมี code 7.1-7.4 โผล่ ดู
+  // OWNER_RESULT_OUTCOME_, PublicTrack.gs)
+  '.owner-result-outcome{font-size:1rem;font-weight:700;margin-top:6px;display:inline-block;padding:6px 14px;' +
+  'border-radius:8px;border:1px solid transparent;}' +
+  '.owner-result-outcome-done{background:#d9f0e1;border-color:var(--done);color:#166534;}' +
+  '.owner-result-outcome-revision{background:#fbecc0;border-color:var(--revision);color:#8a6300;}' +
+  '.owner-result-outcome-danger{background:#f6d4d1;border-color:var(--danger);color:#9a2d24;}' +
+  '.owner-result-outcome-pass{background:#d9f0e1;border-color:var(--done);color:#166534;}' +
+  '.owner-result-outcome-revision2{background:#fff6da;border-color:#e8c547;color:#8a6300;}' +
+  '.owner-result-outcome-revision3{background:#f7dfa0;border-color:var(--revision);color:#6b4a00;}' +
+  '.owner-result-outcome-fail{background:#f6d4d1;border-color:var(--danger);color:#9a2d24;}' +
   '.owner-result-outcome-icon{display:inline-block;}' +
   // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — บรรทัด "ภายในวันที่ :: dd/mm/yyyy" รองจากบรรทัดผลการพิจารณา (เบากว่า
   // เล็กน้อย ไม่ชิง tone สีเดียวกับบรรทัดบน กันสับสนว่าเป็นอีก tone หนึ่ง)
@@ -3227,6 +3243,8 @@ var PUBLIC_CSS_ = '' +
   '.owner-detail-toggle[open] .owner-toggle-closed-text{display:none;}' +
   '.owner-detail-toggle[open] summary{margin-bottom:4px;}' +
   // งาน state ที่ "ข้าม" เพราะแตกสาย (8/9 ตอนผล 7 = ผ่าน) — เทาจาง + บอกเหตุผล แทน "รอดำเนินการ"
+  // 2026-10-28 ตามข้อกำหนดล่าสุด — เพิ่ม opacity ~0.5 ให้ตัวแถวจางจริงตามที่ผู้ใช้ระบุ (ยังอ่านได้ ไม่ใช่ซ่อน)
+  '.owner-tl-skip{opacity:.55;}' +
   '.owner-tl-skip .pub-tl-icon{background:#f1f2f4;border-color:var(--border);color:var(--muted);}' +
   '.owner-tl-skip .pub-tl-text{color:var(--muted);}' +
   '.owner-tl-skip-reason{display:block;font-size:.76rem;color:var(--muted);font-style:italic;margin-top:2px;}' +

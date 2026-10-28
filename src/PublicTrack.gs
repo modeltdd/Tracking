@@ -495,21 +495,34 @@ function buildOwnerMilestoneTimeline_(steps, stationsMap, work) {
  * -> s9_4 -> s10) ซึ่งมีรายละเอียดภายในมากกว่าที่ผู้ใช้ทั่วไปต้องเห็น — ย่อให้เหลือ 8 ขั้นตอนสำหรับ Owner/Public
  * ตาม mapping ที่ผู้ใช้ระบุเป๊ะ: 1=1-2, 2=3-6, 3=7(+7.x), 4=8.1, 5=8.5, 6=8.6, 7=9.4, 8=10 (state 8.2/8.3/8.4
  * และ 9.1/9.2/9.3 ไม่มีเลขขั้นตอน Owner ของตัวเอง — ถือเป็นส่วนหนึ่งของขั้นตอนก่อนหน้าที่ยังไม่ถึงจุดถัดไป เช่น
- * 8.2-8.4 นับรวมอยู่ใน "ขั้นตอนที่ 4" จนกว่าจะถึง 8.5 จริง) ตรงข้ามกับ "ผ่าน"/"ไม่ผ่าน" ตรง (s7_1/s7_4) ที่ไม่
- * เคยเข้า loop นี้เลยและยังใช้ buildOwnerMilestoneTimeline_/OWNER_MILESTONE_RANGES_ (4 milestone) เดิมตามปกติ
- * — ดู ownerTimelineNeedsRevisionPath_ สำหรับจุดตัดสินใจเลือกใช้ builder ไหน ไม่แก้ state code/WorkflowMaster/
- * StatusHistory ใดๆ เป็นแค่ mapping การแสดงผลเพิ่มอีกชุดเท่านั้น (เหมือน milestone เดิมทุกประการ)
+ * 8.2-8.4 นับรวมอยู่ใน "ขั้นตอนที่ 4" จนกว่าจะถึง 8.5 จริง) ไม่แก้ state code/WorkflowMaster/StatusHistory ใดๆ
+ * เป็นแค่ mapping การแสดงผลเพิ่มอีกชุดเท่านั้น
+ * 2026-10-28 ตามข้อกำหนดล่าสุด — "ผ่าน"/"ไม่ผ่าน" ตรง (s7_1/s7_4) ก็ต้องแสดง 8 ขั้นตอนนี้เหมือนกันแล้ว (เดิมใช้
+ * buildOwnerMilestoneTimeline_/OWNER_MILESTONE_RANGES_ 4 milestone แยก — เลิกใช้ที่จุดเรียก Owner/Public แล้ว
+ * ไม่ลบฟังก์ชันทิ้ง) step 4-7 จะถูก mark .skipped=true แทน (ดู buildOwnerRevisionTimeline_)
  */
 var OWNER_REVISION_TIMELINE_STEPS_ = [
   { order: 1, min: 1, max: 2, label: 'สำนักงานเขตรับเรื่องของท่านแล้ว' },
   { order: 2, min: 3, max: 6.99, label: 'เอกสารถูกส่งเข้าสู่กระบวนการพิจารณาแล้ว' },
   { order: 3, min: 7, max: 7.99, label: 'ผลการพิจารณา' },
-  { order: 4, min: 8.1, max: 8.49, label: 'สำนักงานเขตส่งเรื่องแก้ไขให้หน่วยงานต้นสังกัดแล้ว' },
+  // 2026-10-28 ตามข้อกำหนดล่าสุด — ปรับข้อความ step 4/6 ให้ตรงตัวอักษรตามที่ผู้ใช้ระบุ (step5/7/8 ตรงเดิมอยู่แล้ว)
+  { order: 4, min: 8.1, max: 8.49, label: 'ส่งเอกสารแก้ไขให้หน่วยงานต้นสังกัด' },
   { order: 5, min: 8.5, max: 8.59, label: 'หน่วยงานต้นสังกัดส่งเอกสารที่แก้ไขแล้วกลับมายังสำนักงานเขต' },
-  { order: 6, min: 8.6, max: 9.39, label: 'สำนักงานเขตส่งเอกสารที่แก้ไขแล้วให้คณะกรรมการพิจารณาอีกครั้ง' },
+  { order: 6, min: 8.6, max: 9.39, label: 'สำนักงานเขตส่งเอกสารที่ผ่านการแก้ไขแล้วให้คณะกรรมการพิจารณา' },
   { order: 7, min: 9.4, max: 9.49, label: 'ผลการพิจารณาครั้งที่ 2 ถูกส่งมายังสำนักงานเขตแล้ว' },
   { order: 8, min: 10, max: 10, label: 'แจ้งผลให้หน่วยงานต้นสังกัด' },
 ];
+
+/** ข้อความ/สี "ผลการพิจารณา" ที่ Step 3 (2026-10-28 ตามข้อกำหนดล่าสุด) — Owner ห้ามเห็น code 7.1-7.4 เลย ใช้
+ *  ข้อความนี้แทน OWNER_STATE_LABELS_ ตรงๆ เฉพาะจุดนี้เท่านั้น (OWNER_STATE_LABELS_.s7_1 ยังคงข้อความเดิมยาวกว่า
+ *  "ผ่านการประเมินจากคณะกรรมการ" ใช้ที่อื่นในระบบ ไม่แตะ) 4 tone แยกสีชัดเจนตามที่ผู้ใช้กำหนด (pass เขียว/
+ *  revision2 เหลืองอ่อน/revision3 เหลืองเข้มกว่า/fail แดง) */
+var OWNER_RESULT_OUTCOME_ = {
+  s7_1: { text: 'ผ่านการประเมิน', tone: 'pass' },
+  s7_2: { text: 'ให้ปรับปรุงแก้ไขภายใน 2 เดือน', tone: 'revision2' },
+  s7_3: { text: 'ให้ปรับปรุงแก้ไขภายใน 6 เดือน', tone: 'revision3' },
+  s7_4: { text: 'ไม่ผ่านการประเมิน', tone: 'fail' },
+};
 
 /** true เฉพาะเมื่อผลรอบที่ 1 (state 7) resolve แล้วเป็น "ต้องแก้ไข" จริง (s7_2/s7_3) — ตรวจจาก WorkflowTransitions
  *  จริงแล้วว่ามีแค่ 2 state นี้เท่านั้นที่เดินเข้า loop 8.x/9.x ต่อ (s7_1="ผ่าน"/s7_4="ไม่ผ่าน" ไปตรง s10 เสมอ ไม่
@@ -529,28 +542,41 @@ function ownerTimelineNeedsRevisionPath_(steps) {
   return mainStep === '8' || mainStep === '9';
 }
 
+/**
+ * 2026-10-28 ตามข้อกำหนดล่าสุด — เดิมฟังก์ชันนี้ใช้เฉพาะเส้นทาง "ต้องแก้ไข" (s7_2/s7_3) เส้นทาง "ผ่าน/ไม่ผ่าน"
+ * ตรง (s7_1/s7_4) ยังใช้ buildOwnerMilestoneTimeline_ (4 milestone) อยู่ — ตอนนี้ทุกเส้นทางต้องแสดง 8 ขั้นตอน
+ * เสมอ (ดูจุดเรียกที่แก้แล้วใน OwnerAuth.gs/renderOwnerDashboardBody_ + Views.gs/renderPublicResultBody_ —
+ * เลิกเรียก buildOwnerMilestoneTimeline_ ทั้ง 2 จุดแล้ว ไม่ลบฟังก์ชันทิ้งตามหลักเดิมของโปรเจกต์) ฟังก์ชันนี้จึง
+ * เพิ่มการ mark step 4-7 เป็น "skipped" (.skipped=true, .skipReason) เมื่อผลรอบ 1 resolve แล้วเป็น "ผ่าน"/
+ * "ไม่ผ่าน" ตรง (ไม่มีการแก้ไขจริง) — "ห้าม mark skipped ก่อนรู้ผล Step 3" (resolved ยังเป็น null) จึงไม่ skip เลย
+ * ปล่อยเป็น upcoming ปกติ
+ */
 function buildOwnerRevisionTimeline_(steps, stationsMap, work) {
   if (!steps) return null;
   var currentStation = (stationsMap || {})[work.current_station_key] || null;
   var currentOrderNum = currentStation ? (parseFloat(currentStation.station_order || '0') || 0) : 0;
+  var resolvedFirstRound = getResolvedFirstRoundStep_(steps);
+  var isPassFailRoute = !!resolvedFirstRound && (resolvedFirstRound.key === 's7_1' || resolvedFirstRound.key === 's7_4');
 
   var entries = OWNER_REVISION_TIMELINE_STEPS_.map(function (r) {
     var state = currentOrderNum >= r.min && currentOrderNum <= r.max ? 'current'
       : currentOrderNum > r.max ? 'done' : 'upcoming';
     var entry = { order: r.order, label: r.label, state: state, isLastStep: r.order === 8 };
 
-    if (r.order === 3) {
-      var resolved = getResolvedFirstRoundStep_(steps);
-      if (resolved) {
-        entry.outcome = {
-          text: OWNER_STATE_LABELS_[resolved.key] || resolved.name,
-          tone: subStatusToneClass_(resolved.name),
-        };
-        // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — วันครบกำหนดแก้ไข แสดงเฉพาะ s7_2/s7_3 เท่านั้น คงอยู่ตลอดเส้นทางแก้ไข
-        // (ขั้นตอนนี้ resolve จาก history ไม่ใช่ station ปัจจุบัน จึงยังโชว์ต่อแม้งานเดินไปถึง 8.x/9.x แล้วก็ตาม)
-        if (REVISION_DUE_DATE_STATE_KEYS_[resolved.key]) {
-          entry.outcome.dueDateText = formatDateDDMMYYYYBuddhist_(work.revision_due_date);
-        }
+    if (isPassFailRoute && r.order >= 4 && r.order <= 7) {
+      entry.skipped = true;
+      entry.skipReason = 'ไม่ใช้ในกรณีนี้';
+    }
+
+    if (r.order === 3 && resolvedFirstRound) {
+      var outcome = OWNER_RESULT_OUTCOME_[resolvedFirstRound.key];
+      entry.outcome = outcome
+        ? { text: outcome.text, tone: outcome.tone }
+        : { text: OWNER_STATE_LABELS_[resolvedFirstRound.key] || resolvedFirstRound.name, tone: subStatusToneClass_(resolvedFirstRound.name) };
+      // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — วันครบกำหนดแก้ไข แสดงเฉพาะ s7_2/s7_3 เท่านั้น คงอยู่ตลอดเส้นทางแก้ไข
+      // (ขั้นตอนนี้ resolve จาก history ไม่ใช่ station ปัจจุบัน จึงยังโชว์ต่อแม้งานเดินไปถึง 8.x/9.x แล้วก็ตาม)
+      if (REVISION_DUE_DATE_STATE_KEYS_[resolvedFirstRound.key]) {
+        entry.outcome.dueDateText = formatDateDDMMYYYYBuddhist_(work.revision_due_date);
       }
     }
 
@@ -571,7 +597,7 @@ function buildOwnerRevisionTimeline_(steps, stationsMap, work) {
 
   var seenUpcoming = false;
   entries.forEach(function (e) {
-    if (e.state === 'upcoming') { e.isNext = !seenUpcoming; seenUpcoming = true; }
+    if (e.state === 'upcoming' && !e.skipped) { e.isNext = !seenUpcoming; seenUpcoming = true; }
   });
 
   return entries;

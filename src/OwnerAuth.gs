@@ -1218,14 +1218,13 @@ function renderOwnerDashboardBody_(ss, work, baseUrl, sessionId) {
   // next state ไม่ได้ถูกลบออกจากระบบ ยังคำนวณอยู่ใน Timeline เหมือนเดิมทุกประการ แค่ไม่ render เป็นการ์ดแยกแล้ว)
   var resultCardHtml = renderOwnerResultCard_(work, info, data.currentStation, data.stationsMap);
 
-  // 5/6. TIMELINE — Timeline หลักชุดเดียวของหน้า (2026-10-15 รอบ 23 ตามที่ผู้ใช้ขอ) โชว์ 4 milestone เสมอ
+  // 5/6. TIMELINE — Timeline หลักชุดเดียวของหน้า (2026-10-15 รอบ 23 ตามที่ผู้ใช้ขอ)
   // (ดูคอมเมนต์เต็มที่ renderOwnerTimelineSection_) — buildOwnerFullWorkflowWithSkips_/
   // buildOwnerActualPathTimeline_ (1-10 เต็มแบบเดิม) เลิกใช้ในหน้านี้แล้ว ไม่ได้ลบไฟล์ทิ้ง
-  // 2026-10-20 ตามที่ผู้ใช้ขอ — ผลรอบ 1 เป็น "ต้องแก้ไข" (s7_2/s7_3) ใช้เส้นทาง 8 ขั้นตอนแทน (ครอบคลุม loop
-  // แก้ไขจริง 8.x/9.x) ผลเป็น "ผ่าน"/"ไม่ผ่าน" ตรง (s7_1/s7_4, ไม่เคยเข้า loop นี้) ยังใช้ 4 milestone เดิม
-  var ownerMilestones = ownerTimelineNeedsRevisionPath_(data.steps)
-    ? buildOwnerRevisionTimeline_(data.steps, data.stationsMap, work)
-    : buildOwnerMilestoneTimeline_(data.steps, data.stationsMap, work);
+  // 2026-10-28 ตามข้อกำหนดล่าสุด — ทุกเส้นทาง (ผ่าน/ไม่ผ่านตรง หรือต้องแก้ไข) ต้องแสดง 8 ขั้นตอนเสมอ เลิกแยก
+  // branch 4-milestone (buildOwnerMilestoneTimeline_) แล้ว ไม่ได้ลบฟังก์ชันทิ้ง — buildOwnerRevisionTimeline_
+  // เอง mark step 4-7 เป็น .skipped ให้เมื่อผลเป็น "ผ่าน"/"ไม่ผ่าน" ตรง (ไม่มีการแก้ไขจริง)
+  var ownerMilestones = buildOwnerRevisionTimeline_(data.steps, data.stationsMap, work);
   // 2026-10-08 รอบ 3 — ผู้ใช้ขอตัดกล่อง "ⓘ ข้อมูลเดิม" ออกจากหน้านี้โดยเฉพาะ (หน้าสาธารณะ/หน้ารายละเอียด
   // เจ้าหน้าที่/Workflow Checklist ยังมีเหมือนเดิม ไม่แตะ renderPubLegacyInfoBox_ เอง)
   var timelineHtml = renderOwnerTimelineSection_(ownerMilestones);
