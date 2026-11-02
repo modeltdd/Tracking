@@ -2011,19 +2011,6 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '</div>' +
     '<div class="field" id="reg-title-other-field" style="' + (showTitleOther ? '' : 'display:none') + '">' +
     '<label>ระบุคำนำหน้าชื่อ</label><input class="input" name="reg_title_name_other" id="reg-title-name-other" value="' + (showTitleOther ? v('title_name') : '') + '" placeholder="ระบุคำนำหน้าชื่อ (ใช้เฉพาะกรณีเลือกอื่น ๆ)"></div>' +
-    '<div class="reg-responsible-grid">' +
-    // 2026-11-02 — กล่อง "ผู้รับผิดชอบ" (ประธานคณะกรรมการ+เลขา) ย้ายมาอยู่ซ้ายของฟอร์มตามที่ผู้ใช้ขอ (เดิมเป็น
-    // ช่อง "คณะกรรมการที่รับผิดชอบ" เล็กๆ ใต้แถวตำแหน่ง) ค่าเริ่มต้น "กำลังโหลดผู้รับผิดชอบ..." (ข้อ 7 — ช่วงสั้นๆ
-    // ก่อน DOMContentLoaded ทำงาน ไม่ block หน้า) REG_RESPONSIBLE_SCRIPT_ เป็นผู้คำนวณ/แสดงผลจริงทั้งหมด
-    '<div class="reg-responsible-box">' +
-    '<div class="reg-section-title">ผู้รับผิดชอบ</div>' +
-    '<div class="reg-resp-row"><div class="reg-resp-label">ประธานคณะกรรมการ</div>' +
-    '<div class="reg-resp-value reg-resp-empty" id="reg-chair-name">กำลังโหลดผู้รับผิดชอบ...</div></div>' +
-    '<div class="reg-resp-row"><div class="reg-resp-label">เลขา</div>' +
-    '<div class="reg-resp-value reg-resp-empty" id="reg-secretary-name">กำลังโหลดผู้รับผิดชอบ...</div></div>' +
-    '<div class="field" id="reg-committee-field" style="display:none">' +
-    '<label>คณะกรรมการที่รับผิดชอบ</label><div id="reg-committee-info"></div></div>' +
-    '</div>' +
     '<div class="field-row field-row-position">' +
     '<div class="field field-pos"><label>ตำแหน่ง</label><select class="input" name="reg_position" id="reg-position">' + positionOptionsHtml + '</select>' +
     (positionRows.length ? '' : '<p class="hint" style="margin-top:4px">ยังไม่มีตำแหน่งใน Master Data — เพิ่มได้ที่ Admin &gt; ข้อมูลหลัก</p>') + '</div>' +
@@ -2033,8 +2020,19 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '</div>' +
     '<div class="field field-posno"><label>เลขตำแหน่งเดิม</label><input class="input" name="reg_position_no" value="' + v('position_no') + '"></div>' +
     '</div>' + // ปิด field-row-position
-    '</div>' + // ปิด reg-responsible-grid
-    '</div>' + // ปิด reg-section "ข้อมูลบุคคล" (2026-11-02 — เพิ่ม div ปิดนี้กลับมาหลังย้าย reg-committee-field เข้า reg-responsible-grid)
+    // 2026-11-02 — กล่อง "ผู้รับผิดชอบ" (ประธานคณะกรรมการ+เลขา) ย้ายมาอยู่บรรทัดถัดจากแถวตำแหน่ง/สาขา เต็มความกว้าง
+    // (ผู้ใช้ยืนยันซ้ำว่าห้ามอยู่ซ้าย/ข้างตำแหน่ง/คอลัมน์แยก — ของเดิมเคยเป็น grid 2 คอลัมน์ ตอนนี้เป็น block เต็มบรรทัด)
+    // ค่าเริ่มต้น "กำลังโหลดผู้รับผิดชอบ..." (ช่วงสั้นๆ ก่อน DOMContentLoaded ทำงาน) REG_RESPONSIBLE_SCRIPT_ คำนวณ/แสดงผลจริง
+    '<div class="reg-responsible-box">' +
+    '<div class="reg-section-title">ผู้รับผิดชอบ</div>' +
+    '<div class="reg-resp-row"><div class="reg-resp-label">ประธานคณะกรรมการ</div>' +
+    '<div class="reg-resp-value reg-resp-empty" id="reg-chair-name">กำลังโหลดผู้รับผิดชอบ...</div></div>' +
+    '<div class="reg-resp-row"><div class="reg-resp-label">เลขา</div>' +
+    '<div class="reg-resp-value reg-resp-empty" id="reg-secretary-name">กำลังโหลดผู้รับผิดชอบ...</div></div>' +
+    '<div class="field" id="reg-committee-field" style="display:none">' +
+    '<label>คณะกรรมการที่รับผิดชอบ</label><div id="reg-committee-info"></div></div>' +
+    '</div>' + // ปิด reg-responsible-box
+    '</div>' + // ปิด reg-section "ข้อมูลบุคคล"
 
     // 2026-10-20 — "ข้อมูลหนังสือนำส่ง" (ไม่บังคับกรอก) อยู่ก่อนหัวข้อ "ข้อมูลผลงาน" ตามที่ผู้ใช้ขอ 3 ช่อง
     // สัดส่วน 40/30/30 บน desktop (.field-row-forwarding) เรียงลงมา 1 column บนมือถือ 2 ช่องวันที่ใช้
@@ -2705,13 +2703,11 @@ var STAFF_CSS_ = '' +
   '.field-row-position{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;}' +
   '.field-row-position .field{margin-bottom:0;}' +
   '.field-branch select:disabled{background:#f2f4f6;color:var(--muted);}' +
-  // 2026-11-02 — กล่อง "ผู้รับผิดชอบ" (ประธานกรรมการ+เลขา) ด้านซ้ายของแถวตำแหน่ง/สาขา ตามที่ผู้ใช้ขอ สัดส่วน
-  // 1fr:1.4fr ใกล้เคียง mockup ที่ให้มา (ฝั่งซ้ายแคบกว่าเล็กน้อย) stack เป็น 1 column บนมือถือ (breakpoint 768px
-  // เดียวกับ field-row-position ข้างบน ให้สองส่วนนี้ stack พร้อมกันเสมอ) พื้นหลังอ่อน/ไม่มี card ซ้อนหลายชั้น
-  // ตามที่ระบุ (ข้อ 12) reuse .reg-section-title เดิม (navy, ขีดเส้นใต้บาง) เป็นหัวข้อกล่อง
-  '.reg-responsible-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:16px;align-items:start;margin-bottom:16px;}' +
-  '@media (max-width:768px){.reg-responsible-grid{grid-template-columns:1fr;}}' +
-  '.reg-responsible-box{background:#eef6f6;border:1px solid var(--border);border-radius:10px;padding:14px;box-sizing:border-box;}' +
+  // 2026-11-02 — กล่อง "ผู้รับผิดชอบ" (ประธานกรรมการ+เลขา) ย้ายจาก grid 2 คอลัมน์ (ซ้ายของตำแหน่ง) มาเป็น
+  // block เต็มความกว้างบรรทัดใหม่ถัดจากแถวตำแหน่ง/สาขา ตามที่ผู้ใช้ยืนยันซ้ำ (ห้ามซ้าย/ห้ามข้าง/ห้ามคอลัมน์แยก)
+  // ไม่ต้อง grid-column:1/-1 เพราะ parent (.reg-section) ไม่ใช่ grid อยู่แล้ว — เป็น block ปกติจึงเต็มบรรทัดเอง
+  // พื้นหลังอ่อน/ไม่มี card ซ้อนหลายชั้นตามที่ระบุ (ข้อ 7) reuse .reg-section-title เดิมเป็นหัวข้อกล่อง
+  '.reg-responsible-box{background:#eef6f6;border:1px solid var(--border);border-radius:10px;padding:14px;box-sizing:border-box;margin-top:14px;}' +
   '.reg-resp-row{margin-bottom:10px;}.reg-resp-row:last-of-type{margin-bottom:0;}' +
   '.reg-resp-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;}' +
   // ชื่อบุคคลเด่นกว่า label เล็กน้อยตามที่ระบุ (ข้อ 12) — reuse ขนาด/สี navy แบบเดียวกับ .owner-summary-value เดิม
