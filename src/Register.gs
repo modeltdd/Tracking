@@ -66,6 +66,16 @@ function registerNewWork_(ss, user, e) {
     var orgRow = findOrganizationMasterById_(ss, values.organization_id);
     if (!orgRow || orgRow.organization_type !== values.organization_type || !orgRow.active) {
       errors.push('กรุณาเลือกหน่วยงานจากรายการ (ไม่พบหน่วยงานที่ตรงกับที่เลือก)');
+    } else if (!orgRow.province_name) {
+      // 2026-11-02 — ป้องกัน save province ว่าง/เงียบๆ (ข้อ 10/11 ของ requirement) หน่วยงานมีจริงใน master แต่
+      // ไม่มี province_name (ข้อมูล master เพี้ยน) ต้องแจ้ง error ชัดเจน + log รายละเอียดให้ Admin/Developer ตรวจ
+      // master ต่อ ห้ามเดา/ห้าม fallback จังหวัดอื่นมาแทน — เคลียร์ values.province ทิ้งด้วย (ห้ามเชื่อค่าดิบจาก
+      // client ที่ติดมาก่อนหน้านี้ แม้ resolve จาก master ไม่ได้ก็ตาม ข้อ 9/11)
+      errors.push('ไม่พบข้อมูลจังหวัดของหน่วยงานที่เลือก');
+      values.province = '';
+      Logger.log('[registerNewWork_] province_name ว่างสำหรับ organization_id=' + values.organization_id +
+        ' organization_name=' + orgRow.organization_name + ' organization_type=' + orgRow.organization_type +
+        ' — ตรวจ OrganizationMaster ว่า province_name ของแถวนี้ถูกกรอกไว้หรือไม่');
     } else {
       values.org_from = orgRow.organization_name;
       values.province = orgRow.province_name;

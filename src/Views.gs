@@ -2242,12 +2242,14 @@ var REG_RESPONSIBLE_SCRIPT_ = '' +
  * "ไม่พบหน่วยงานที่ตรงกับคำค้น" ไม่สร้างหน่วยงานใหม่เอง — vanilla JS ล้วน ไม่มี framework/AJAX (ข้อมูลทั้งหมด
  * ฝังมาครั้งเดียวตอนโหลดหน้า กรอง/ค้นหาฝั่ง client ทั้งหมด)
  *
- * 2026-11-02 — รพศ./รพท. (3/9 แห่งเท่านั้นในข้อมูลจริง — ดู getOrganizationMasterSeed_ ที่มีอยู่แล้ว ไม่ต้อง
- * เพิ่ม/แก้ master) ตามที่ผู้ใช้ขอ ต้องแสดงเป็น <select> ครบทุกรายการทันที "ไม่ต้องพิมพ์ค้นหาก่อน" ส่วนประเภท
- * อื่น (สสจ./สสอ./รพช./รพ.สต. — รายการมาก) ยังใช้ autocomplete เดิมทุกประการ (ห้ามกระทบ) สลับ 2 widget นี้ด้วย
- * DROPDOWN_TYPES_ (เป็นแค่ UI toggle ตาม organization_type ไม่ใช่ data ใหม่) #reg-org-select ตั้งค่า
- * #reg-org-name/#reg-org-id/#reg-org-province ชุดเดียวกับ selectOrg() เดิมเป๊ะ — backend
- * (registerNewWork_/findOrganizationMasterById_) ไม่ต้องแก้เลย เพราะยังตรวจผ่าน organization_id เดิม
+ * 2026-11-02 — สสจ./รพศ./รพท. (7/3/9 แห่งเท่านั้นในข้อมูลจริง — ดู getOrganizationMasterSeed_ ที่มีอยู่แล้ว
+ * ไม่ต้องเพิ่ม/แก้ master) ตามที่ผู้ใช้ขอ ต้องแสดงเป็น <select> ครบทุกรายการทันที "ไม่ต้องพิมพ์ค้นหาก่อน" +
+ * จังหวัด auto-fill ทันที (readonly เดิม ไม่มี dropdown จังหวัดให้เลือกซ้ำ) ส่วนประเภทอื่น (สสอ./รพช./รพ.สต. —
+ * รายการมาก) ยังใช้ autocomplete เดิมทุกประการ (ห้ามกระทบ) สลับ 2 widget นี้ด้วย DROPDOWN_TYPES_ (เป็นแค่ UI
+ * toggle ตาม organization_type ไม่ใช่ data ใหม่) #reg-org-select ตั้งค่า #reg-org-name/#reg-org-id/
+ * #reg-org-province ชุดเดียวกับ selectOrg() เดิมเป๊ะ — backend (registerNewWork_/findOrganizationMasterById_)
+ * ยัง validate organization_id -> province จาก master เสมอ (ข้อ 9/11 — ไม่เชื่อค่า client, เพิ่ม error
+ * "ไม่พบข้อมูลจังหวัดของหน่วยงานที่เลือก" + Logger.log กรณี master มีแถวแต่ province_name ว่าง ข้อ 10)
  */
 var REG_ORG_SCRIPT_ = '' +
   '<script>' +
@@ -2259,7 +2261,10 @@ var REG_ORG_SCRIPT_ = '' +
   'var idField = document.getElementById("reg-org-id");' +
   'var provinceField = document.getElementById("reg-org-province");' +
   'if (!typeSel || !nameInput || !suggestBox || !orgSelect) return;' +
-  'var DROPDOWN_TYPES_ = ["รพศ.", "รพท."];' +
+  // 2026-11-02 รอบ 2 — เพิ่ม สสจ. (7 แห่ง) เข้า DROPDOWN_TYPES_ ด้วยตามที่ผู้ใช้ขอรอบนี้ (เดิมมีแค่ รพศ./รพท.)
+  // logic สลับ widget/auto-fill/clear-ตอนเปลี่ยนประเภท/Edit-mode-preselect ทั้งหมดเป็น generic ตาม type อยู่แล้ว
+  // (syncOrgWidgetMode ด้านล่าง) ไม่ต้องเพิ่ม code ใหม่ซ้ำ แค่เพิ่มชื่อประเภทเข้า array นี้
+  'var DROPDOWN_TYPES_ = ["สสจ.", "รพศ.", "รพท."];' +
   'var MIN_CHARS = 2, MAX_RESULTS = 20;' +
   'var currentResults = []; var activeIndex = -1;' +
   'function norm(s) { return String(s || "").trim().toLowerCase(); }' +
