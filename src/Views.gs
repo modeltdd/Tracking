@@ -2065,6 +2065,11 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '<input class="input" name="reg_org_from" id="reg-org-name" autocomplete="off" role="combobox" aria-expanded="false" aria-autocomplete="list" value="' + v('org_from') + '"' +
     (values.organization_type ? '' : ' disabled placeholder="กรุณาเลือกประเภทหน่วยงานก่อน"') + '>' +
     '<div class="org-suggest" id="reg-org-suggest" role="listbox"></div>' +
+    // 2026-11-02 — รพศ./รพท. (3/9 แห่งเท่านั้น) ใช้ <select> แสดงครบทันทีไม่ต้องพิมพ์ค้นหา (ตามที่ผู้ใช้ขอ)
+    // ประเภทอื่น (สสจ./สสอ./รพช./รพ.สต. — รายการมาก) ยังใช้ autocomplete เดิมทุกประการ (ข้อ 13 ห้ามกระทบ)
+    // ซ่อน/โชว์สลับกับ #reg-org-name ด้วย REG_ORG_SCRIPT_ (ไม่ submit ตรง — เซ็ตค่าลง #reg-org-name/#reg-org-id/
+    // #reg-org-province เดียวกับ selectOrg() เดิม จึงไม่มี logic ฝั่ง backend ใหม่ซ้ำเลย)
+    '<select class="input" id="reg-org-select" style="display:none"></select>' +
     '</div></div>' +
     '<div class="field field-org-province"><label>จังหวัด</label><input class="input" name="reg_province" id="reg-org-province" value="' + v('province') + '" readonly placeholder="เติมอัตโนมัติเมื่อเลือกหน่วยงาน"></div>' +
     // 2026-10-07 รอบ 3 — ย้ายเบอร์โทรมาอยู่แถวเดียวกับข้อมูลหน่วยงาน ตัด section "ข้อมูลติดต่อ" แยกทิ้ง (เหลือ field เดียวไม่จำเป็นต้องแยก section)
@@ -2236,6 +2241,13 @@ var REG_RESPONSIBLE_SCRIPT_ = '' +
  * organization_id ทันที (ข้อ "ห้ามบันทึกข้อความที่พิมพ์เองโดยไม่ได้เลือกจาก Master") ไม่พบผลลัพธ์ = แสดง
  * "ไม่พบหน่วยงานที่ตรงกับคำค้น" ไม่สร้างหน่วยงานใหม่เอง — vanilla JS ล้วน ไม่มี framework/AJAX (ข้อมูลทั้งหมด
  * ฝังมาครั้งเดียวตอนโหลดหน้า กรอง/ค้นหาฝั่ง client ทั้งหมด)
+ *
+ * 2026-11-02 — รพศ./รพท. (3/9 แห่งเท่านั้นในข้อมูลจริง — ดู getOrganizationMasterSeed_ ที่มีอยู่แล้ว ไม่ต้อง
+ * เพิ่ม/แก้ master) ตามที่ผู้ใช้ขอ ต้องแสดงเป็น <select> ครบทุกรายการทันที "ไม่ต้องพิมพ์ค้นหาก่อน" ส่วนประเภท
+ * อื่น (สสจ./สสอ./รพช./รพ.สต. — รายการมาก) ยังใช้ autocomplete เดิมทุกประการ (ห้ามกระทบ) สลับ 2 widget นี้ด้วย
+ * DROPDOWN_TYPES_ (เป็นแค่ UI toggle ตาม organization_type ไม่ใช่ data ใหม่) #reg-org-select ตั้งค่า
+ * #reg-org-name/#reg-org-id/#reg-org-province ชุดเดียวกับ selectOrg() เดิมเป๊ะ — backend
+ * (registerNewWork_/findOrganizationMasterById_) ไม่ต้องแก้เลย เพราะยังตรวจผ่าน organization_id เดิม
  */
 var REG_ORG_SCRIPT_ = '' +
   '<script>' +
@@ -2243,9 +2255,11 @@ var REG_ORG_SCRIPT_ = '' +
   'var typeSel = document.getElementById("reg-org-type");' +
   'var nameInput = document.getElementById("reg-org-name");' +
   'var suggestBox = document.getElementById("reg-org-suggest");' +
+  'var orgSelect = document.getElementById("reg-org-select");' +
   'var idField = document.getElementById("reg-org-id");' +
   'var provinceField = document.getElementById("reg-org-province");' +
-  'if (!typeSel || !nameInput || !suggestBox) return;' +
+  'if (!typeSel || !nameInput || !suggestBox || !orgSelect) return;' +
+  'var DROPDOWN_TYPES_ = ["รพศ.", "รพท."];' +
   'var MIN_CHARS = 2, MAX_RESULTS = 20;' +
   'var currentResults = []; var activeIndex = -1;' +
   'function norm(s) { return String(s || "").trim().toLowerCase(); }' +
@@ -2289,10 +2303,45 @@ var REG_ORG_SCRIPT_ = '' +
   '});' +
   'suggestBox.classList.add("open"); nameInput.setAttribute("aria-expanded", "true");' +
   '}' +
+  // รพศ./รพท. เท่านั้น (ข้อ 1/2/6) — เติม <select> ครบทุกรายการของประเภทนั้นทันที ไม่ต้องพิมพ์ (ข้อ "ไม่ต้องพิมพ์
+  // ค้นหาก่อน") ใช้ fullName เป็นข้อความที่เห็น (ตรงกับรายชื่อที่ผู้ใช้ระบุ เช่น "โรงพยาบาลทุ่งสง") value เก็บ
+  // organization_id เดิม (เหมือน selectOrg()) — ไม่สร้างรายชื่อซ้ำ reuse REG_ORG_LOOKUP_ ชุดเดียวกับ autocomplete
+  'function populateOrgSelect(type) {' +
+  'orgSelect.innerHTML = "";' +
+  'orgSelect.appendChild(new Option("กรุณาเลือกหน่วยงาน", ""));' +
+  '(REG_ORG_LOOKUP_[type] || []).forEach(function (o) { orgSelect.appendChild(new Option(o.fullName || o.name, o.id)); });' +
+  '}' +
+  'function applyOrgChoice(o) {' +
+  'if (!o) { nameInput.value = ""; clearSelection(); return; }' +
+  'nameInput.value = o.fullName || o.name; idField.value = o.id; if (provinceField) provinceField.value = o.province;' +
+  '}' +
+  // สลับ widget ตามประเภท — preserveExisting=true เฉพาะตอนโหลดหน้าครั้งแรก (Edit Mode ข้อ 9 ของ requirement
+  // รอบนี้) ให้ preselect จาก #reg-org-id ที่ SSR เติมมาแล้ว ก่อนค่อยโหลด options (ไม่มีทาง dropdown ว่างเพราะ
+  // set ค่าก่อนโหลด options — populateOrgSelect ถูกเรียกก่อนเซ็ต .value เสมอ) เปลี่ยนประเภทเอง (preserveExisting
+  // =false) ต้อง "ไม่" preselect ค้างจากประเภทก่อนหน้า (กันชื่อ/จังหวัดเดิมค้างข้อ 7 ของ requirement ก่อนหน้า)
+  'function syncOrgWidgetMode(preserveExisting) {' +
+  'var type = typeSel.value;' +
+  'if (DROPDOWN_TYPES_.indexOf(type) !== -1) {' +
+  'closeSuggest(); nameInput.style.display = "none"; orgSelect.style.display = "";' +
+  'populateOrgSelect(type);' +
+  'var chosen = preserveExisting && idField.value ? (REG_ORG_LOOKUP_[type] || []).filter(function (o) { return o.id === idField.value; })[0] : null;' +
+  'orgSelect.value = chosen ? chosen.id : "";' +
+  'if (chosen) applyOrgChoice(chosen);' +
+  '} else {' +
+  'orgSelect.style.display = "none"; orgSelect.innerHTML = "";' +
+  'nameInput.style.display = "";' +
+  '}' +
+  '}' +
+  'orgSelect.addEventListener("change", function () {' +
+  'var type = typeSel.value;' +
+  'var chosen = (REG_ORG_LOOKUP_[type] || []).filter(function (o) { return o.id === orgSelect.value; })[0];' +
+  'applyOrgChoice(chosen);' +
+  '});' +
   'typeSel.addEventListener("change", function () {' +
   'nameInput.value = ""; clearSelection(); closeSuggest();' +
   'if (typeSel.value) { nameInput.disabled = false; nameInput.placeholder = "พิมพ์ชื่อหน่วยงาน (อย่างน้อย 2 ตัวอักษร)..."; }' +
   'else { nameInput.disabled = true; nameInput.placeholder = "กรุณาเลือกประเภทหน่วยงานก่อน"; }' +
+  'syncOrgWidgetMode(false);' + // เปลี่ยนประเภทเอง (ข้อ 7) — ล้างค่าเดิมไปแล้วข้างบน ห้าม preselect ซ้ำ
   '});' +
   'nameInput.addEventListener("input", function () {' +
   'clearSelection();' + // แก้ข้อความ = ล้าง organization_id เดิมทันที จนกว่าจะเลือกใหม่
@@ -2309,6 +2358,7 @@ var REG_ORG_SCRIPT_ = '' +
   'else if (ev.key === "Escape") { closeSuggest(); }' +
   '});' +
   'document.addEventListener("click", function (ev) { if (ev.target !== nameInput && !suggestBox.contains(ev.target)) closeSuggest(); });' +
+  'syncOrgWidgetMode(true);' + // Edit Mode (ข้อ 9) — typeSel.value/#reg-org-id มาจาก SSR values อยู่แล้ว เรียกทันทีตอนโหลดหน้า
   '});' +
   '</script>';
 
