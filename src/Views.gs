@@ -2020,17 +2020,20 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '</div>' +
     '<div class="field field-posno"><label>เลขตำแหน่งเดิม</label><input class="input" name="reg_position_no" value="' + v('position_no') + '"></div>' +
     '</div>' + // ปิด field-row-position
-    // 2026-11-02 — กล่อง "ผู้รับผิดชอบ" (ประธานคณะกรรมการ+เลขา) ย้ายมาอยู่บรรทัดถัดจากแถวตำแหน่ง/สาขา เต็มความกว้าง
-    // (ผู้ใช้ยืนยันซ้ำว่าห้ามอยู่ซ้าย/ข้างตำแหน่ง/คอลัมน์แยก — ของเดิมเคยเป็น grid 2 คอลัมน์ ตอนนี้เป็น block เต็มบรรทัด)
+    // 2026-11-02 — กล่อง "ผู้รับผิดชอบ" อยู่บรรทัดถัดจากแถวตำแหน่ง/สาขา เต็มความกว้าง (คงเดิม) รอบนี้แก้แค่
+    // ลำดับภายในกล่อง: dropdown "คณะกรรมการที่รับผิดชอบ" (โชว์เฉพาะโหมด manual — หลายคณะ) ต้องมาก่อนประธาน/เลขา
+    // เสมอ (เดิมอยู่ล่างสุด) + ประธาน/เลขาเปลี่ยนจากสองแถว stack เป็นแนวนอน 2 คอลัมน์บน desktop ตามที่ผู้ใช้ขอ
     // ค่าเริ่มต้น "กำลังโหลดผู้รับผิดชอบ..." (ช่วงสั้นๆ ก่อน DOMContentLoaded ทำงาน) REG_RESPONSIBLE_SCRIPT_ คำนวณ/แสดงผลจริง
     '<div class="reg-responsible-box">' +
     '<div class="reg-section-title">ผู้รับผิดชอบ</div>' +
-    '<div class="reg-resp-row"><div class="reg-resp-label">ประธานคณะกรรมการ</div>' +
-    '<div class="reg-resp-value reg-resp-empty" id="reg-chair-name">กำลังโหลดผู้รับผิดชอบ...</div></div>' +
-    '<div class="reg-resp-row"><div class="reg-resp-label">เลขา</div>' +
-    '<div class="reg-resp-value reg-resp-empty" id="reg-secretary-name">กำลังโหลดผู้รับผิดชอบ...</div></div>' +
     '<div class="field" id="reg-committee-field" style="display:none">' +
     '<label>คณะกรรมการที่รับผิดชอบ</label><div id="reg-committee-info"></div></div>' +
+    '<div class="reg-resp-cols">' +
+    '<div class="reg-resp-col"><div class="reg-resp-label">ประธานคณะกรรมการ</div>' +
+    '<div class="reg-resp-value reg-resp-empty" id="reg-chair-name">กำลังโหลดผู้รับผิดชอบ...</div></div>' +
+    '<div class="reg-resp-col"><div class="reg-resp-label">เลขา</div>' +
+    '<div class="reg-resp-value reg-resp-empty" id="reg-secretary-name">กำลังโหลดผู้รับผิดชอบ...</div></div>' +
+    '</div>' + // ปิด reg-resp-cols
     '</div>' + // ปิด reg-responsible-box
     '</div>' + // ปิด reg-section "ข้อมูลบุคคล"
 
@@ -2074,7 +2077,10 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '</form>' +
     '<script>var REG_COMMITTEE_LOOKUP_ = ' + JSON.stringify(committeeLookup) + ';' +
     'var REG_SECRETARY_LOOKUP_ = ' + JSON.stringify(secretaryLookup) + ';' +
-    'var REG_ORG_LOOKUP_ = ' + JSON.stringify(organizationLookup) + ';</script>' +
+    'var REG_ORG_LOOKUP_ = ' + JSON.stringify(organizationLookup) + ';' +
+    // Edit Mode (ข้อ 10) โหมด manual หลายคณะ — ค่าที่เคยเลือกไว้ (ผ่าน registerNewWork_ validate แล้วคืนกลับมา
+    // ใน values.committee_code แม้ validate fail ด้วยเหตุอื่น) ให้ dropdown preselect + แสดงประธาน/เลขาทันที
+    'var REG_PRESELECTED_COMMITTEE_ = ' + JSON.stringify(values.committee_code || '') + ';</script>' +
     REG_DYNAMIC_SCRIPT_ +
     REG_RESPONSIBLE_SCRIPT_ +
     REG_ORG_SCRIPT_ +
@@ -2175,25 +2181,33 @@ var REG_RESPONSIBLE_SCRIPT_ = '' +
   '}' +
   'function setField(el, text, isEmpty) { el.textContent = text; el.className = "reg-resp-value" + (isEmpty ? " reg-resp-empty" : ""); }' +
   'function setBothEmpty(text) { setField(chairEl, text, true); setField(secEl, text, true); }' +
+  // Edit Mode (ข้อ 10) — ค่าคณะกรรมการที่เคยเลือกไว้ (values.committee_code ฝั่ง server, คืนมาแม้ validate fail
+  // ด้วยเหตุอื่น) ใช้ preselect ได้เฉพาะตอน sync ครั้งแรกหลังโหลดหน้าเท่านั้น (isInitialSync) — เปลี่ยนตำแหน่ง/
+  // สาขาเองหลังจากนั้นต้อง "ไม่" ใช้ค่านี้ซ้ำ กันชื่อชุดเดิมค้าง (ข้อ 9)
+  'var isInitialSync = true;' +
   // D. renderResponsible — รับผลลัพธ์มาแสดงอย่างเดียว ไม่ค้นหา/คำนวณเอง (ล้างค่าเดิมทุกครั้งก่อนเขียนใหม่เสมอ
   // ด้วย textContent ตรงๆ — ไม่มีทางค้างค่าตำแหน่งก่อนหน้า ตามข้อ 6 ของ requirement)
   'function renderResponsible(result) {' +
   'if (result.mode === "manual") {' +
   'committeeField.style.display = "";' +
-  'var html = `<select class="input" name="reg_committee_code" id="reg-committee-code" required><option value="">-- เลือกคณะกรรมการ --</option>`;' +
+  'var preselect = isInitialSync ? REG_PRESELECTED_COMMITTEE_ : "";' +
+  'var html = `<select class="input" name="reg_committee_code" id="reg-committee-code" required><option value="">เลือกคณะกรรมการ</option>`;' +
   'result.committees.forEach(function (c) {' +
-  'html += `<option value="` + escC(c.committee_code) + `">ประธาน: ` + escC(c.chair_name) + ` (` + escC(c.chair_org) + `)</option>`;' +
+  'var sel = c.committee_code === preselect ? " selected" : "";' +
+  'html += `<option value="` + escC(c.committee_code) + `"` + sel + `>ประธาน: ` + escC(c.chair_name) + ` (` + escC(c.chair_org) + `)</option>`;' +
   '});' +
   'infoDiv.innerHTML = html + `<p class="hint">ตำแหน่งนี้มีหลายคณะ ไม่สามารถจับคู่อัตโนมัติได้ กรุณาเลือกเอง</p>`;' +
-  'setBothEmpty("เลือกคณะกรรมการด้านบนก่อน");' +
-  'document.getElementById("reg-committee-code").addEventListener("change", function (ev) {' +
-  'var chosen = result.committees.filter(function (c) { return c.committee_code === ev.target.value; })[0];' +
+  'function applyChosen(code) {' +
+  'var chosen = result.committees.filter(function (c) { return c.committee_code === code; })[0];' +
   'if (!chosen) { setBothEmpty("เลือกคณะกรรมการด้านบนก่อน"); return; }' +
   'setField(chairEl, chosen.chair_name + (chosen.chair_org ? " (" + chosen.chair_org + ")" : ""), false);' +
   'var sec = secretaryOf(chosen.committee_code);' +
   'if (sec) setField(secEl, sec.name + (sec.org ? " (" + sec.org + ")" : ""), false);' +
   'else setField(secEl, "ยังไม่ได้กำหนด", true);' +
-  '});' +
+  '}' +
+  'var preselectValid = result.committees.some(function (c) { return c.committee_code === preselect; });' +
+  'if (preselectValid) applyChosen(preselect); else setBothEmpty("เลือกคณะกรรมการด้านบนก่อน");' +
+  'document.getElementById("reg-committee-code").addEventListener("change", function (ev) { applyChosen(ev.target.value); });' +
   'return;' +
   '}' +
   'committeeField.style.display = "none"; infoDiv.innerHTML = "";' +
@@ -2208,6 +2222,7 @@ var REG_RESPONSIBLE_SCRIPT_ = '' +
   'posSel.addEventListener("change", syncResponsible);' +
   'if (specSel) specSel.addEventListener("change", syncResponsible);' +
   'syncResponsible();' + // Edit Mode (ข้อ 10) — ค่า position/specialty preselect จาก SSR แล้วเรียกทันทีตอนโหลดหน้า ไม่ต้องรอ change event
+  'isInitialSync = false;' + // ครั้งถัดไป (เปลี่ยนตำแหน่ง/สาขาเอง) ห้ามใช้ preselect เดิมซ้ำ (ข้อ 9)
   '});' +
   '</script>';
 
@@ -2708,7 +2723,11 @@ var STAFF_CSS_ = '' +
   // ไม่ต้อง grid-column:1/-1 เพราะ parent (.reg-section) ไม่ใช่ grid อยู่แล้ว — เป็น block ปกติจึงเต็มบรรทัดเอง
   // พื้นหลังอ่อน/ไม่มี card ซ้อนหลายชั้นตามที่ระบุ (ข้อ 7) reuse .reg-section-title เดิมเป็นหัวข้อกล่อง
   '.reg-responsible-box{background:#eef6f6;border:1px solid var(--border);border-radius:10px;padding:14px;box-sizing:border-box;margin-top:14px;}' +
-  '.reg-resp-row{margin-bottom:10px;}.reg-resp-row:last-of-type{margin-bottom:0;}' +
+  // ประธาน/เลขา แนวนอน 2 คอลัมน์เท่ากันบน desktop (2026-11-02 รอบใหม่ — เดิม stack เป็น 2 แถวเต็มความกว้าง)
+  // มือถือ stack 1 column ที่ breakpoint เดียวกับ field-row-position เพื่อกันข้อความล้น (ข้อ 6 — ห้ามบังคับ 2
+  // คอลัมน์ถ้าข้อความล้น) ชื่อยาว wrap ได้ปกติด้วย word-wrap ที่ .reg-resp-value อยู่แล้ว
+  '.reg-resp-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:10px;}' +
+  '@media (max-width:768px){.reg-resp-cols{grid-template-columns:1fr;gap:10px;}}' +
   '.reg-resp-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;}' +
   // ชื่อบุคคลเด่นกว่า label เล็กน้อยตามที่ระบุ (ข้อ 12) — reuse ขนาด/สี navy แบบเดียวกับ .owner-summary-value เดิม
   '.reg-resp-value{font-size:.95rem;font-weight:700;color:var(--navy);line-height:1.35;word-wrap:break-word;}' +
