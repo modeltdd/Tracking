@@ -1959,6 +1959,21 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
   // ทั้งหมดเป็น JSON ให้ client JS ตัดสินใจแบบ reactive (ไม่มี AJAX ในระบบนี้) ฝั่ง backend validate ซ้ำเสมอที่
   // registerNewWork_ (resolveCommitteeForRegistration_ ใช้ logic เดียวกันเป๊ะ ไม่มี drift)
   var committeeLookup = buildCommitteeLookupForRegisterForm_(ss);
+  // 2026-11-02 — เพิ่มเลขาคู่กับประธาน (ผู้รับผิดชอบฝั่งซ้ายฟอร์ม) reuse source of truth เดิม
+  // (CommitteeSecretaryMap/SecretaryMaster) ไม่สร้าง mapping ใหม่ซ้ำ ดู buildSecretaryLookupForRegisterForm_
+  // (CommitteeMigration.gs) — log เตือนเฉพาะคณะที่มีประธานจริงแต่ยังไม่มีเลขาใน mapping (ข้อ 8 — Admin/Developer
+  // เห็นได้จาก Apps Script execution log ไม่ต้องสร้างชีต log ใหม่)
+  var secretaryLookup = buildSecretaryLookupForRegisterForm_(ss);
+  var committeeCodesMissingSecretary = [];
+  Object.keys(committeeLookup).forEach(function (profession) {
+    committeeLookup[profession].committees.forEach(function (c) {
+      if (c.chair_name && !secretaryLookup[c.committee_code]) committeeCodesMissingSecretary.push(c.committee_code);
+    });
+  });
+  if (committeeCodesMissingSecretary.length) {
+    Logger.log('[renderRegisterFormBody_] คณะกรรมการที่มีประธานแล้วแต่ยังไม่มีเลขาใน CommitteeSecretaryMap: ' +
+      committeeCodesMissingSecretary.join(', '));
+  }
 
   // 2026-10-07 — ข้อมูลหน่วยงาน Master Data เขตสุขภาพที่ 11 เดียวกัน ฝังเป็น JSON จัดกลุ่มตามประเภท (ไม่มี AJAX
   // client กรอง/เติม <datalist> เองจาก JSON ชุดนี้ตามประเภทที่เลือก — ห้ามโหลดทุกประเภทลง dropdown เดียวพร้อมกัน)
@@ -1996,6 +2011,19 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '</div>' +
     '<div class="field" id="reg-title-other-field" style="' + (showTitleOther ? '' : 'display:none') + '">' +
     '<label>ระบุคำนำหน้าชื่อ</label><input class="input" name="reg_title_name_other" id="reg-title-name-other" value="' + (showTitleOther ? v('title_name') : '') + '" placeholder="ระบุคำนำหน้าชื่อ (ใช้เฉพาะกรณีเลือกอื่น ๆ)"></div>' +
+    '<div class="reg-responsible-grid">' +
+    // 2026-11-02 — กล่อง "ผู้รับผิดชอบ" (ประธานคณะกรรมการ+เลขา) ย้ายมาอยู่ซ้ายของฟอร์มตามที่ผู้ใช้ขอ (เดิมเป็น
+    // ช่อง "คณะกรรมการที่รับผิดชอบ" เล็กๆ ใต้แถวตำแหน่ง) ค่าเริ่มต้น "กำลังโหลดผู้รับผิดชอบ..." (ข้อ 7 — ช่วงสั้นๆ
+    // ก่อน DOMContentLoaded ทำงาน ไม่ block หน้า) REG_RESPONSIBLE_SCRIPT_ เป็นผู้คำนวณ/แสดงผลจริงทั้งหมด
+    '<div class="reg-responsible-box">' +
+    '<div class="reg-section-title">ผู้รับผิดชอบ</div>' +
+    '<div class="reg-resp-row"><div class="reg-resp-label">ประธานคณะกรรมการ</div>' +
+    '<div class="reg-resp-value reg-resp-empty" id="reg-chair-name">กำลังโหลดผู้รับผิดชอบ...</div></div>' +
+    '<div class="reg-resp-row"><div class="reg-resp-label">เลขา</div>' +
+    '<div class="reg-resp-value reg-resp-empty" id="reg-secretary-name">กำลังโหลดผู้รับผิดชอบ...</div></div>' +
+    '<div class="field" id="reg-committee-field" style="display:none">' +
+    '<label>คณะกรรมการที่รับผิดชอบ</label><div id="reg-committee-info"></div></div>' +
+    '</div>' +
     '<div class="field-row field-row-position">' +
     '<div class="field field-pos"><label>ตำแหน่ง</label><select class="input" name="reg_position" id="reg-position">' + positionOptionsHtml + '</select>' +
     (positionRows.length ? '' : '<p class="hint" style="margin-top:4px">ยังไม่มีตำแหน่งใน Master Data — เพิ่มได้ที่ Admin &gt; ข้อมูลหลัก</p>') + '</div>' +
@@ -2004,10 +2032,9 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '<input class="input" id="reg-specialty-display" readonly style="display:none">' +
     '</div>' +
     '<div class="field field-posno"><label>เลขตำแหน่งเดิม</label><input class="input" name="reg_position_no" value="' + v('position_no') + '"></div>' +
-    '</div>' +
-    '<div class="field" id="reg-committee-field" style="display:none">' +
-    '<label>คณะกรรมการที่รับผิดชอบ</label><div id="reg-committee-info"></div></div>' +
-    '</div>' +
+    '</div>' + // ปิด field-row-position
+    '</div>' + // ปิด reg-responsible-grid
+    '</div>' + // ปิด reg-section "ข้อมูลบุคคล" (2026-11-02 — เพิ่ม div ปิดนี้กลับมาหลังย้าย reg-committee-field เข้า reg-responsible-grid)
 
     // 2026-10-20 — "ข้อมูลหนังสือนำส่ง" (ไม่บังคับกรอก) อยู่ก่อนหัวข้อ "ข้อมูลผลงาน" ตามที่ผู้ใช้ขอ 3 ช่อง
     // สัดส่วน 40/30/30 บน desktop (.field-row-forwarding) เรียงลงมา 1 column บนมือถือ 2 ช่องวันที่ใช้
@@ -2048,9 +2075,10 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '<button class="btn-primary" type="submit">บันทึกและออกเลขติดตาม</button>' +
     '</form>' +
     '<script>var REG_COMMITTEE_LOOKUP_ = ' + JSON.stringify(committeeLookup) + ';' +
+    'var REG_SECRETARY_LOOKUP_ = ' + JSON.stringify(secretaryLookup) + ';' +
     'var REG_ORG_LOOKUP_ = ' + JSON.stringify(organizationLookup) + ';</script>' +
     REG_DYNAMIC_SCRIPT_ +
-    REG_COMMITTEE_SCRIPT_ +
+    REG_RESPONSIBLE_SCRIPT_ +
     REG_ORG_SCRIPT_ +
     REG_LAYOUT_TOGGLE_SCRIPT_;
 }
@@ -2104,40 +2132,84 @@ var REG_DYNAMIC_SCRIPT_ = '' +
   '});' +
   '</script>';
 
-/** auto-suggest คณะกรรมการที่รับผิดชอบ (ChairMaster) ตามตำแหน่ง+ด้าน/สาขาที่เลือก — อ่าน REG_COMMITTEE_LOOKUP_
- *  ที่ฝังไว้ก่อนหน้า (buildCommitteeLookupForRegisterForm_) ไม่มี AJAX ทำงานฝั่ง client ล้วน backend validate
- *  ซ้ำเสมอที่ registerNewWork_ (resolveCommitteeForRegistration_ — logic โหมดเดียวกันเป๊ะ) */
-var REG_COMMITTEE_SCRIPT_ = '' +
+/**
+ * ผู้รับผิดชอบ (ประธานคณะกรรมการ+เลขา) ตามตำแหน่ง+ด้าน/สาขาที่เลือก (2026-11-02 ตาม requirement ล่าสุด — เดิม
+ * แสดงแค่ประธานในช่องเล็กๆ ใต้แถวตำแหน่ง ตอนนี้ย้ายไปกล่องซ้ายของฟอร์ม + เพิ่มเลขาคู่กัน) อ่าน
+ * REG_COMMITTEE_LOOKUP_/REG_SECRETARY_LOOKUP_ ที่ฝังไว้ก่อนหน้า (buildCommitteeLookupForRegisterForm_/
+ * buildSecretaryLookupForRegisterForm_, CommitteeMigration.gs) ไม่มี AJAX ทำงานฝั่ง client ล้วน backend
+ * validate ซ้ำเสมอที่ registerNewWork_ (resolveCommitteeForRegistration_ — logic โหมดเดียวกันเป๊ะ, เลขาเป็นแค่
+ * ข้อมูลแสดงผลอย่างเดียวไม่ validate/ไม่บันทึกเป็น field ใหม่ — ข้อ 9 ของ requirement)
+ *
+ * แยก responsibility ชัดตามข้อ 15 ของ requirement:
+ *   resolveResponsible() = C. business lookup ล้วนๆ ไม่แตะ DOM เลย คืนผลลัพธ์ {mode, ...}
+ *   renderResponsible()  = D. UI renderer รับผลลัพธ์มาเขียนลง DOM อย่างเดียว ไม่ค้นหา/คำนวณเอง
+ * mode ที่เป็นไปได้: 'empty' (ยังไม่เลือกตำแหน่ง) / 'none' (ตำแหน่งนี้ไม่มีคณะกรรมการใน Master Data เลย) /
+ * 'waiting' (โหมด specialty แต่ยังไม่มีสาขาที่ match — รอ) / 'manual' (หลายคณะ แยกไม่ได้อัตโนมัติ ต้องเลือกเอง
+ * — เช่น "พยาบาลวิชาชีพ" จริงที่มี 7 คณะในข้อมูลจริง ไม่มีข้อความแยกในต้นฉบับ ยืนยันแล้วว่าห้าม auto-suggest,
+ * ดู buildCommitteeLookupForRegisterForm_ — รอบนี้ไม่เปลี่ยน rule นี้ แค่เพิ่ม onchange ให้ dropdown เดิมอัปเดต
+ * ประธาน/เลขาทันทีหลังเลือก ไม่ต้องรอ submit ก่อนถึงจะรู้) / 'resolved' (auto-resolve ได้ มีประธานแน่นอน)
+ */
+var REG_RESPONSIBLE_SCRIPT_ = '' +
   '<script>' +
   'document.addEventListener("DOMContentLoaded", function () {' +
   'var posSel = document.getElementById("reg-position");' +
   'var specSel = document.getElementById("reg-specialty");' +
   'var committeeField = document.getElementById("reg-committee-field");' +
   'var infoDiv = document.getElementById("reg-committee-info");' +
-  'if (!posSel || !committeeField || !infoDiv || typeof REG_COMMITTEE_LOOKUP_ === "undefined") return;' +
+  'var chairEl = document.getElementById("reg-chair-name");' +
+  'var secEl = document.getElementById("reg-secretary-name");' +
+  'if (!posSel || !committeeField || !infoDiv || !chairEl || !secEl || typeof REG_COMMITTEE_LOOKUP_ === "undefined") return;' +
   'function escC(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }' +
-  'function syncCommittee() {' +
+  'function secretaryOf(committeeCode) {' +
+  'return (typeof REG_SECRETARY_LOOKUP_ !== "undefined" && REG_SECRETARY_LOOKUP_[committeeCode]) || null;' +
+  '}' +
+  // C. resolveResponsible — business lookup ล้วนๆ ไม่แตะ DOM
+  'function resolveResponsible() {' +
   'var posName = posSel.options[posSel.selectedIndex] ? posSel.options[posSel.selectedIndex].text : "";' +
+  'if (!posName) return { mode: "empty" };' +
   'var entry = REG_COMMITTEE_LOOKUP_[posName];' +
-  'if (!entry || !entry.committees.length) { committeeField.style.display = "none"; infoDiv.innerHTML = ""; return; }' +
+  'if (!entry || !entry.committees.length) return { mode: "none" };' +
+  'if (entry.mode === "manual") return { mode: "manual", committees: entry.committees };' +
+  'var match = entry.mode === "single" ? entry.committees[0] :' +
+  'entry.committees.filter(function (c) { return c.key === (specSel ? specSel.value : ""); })[0];' +
+  'if (!match) return { mode: "waiting" };' +
+  'return { mode: "resolved", chairName: match.chair_name, chairOrg: match.chair_org, secretary: secretaryOf(match.committee_code) };' +
+  '}' +
+  'function setField(el, text, isEmpty) { el.textContent = text; el.className = "reg-resp-value" + (isEmpty ? " reg-resp-empty" : ""); }' +
+  'function setBothEmpty(text) { setField(chairEl, text, true); setField(secEl, text, true); }' +
+  // D. renderResponsible — รับผลลัพธ์มาแสดงอย่างเดียว ไม่ค้นหา/คำนวณเอง (ล้างค่าเดิมทุกครั้งก่อนเขียนใหม่เสมอ
+  // ด้วย textContent ตรงๆ — ไม่มีทางค้างค่าตำแหน่งก่อนหน้า ตามข้อ 6 ของ requirement)
+  'function renderResponsible(result) {' +
+  'if (result.mode === "manual") {' +
   'committeeField.style.display = "";' +
-  'if (entry.mode === "manual") {' +
-  'var html = `<select class="input" name="reg_committee_code" required><option value="">-- เลือกคณะกรรมการ --</option>`;' +
-  'entry.committees.forEach(function (c) {' +
+  'var html = `<select class="input" name="reg_committee_code" id="reg-committee-code" required><option value="">-- เลือกคณะกรรมการ --</option>`;' +
+  'result.committees.forEach(function (c) {' +
   'html += `<option value="` + escC(c.committee_code) + `">ประธาน: ` + escC(c.chair_name) + ` (` + escC(c.chair_org) + `)</option>`;' +
   '});' +
   'infoDiv.innerHTML = html + `<p class="hint">ตำแหน่งนี้มีหลายคณะ ไม่สามารถจับคู่อัตโนมัติได้ กรุณาเลือกเอง</p>`;' +
+  'setBothEmpty("เลือกคณะกรรมการด้านบนก่อน");' +
+  'document.getElementById("reg-committee-code").addEventListener("change", function (ev) {' +
+  'var chosen = result.committees.filter(function (c) { return c.committee_code === ev.target.value; })[0];' +
+  'if (!chosen) { setBothEmpty("เลือกคณะกรรมการด้านบนก่อน"); return; }' +
+  'setField(chairEl, chosen.chair_name + (chosen.chair_org ? " (" + chosen.chair_org + ")" : ""), false);' +
+  'var sec = secretaryOf(chosen.committee_code);' +
+  'if (sec) setField(secEl, sec.name + (sec.org ? " (" + sec.org + ")" : ""), false);' +
+  'else setField(secEl, "ยังไม่ได้กำหนด", true);' +
+  '});' +
   'return;' +
   '}' +
-  'var match = entry.mode === "single" ? entry.committees[0] :' +
-  'entry.committees.filter(function (c) { return c.key === (specSel ? specSel.value : ""); })[0];' +
-  'infoDiv.innerHTML = match' +
-  '? `<p class="hint">ประธาน: ` + escC(match.chair_name) + ` (` + escC(match.chair_org) + `)</p>`' +
-  ': `<p class="hint">เลือก "ด้าน/สาขา" เพื่อดูคณะกรรมการที่รับผิดชอบ</p>`;' +
+  'committeeField.style.display = "none"; infoDiv.innerHTML = "";' +
+  'if (result.mode === "empty") { setBothEmpty("เลือกตำแหน่งก่อน"); return; }' +
+  'if (result.mode === "waiting") { setBothEmpty("เลือก \\u0022ด้าน/สาขา\\u0022 ก่อน"); return; }' +
+  'if (result.mode === "none") { setBothEmpty("ยังไม่ได้กำหนด"); return; }' +
+  'setField(chairEl, result.chairName + (result.chairOrg ? " (" + result.chairOrg + ")" : ""), false);' +
+  'if (result.secretary) setField(secEl, result.secretary.name + (result.secretary.org ? " (" + result.secretary.org + ")" : ""), false);' +
+  'else setField(secEl, "ยังไม่ได้กำหนด", true);' +
   '}' +
-  'posSel.addEventListener("change", syncCommittee);' +
-  'if (specSel) specSel.addEventListener("change", syncCommittee);' +
-  'syncCommittee();' +
+  'function syncResponsible() { renderResponsible(resolveResponsible()); }' +
+  'posSel.addEventListener("change", syncResponsible);' +
+  'if (specSel) specSel.addEventListener("change", syncResponsible);' +
+  'syncResponsible();' + // Edit Mode (ข้อ 10) — ค่า position/specialty preselect จาก SSR แล้วเรียกทันทีตอนโหลดหน้า ไม่ต้องรอ change event
   '});' +
   '</script>';
 
@@ -2228,7 +2300,7 @@ var REG_ORG_SCRIPT_ = '' +
   '</script>';
 
 /** ซ่อน/โชว์ช่อง "ระบุคำนำหน้าชื่อ" เฉพาะตอนเลือก "อื่น ๆ" (2026-09-24 — คนละช่อง จาก REG_DYNAMIC_SCRIPT_/
- *  REG_COMMITTEE_SCRIPT_ เดิม กันกระทบ logic ตำแหน่ง/คณะกรรมการที่มีอยู่แล้ว — 2026-10-07 ตัด binding ของ
+ *  REG_RESPONSIBLE_SCRIPT_ เดิม กันกระทบ logic ตำแหน่ง/คณะกรรมการที่มีอยู่แล้ว — 2026-10-07 ตัด binding ของ
  *  "ระบุประเภทผลงาน" ออก เพราะตัด field ประเภทผลงานออกจากฟอร์มทั้งหมดแล้วตามที่ผู้ใช้ขอ) */
 var REG_LAYOUT_TOGGLE_SCRIPT_ = '' +
   '<script>' +
@@ -2633,6 +2705,19 @@ var STAFF_CSS_ = '' +
   '.field-row-position{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;}' +
   '.field-row-position .field{margin-bottom:0;}' +
   '.field-branch select:disabled{background:#f2f4f6;color:var(--muted);}' +
+  // 2026-11-02 — กล่อง "ผู้รับผิดชอบ" (ประธานกรรมการ+เลขา) ด้านซ้ายของแถวตำแหน่ง/สาขา ตามที่ผู้ใช้ขอ สัดส่วน
+  // 1fr:1.4fr ใกล้เคียง mockup ที่ให้มา (ฝั่งซ้ายแคบกว่าเล็กน้อย) stack เป็น 1 column บนมือถือ (breakpoint 768px
+  // เดียวกับ field-row-position ข้างบน ให้สองส่วนนี้ stack พร้อมกันเสมอ) พื้นหลังอ่อน/ไม่มี card ซ้อนหลายชั้น
+  // ตามที่ระบุ (ข้อ 12) reuse .reg-section-title เดิม (navy, ขีดเส้นใต้บาง) เป็นหัวข้อกล่อง
+  '.reg-responsible-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:16px;align-items:start;margin-bottom:16px;}' +
+  '@media (max-width:768px){.reg-responsible-grid{grid-template-columns:1fr;}}' +
+  '.reg-responsible-box{background:#eef6f6;border:1px solid var(--border);border-radius:10px;padding:14px;box-sizing:border-box;}' +
+  '.reg-resp-row{margin-bottom:10px;}.reg-resp-row:last-of-type{margin-bottom:0;}' +
+  '.reg-resp-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;}' +
+  // ชื่อบุคคลเด่นกว่า label เล็กน้อยตามที่ระบุ (ข้อ 12) — reuse ขนาด/สี navy แบบเดียวกับ .owner-summary-value เดิม
+  '.reg-resp-value{font-size:.95rem;font-weight:700;color:var(--navy);line-height:1.35;word-wrap:break-word;}' +
+  // "กำลังโหลด...", "ยังไม่ได้กำหนด", "เลือกตำแหน่งก่อน" ฯลฯ — เบากว่าชื่อจริง ไม่ใช้สี navy เด่น (กันสับสนว่าเป็นชื่อจริง)
+  '.reg-resp-value.reg-resp-empty{color:var(--muted);font-weight:600;}' +
   // 2026-10-20 — "ข้อมูลหนังสือนำส่ง" เลขหนังสือนำส่ง | วันที่ส่งหนังสือ | วันที่ธุรการรับเรื่อง สัดส่วน
   // 40:30:30 บน desktop ตามที่ผู้ใช้ขอ (ให้ fraction ตรงตัวเลยเพื่อสัดส่วนแม่นกว่า 1.4fr/1fr/1fr)
   '.field-row-forwarding{display:grid;grid-template-columns:4fr 3fr 3fr;gap:10px;}' +

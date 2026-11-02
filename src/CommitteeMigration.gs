@@ -408,3 +408,38 @@ function resolveCommitteeForRegistration_(ss, positionName, specialtyName) {
   }
   return { mode: 'manual', committees: entry.committees };
 }
+
+/**
+ * เลขาตามคณะกรรมการ (2026-11-02 ตาม requirement ล่าสุด — แสดงประธาน+เลขาฝั่งซ้ายฟอร์มลงทะเบียนทันทีตอนเลือก
+ * ตำแหน่ง) source of truth: CommitteeSecretaryMap + SecretaryMaster (import ไว้แล้วตั้งแต่
+ * migrateSecretaryMaster()/migrateCommitteeSecretaryMap() รอบก่อนหน้า แต่ยังไม่เคยมีจุดไหนใน UI จริงอ่านมาใช้
+ * จนรอบนี้ — ไม่สร้าง mapping ใหม่ซ้ำ, reuse ชีตเดิม) คืน { [committee_code]: {name, org} } เอาเฉพาะ role
+ * "เลขานุการ" ตัวจริง (ไม่รวม "ผู้ช่วยเลขานุการ" — ป้าย "เลขา" ในฟอร์มหมายถึงเลขาหลักเท่านั้น ไม่เดาเอาผู้ช่วยมา
+ * แทนถ้าไม่มีตัวจริง) ถ้าคณะเดียวกันมีมากกว่า 1 แถว role เลขานุการ (ข้อมูลเพี้ยน) เลือก sequence น้อยที่สุด
+ * คณะที่ไม่มีแถวเลขานุการเลย = ไม่มี key นี้ใน object (ให้ผู้เรียกแสดง "ยังไม่ได้กำหนด" เอง ไม่ใส่ null ไว้ตรงๆ)
+ */
+function buildSecretaryLookupForRegisterForm_(ss) {
+  var mapSheet = ss.getSheetByName(SHEET.COMMITTEE_SECRETARY_MAP);
+  var secSheet = ss.getSheetByName(SHEET.SECRETARY_MASTER);
+  if (!mapSheet || !secSheet) return {};
+
+  var secretariesById = {};
+  readSheetAsObjects_(secSheet).forEach(function (r) { if (r.active) secretariesById[r.secretary_id] = r; });
+
+  var bestByCommittee = {};
+  readSheetAsObjects_(mapSheet).forEach(function (r) {
+    if (!r.active || r.role !== 'เลขานุการ') return;
+    var sec = secretariesById[r.secretary_id];
+    if (!sec) return;
+    var current = bestByCommittee[r.committee_code];
+    if (!current || Number(r.sequence || 0) < Number(current.sequence || 0)) {
+      bestByCommittee[r.committee_code] = { name: sec.name, org: sec.organization, sequence: r.sequence };
+    }
+  });
+
+  var lookup = {};
+  Object.keys(bestByCommittee).forEach(function (code) {
+    lookup[code] = { name: bestByCommittee[code].name, org: bestByCommittee[code].org };
+  });
+  return lookup;
+}
