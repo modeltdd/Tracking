@@ -1999,7 +1999,10 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
     '<div class="field-row field-row-position">' +
     '<div class="field field-pos"><label>ตำแหน่ง</label><select class="input" name="reg_position" id="reg-position">' + positionOptionsHtml + '</select>' +
     (positionRows.length ? '' : '<p class="hint" style="margin-top:4px">ยังไม่มีตำแหน่งใน Master Data — เพิ่มได้ที่ Admin &gt; ข้อมูลหลัก</p>') + '</div>' +
-    '<div class="field field-branch" id="reg-specialty-field"><label>ด้าน/สาขา</label><select class="input" name="reg_specialty" id="reg-specialty">' + specialtyOptionsHtml + '</select></div>' +
+    '<div class="field field-branch" id="reg-specialty-field"><label>ด้าน/สาขา</label>' +
+    '<select class="input" name="reg_specialty" id="reg-specialty">' + specialtyOptionsHtml + '</select>' +
+    '<input class="input" id="reg-specialty-display" readonly style="display:none">' +
+    '</div>' +
     '<div class="field field-posno"><label>เลขตำแหน่งเดิม</label><input class="input" name="reg_position_no" value="' + v('position_no') + '"></div>' +
     '</div>' +
     '<div class="field" id="reg-committee-field" style="display:none">' +
@@ -2055,12 +2058,15 @@ function renderRegisterFormBody_(ss, values, errors, baseUrl) {
 /**
  * ด้าน/สาขา ตามตำแหน่งที่เลือก (2026-10-07 แก้ตาม requirement จริง — เดิมมี placeholder "-- เลือก --" เสมอแม้
  * เหลือตัวเลือกเดียว ผู้ใช้ต้องคลิกเลือกเองอยู่ดี) ตอนนี้แบ่ง 3 กรณีตามจำนวนตัวเลือกที่ตรงกับตำแหน่ง:
- *   0 ตัวเลือก -> ช่อง disabled โชว์ "-" (ค่าว่างคือค่าที่ถูกต้องอยู่แล้วสำหรับตำแหน่งที่ไม่มีด้าน/สาขาใน
- *     Master Data — ไม่ต้อง hidden input เสริม เพราะ blank คือค่าที่ต้องการจริงๆ ไม่ใช่ค่าที่ "หาย")
- *   1 ตัวเลือก  -> auto-select ทันที ไม่ใส่ placeholder เลย (ผู้ใช้ไม่ต้องคลิกซ้ำ) ยังเป็น <select> ธรรมดา
- *     (ไม่ disabled) เพื่อให้ค่าถูกส่งไปตอน submit แน่นอน (select ที่ disabled จะไม่ถูกส่งค่าตาม HTML spec —
- *     ถ้า disable ต้องมี hidden input คู่กันเสมอ เลยเลือกไม่ disable แทน ปลอดภัยกว่า ไม่มีจุดพลาด)
- *   >1 ตัวเลือก -> ปกติ มี placeholder "-- เลือกด้าน/สาขา --" ให้ผู้ใช้เลือกเอง เหมือนเดิม
+ *   0 ตัวเลือก -> ช่อง <select> disabled โชว์ "-" (ค่าว่างคือค่าที่ถูกต้องอยู่แล้วสำหรับตำแหน่งที่ไม่มีด้าน/สาขา
+ *     ใน Master Data — ไม่ต้อง hidden input เสริม เพราะ blank คือค่าที่ต้องการจริงๆ ไม่ใช่ค่าที่ "หาย")
+ *   1 ตัวเลือก  -> auto-select ค่านั้นทันที (2026-11-02 ตาม requirement ล่าสุด — "ห้ามแสดง <select>/dropdown
+ *     เลย ถ้าตำแหน่งมีสาขาเดียว") ซ่อน <select> ด้วย display:none (ไม่ใช้ disabled — select ที่ disabled จะไม่
+ *     ถูกส่งค่าตาม HTML form spec ทำให้ specialty หายไปตอน Save เลยซ่อนด้วย CSS แทน ค่ายังถูกส่งไปปกติ) แล้ว
+ *     โชว์ #reg-specialty-display (readonly input, ไม่มี name — ไม่ submit ซ้ำ) แสดงค่าแทนให้ผู้ใช้เห็น ไม่ต้อง
+ *     คลิกเลือกเองอีก (reuse style .input[readonly] เดิมของระบบ — field อื่นในฟอร์มนี้ก็ใช้ readonly แบบเดียวกัน
+ *     อยู่แล้ว เช่น ช่องจังหวัด)
+ *   >1 ตัวเลือก -> ปกติ มี placeholder "-- เลือกด้าน/สาขา --" ให้ผู้ใช้เลือกเอง เหมือนเดิม (<select> โชว์ปกติ)
  * เปลี่ยนตำแหน่งใหม่ = clear ค่าด้าน/สาขาเดิมทิ้งก่อนเสมอ แล้วคำนวณ 3 กรณีข้างบนใหม่ทันที (กันค่าตำแหน่งก่อน
  * หน้าค้าง) — data-position-code บน <option> ทั้งของ position select และ specialty select (ฝังมาจาก server)
  */
@@ -2069,19 +2075,22 @@ var REG_DYNAMIC_SCRIPT_ = '' +
   'document.addEventListener("DOMContentLoaded", function () {' +
   'var posSel = document.getElementById("reg-position");' +
   'var specSel = document.getElementById("reg-specialty");' +
+  'var specDisplay = document.getElementById("reg-specialty-display");' +
   'if (!posSel || !specSel) return;' +
   'var allSpecOptions = Array.prototype.slice.call(specSel.options).filter(function (opt) { return opt.value; });' +
   'function getBranchesByPosition(posCode) {' +
   'return allSpecOptions.filter(function (opt) { return opt.dataset.positionCode === posCode; });' +
   '}' +
   'function onPositionChange() {' +
-  'specSel.innerHTML = ""; specSel.disabled = false;' + // clear ค่าเดิมก่อนเสมอ กันค้างจากตำแหน่งก่อนหน้า
+  'specSel.innerHTML = ""; specSel.disabled = false; specSel.style.display = "";' + // clear ค่าเดิมก่อนเสมอ กันค้างจากตำแหน่งก่อนหน้า
+  'if (specDisplay) { specDisplay.style.display = "none"; specDisplay.value = ""; }' +
   'var posCode = (posSel.selectedOptions[0] || {}).dataset ? posSel.selectedOptions[0].dataset.positionCode : "";' +
   'var options = getBranchesByPosition(posCode);' +
   'if (options.length === 0) {' +
   'specSel.appendChild(new Option("-", "")); specSel.disabled = true;' +
   '} else if (options.length === 1) {' +
   'specSel.appendChild(options[0].cloneNode(true)); specSel.value = options[0].value;' +
+  'if (specDisplay) { specSel.style.display = "none"; specDisplay.value = options[0].value; specDisplay.style.display = ""; }' +
   '} else {' +
   'specSel.appendChild(new Option("-- เลือกด้าน/สาขา --", ""));' +
   'options.forEach(function (opt) { specSel.appendChild(opt.cloneNode(true)); });' +

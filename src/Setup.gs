@@ -317,6 +317,60 @@ function migrateFixDoctorSpecialtyName() {
 }
 
 /**
+ * รวมสาขาของ 3 ตำแหน่ง (PUBLIC_HEALTH/MED_TECH/PHYSIOTHERAPIST) ให้เหลือ "บริการทางวิชาการ" ค่าเดียว ตาม
+ * requirement ล่าสุด (2026-11-02 — ห้ามแสดง dropdown สาขาถ้าตำแหน่งมีสาขาเดียว, renderRegisterFormBody_/
+ * REG_DYNAMIC_SCRIPT_, Views.gs) seed ใหม่ (getMasterSpecialtiesSeed_, Constants.gs) แก้ไว้แล้วสำหรับการ
+ * ติดตั้งใหม่ แต่ชีต MasterSpecialties ที่มีข้อมูลอยู่แล้ว (production) ต้องรันฟังก์ชันนี้ 1 ครั้งเพื่อแก้ข้อมูล
+ * จริงให้ตรงกัน — ไม่ลบแถวทิ้ง (เผื่อมีการอ้างอิง specialty_code เดิมที่อื่น) แค่ active=false แถวที่ไม่ใช้แล้ว
+ * + เปลี่ยนชื่อ/เปิดใช้งานแถวที่เหลือให้เป็น "บริการทางวิชาการ" ปลอดภัยรันซ้ำได้ (idempotent)
+ * ไม่แก้ Works ที่เคยบันทึก specialty เดิมไว้แล้ว (เช่น "นักวิชาการสาธารณสุข"/"นักเทคนิคการแพทย์"/
+ * "นักกายภาพบำบัด") — เป็นข้อมูลประวัติ ไม่ถูกเขียนทับย้อนหลัง ตาม requirement ข้อ "ห้าม overwrite database
+ * ทันทีเพียงเพราะเปิดหน้า Edit" (ค่าจะเปลี่ยนเฉพาะถ้าผู้ใช้กด Save ฟอร์มนั้นใหม่เท่านั้น)
+ */
+function migrateUnifySpecialtyMapping1102() {
+  var ss = getSpreadsheet_();
+  var sheet = ss.getSheetByName(SHEET.MASTER_SPECIALTIES);
+  if (!sheet) { Logger.log('ยังไม่มีชีต MasterSpecialties — รัน migratePart10Updates() ก่อน'); return; }
+  var allRows = readSheetAsObjects_(sheet);
+  var targetSpecialty = 'บริการทางวิชาการ';
+  var log = [];
+
+  ['PUBLIC_HEALTH', 'MED_TECH', 'PHYSIOTHERAPIST'].forEach(function (posCode) {
+    var posRows = allRows.filter(function (r) { return r.position_code === posCode; });
+    var keep = posRows.filter(function (r) { return r.specialty_name === targetSpecialty; })[0];
+
+    if (!keep) {
+      // ยังไม่มีแถว "บริการทางวิชาการ" ของตำแหน่งนี้ — แก้แถว active ตัวแรก (หรือแถวแรกสุด ถ้าไม่มีแถว active
+      // เลย) ให้เป็นค่านี้แทน ถ้าไม่มีแถวเลยสักตัว ให้เพิ่มใหม่
+      var first = posRows.filter(function (r) { return r.active; })[0] || posRows[0];
+      if (first) {
+        var oldName = first.specialty_name;
+        updateSheetRowByKey_(sheet, 'specialty_code', first.specialty_code, { specialty_name: targetSpecialty, active: true });
+        log.push(posCode + ': แก้ "' + oldName + '" -> "' + targetSpecialty + '" (specialty_code=' + first.specialty_code + ')');
+        keep = first;
+      } else {
+        var newCode = posCode.toLowerCase() + '_1';
+        appendRowByHeader_(sheet, SHEET_HEADERS[SHEET.MASTER_SPECIALTIES], {
+          specialty_code: newCode, specialty_name: targetSpecialty, position_code: posCode, active: true, sort_order: 1,
+        });
+        log.push(posCode + ': ยังไม่มีแถวเลย — เพิ่มใหม่ "' + targetSpecialty + '" (specialty_code=' + newCode + ')');
+        keep = { specialty_code: newCode };
+      }
+    }
+
+    // ปิดใช้งานแถวอื่นที่เหลือของตำแหน่งนี้ทั้งหมด (ยังไม่ลบทิ้ง) ให้เหลือ active จริงแค่ "บริการทางวิชาการ" ตัวเดียว
+    posRows.forEach(function (r) {
+      if (r.specialty_code !== keep.specialty_code && r.active) {
+        updateSheetRowByKey_(sheet, 'specialty_code', r.specialty_code, { active: false });
+        log.push(posCode + ': ปิดใช้งาน "' + r.specialty_name + '" (specialty_code=' + r.specialty_code + ')');
+      }
+    });
+  });
+
+  Logger.log(log.length ? log.join('\n') : 'ไม่มีอะไรต้องแก้ (ตรงกับ mapping ล่าสุดอยู่แล้วทุกตำแหน่ง)');
+}
+
+/**
  * เติม header คอลัมน์ที่ขาดต่อท้ายชีต Works จริง — เทียบ header แถวจริงกับ SHEET_HEADERS[SHEET.WORKS] ปัจจุบัน
  * ทั้งหมด (ไม่ hardcode รายชื่อคอลัมน์ทีละรอบอีกต่อไป 2026-09-16 — เพิ่มฟิลด์ใหม่ที่ Constants.gs แล้วรันฟังก์ชัน
  * นี้ซ้ำได้เลย จะเติมเฉพาะส่วนที่ขาดให้อัตโนมัติ) ต้องทำก่อนใช้ registerNewWork_/renderRegisterFormBody_/
