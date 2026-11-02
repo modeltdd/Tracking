@@ -2314,7 +2314,11 @@ var REG_ORG_SCRIPT_ = '' +
   'function populateOrgSelect(type) {' +
   'orgSelect.innerHTML = "";' +
   'orgSelect.appendChild(new Option("กรุณาเลือกหน่วยงาน", ""));' +
-  '(REG_ORG_LOOKUP_[type] || []).forEach(function (o) { orgSelect.appendChild(new Option(o.fullName || o.name, o.id)); });' +
+  // ใช้ String(o.id) เสมอตอนตั้ง value (บั๊กจริงที่เคยพบ+แก้ไว้ฝั่ง server แล้ว 2026-10-21 — ถ้าแถวไหนใน
+  // OrganizationMaster ถูกแก้ตรงในชีตด้วยมือ Google Sheets จะ auto-convert organization_id เป็น Number ตัด
+  // เลข 0 นำหน้า ขณะที่ <select>.value อ่านกลับมาเป็น String เสมอ ถ้าไม่ normalize จะเทียบ === ไม่ตรงกันเงียบๆ
+  // แล้วจังหวัดจะไม่ auto-fill เลย — รอบนี้แก้จุดเดียวกันซ้ำฝั่ง client ที่เพิ่งเพิ่มด้วย)
+  '(REG_ORG_LOOKUP_[type] || []).forEach(function (o) { orgSelect.appendChild(new Option(o.fullName || o.name, String(o.id))); });' +
   '}' +
   'function applyOrgChoice(o) {' +
   'if (!o) { nameInput.value = ""; clearSelection(); return; }' +
@@ -2329,8 +2333,8 @@ var REG_ORG_SCRIPT_ = '' +
   'if (DROPDOWN_TYPES_.indexOf(type) !== -1) {' +
   'closeSuggest(); nameInput.style.display = "none"; orgSelect.style.display = "";' +
   'populateOrgSelect(type);' +
-  'var chosen = preserveExisting && idField.value ? (REG_ORG_LOOKUP_[type] || []).filter(function (o) { return o.id === idField.value; })[0] : null;' +
-  'orgSelect.value = chosen ? chosen.id : "";' +
+  'var chosen = preserveExisting && idField.value ? (REG_ORG_LOOKUP_[type] || []).filter(function (o) { return String(o.id) === String(idField.value); })[0] : null;' +
+  'orgSelect.value = chosen ? String(chosen.id) : "";' +
   'if (chosen) applyOrgChoice(chosen);' +
   '} else {' +
   'orgSelect.style.display = "none"; orgSelect.innerHTML = "";' +
@@ -2339,7 +2343,7 @@ var REG_ORG_SCRIPT_ = '' +
   '}' +
   'orgSelect.addEventListener("change", function () {' +
   'var type = typeSel.value;' +
-  'var chosen = (REG_ORG_LOOKUP_[type] || []).filter(function (o) { return o.id === orgSelect.value; })[0];' +
+  'var chosen = (REG_ORG_LOOKUP_[type] || []).filter(function (o) { return String(o.id) === orgSelect.value; })[0];' +
   'applyOrgChoice(chosen);' +
   '});' +
   'typeSel.addEventListener("change", function () {' +
