@@ -1088,7 +1088,7 @@ function renderSearchResultList_(works, stationsMap, baseUrl) {
  * ด้านล่าง (ใครทำอะไรเมื่อไร+หมายเหตุ) ไม่ลบทิ้ง — ตัดออกจากหน้านี้เฉพาะการแสดงผล: เลขบัตรประชาชน/เบอร์โทร/
  * อีเมล/ระดับ/ผู้ดำเนินการล่าสุด (คอลัมน์เดิมในชีตยังอยู่ครบ ไม่ได้ลบข้อมูลจริง)
  */
-function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, errors, dueDateErrors) {
+function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, errors, dueDateErrors, stepErrors, stepPrevValues) {
   var ownerName = ((work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')).trim();
   var data = buildPublicResultData_(ss, work);
 
@@ -1098,6 +1098,22 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
     '<div class="pub-name-owner">' + escapeHtml_(ownerName || '-') + '</div>' +
     '<div class="pub-name-tracking">เลขทะเบียน ' + escapeHtml_(work.tracking_no) + '</div>' +
     '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
+    '</div>';
+
+  // 2026-11-03 — หน้า Staff "Workflow เดียว" ใหม่ ส่วน A "ข้อมูลผลงาน": compact context ให้ Staff รู้ว่ากำลัง
+  // จัดการรายการใด (ตำแหน่ง/สาขา/หน่วยงาน/จังหวัด/ประธาน/เลขา) reuse renderPubOwnerRow_ เดิม (label ซ้าย/value
+  // ขวาบรรทัดเดียว ไม่ทำ card ใหญ่ ตามที่ผู้ใช้ขอข้อ 3) ประธาน/เลขามาจาก committee_code ที่บันทึกไว้ตอนลงทะเบียน
+  // จริง (findChairAndSecretaryByCommitteeCode_, CommitteeMigration.gs — reuse source of truth เดิม ไม่สร้าง
+  // mapping ใหม่) งานเก่า/ตำแหน่งที่ยังไม่มีคณะกรรมการ (committee_code ว่าง) แสดง "-" ธรรมดา ไม่เดา
+  var chairSecretary = findChairAndSecretaryByCommitteeCode_(ss, work.committee_code);
+  var compactInfoHtml = '' +
+    '<div class="pub-details-body" style="margin-top:4px">' +
+    renderPubOwnerRow_('ตำแหน่ง', work.position) +
+    renderPubOwnerRow_('สาขา', work.specialty) +
+    renderPubOwnerRow_('หน่วยงาน', work.org_from) +
+    renderPubOwnerRow_('จังหวัด', work.province) +
+    renderPubOwnerRow_('ประธานคณะกรรมการ', chairSecretary.chairName) +
+    renderPubOwnerRow_('เลขา', chairSecretary.secretaryName) +
     '</div>';
 
   var heroHtml = renderPubHero_(work, data.currentStation, stationsMap, data.steps);
@@ -1116,8 +1132,20 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
   ]);
 
   var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
-  var timelineHtml = renderPubTimelineSection_(data.fixedTimeline);
-  if (data.isLegacyImportOnly) timelineHtml += renderPubLegacyInfoBox_();
+
+  // 2026-11-03 — ส่วน B "ภาพรวม Workflow" (requirement ข้อ 4/5/17/18): ต้องเห็นเส้นทางทั้งหมด 1-10 ในครั้งเดียว
+  // (ไม่พับเก็บเหมือน Owner Dashboard) พร้อม skip state 8.x/9.x ตอนผล 7="ผ่าน/ไม่ผ่าน" (สีเทาจาง "ไม่ใช้ในกรณีนี้")
+  // reuse buildOwnerFullWorkflowWithSkips_/renderOwnerFullDetailItem_ เดิม (เคยสร้างไว้ให้ Owner Dashboard แล้ว
+  // เลิกใช้ตอนเปลี่ยนเป็น milestone 4 ขั้น — ของเดิมยังสมบูรณ์ครบทุก business rule ไม่ต้องสร้าง logic ใหม่ซ้ำ)
+  // แค่เปลี่ยน wrapper จาก <details> (ปิดเริ่มต้น) เป็นเปิดเสมอสำหรับหน้า Staff นี้โดยเฉพาะ (renderOwnerTimelineSection_
+  // เดิมของ Owner Dashboard ไม่ถูกแตะ ยังปิดเริ่มต้นเหมือนเดิมทุกประการ)
+  var staffOverviewHtml = renderStaffWorkflowOverviewSection_(buildOwnerFullWorkflowWithSkips_(data.steps, stationsMap, work));
+
+  // 2026-11-03 — ส่วน C "ตารางรายละเอียดขั้นตอนและการดำเนินการ" (requirement ข้อ 7-20): ทุก state จริงจาก
+  // WorkflowStates (listStationsSorted_ เดิม) พร้อมวันที่ดำเนินการ (จาก StatusHistory จริง)+ปุ่ม
+  // บันทึก/แก้ไขวันที่ ต่อแถว — ดู renderStaffWorkflowTable_ ด้านล่างสำหรับรายละเอียด logic ทั้งหมด
+  var staffWorkflowTableHtml = renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, baseUrl, stepErrors, stepPrevValues);
+  if (data.isLegacyImportOnly) staffOverviewHtml += renderPubLegacyInfoBox_();
 
   // ข้อมูลภายในสำหรับเจ้าหน้าที่ — พับเก็บด้วย <details> ไม่ให้เด่นเกินสถานะ/Timeline ตามที่ผู้ใช้ขอ 2026-09-24
   var infoHtml = '' +
@@ -1209,12 +1237,244 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
   return '' +
     '<div class="pub-compact">' +
     '<div class="detail-card">' +
-    nameBlockHtml + heroHtml + actionHtml + infoGridHtml + progressHtml + timelineHtml + noteHtml + auditLogHtml + infoHtml + coverHtml + ownerCodeHtml + revisionDueDateHtml +
+    nameBlockHtml + compactInfoHtml + heroHtml + actionHtml + infoGridHtml + progressHtml + staffOverviewHtml + staffWorkflowTableHtml +
+    noteHtml + auditLogHtml + infoHtml + coverHtml + ownerCodeHtml + revisionDueDateHtml +
     '<p style="margin-top:12px"><a class="btn-outline" target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
     '</div>' +
     '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>' +
-    '</div>';
+    '</div>' +
+    STAFF_WORKFLOW_TOGGLE_SCRIPT_;
 }
+
+/**
+ * ส่วน B "ภาพรวม Workflow" ของหน้า Staff "Workflow เดียว" (2026-11-03) — ครบ 1-10 ขั้นตอนเสมอ เห็นเส้นทาง
+ * ทั้งหมดในครั้งเดียว ไม่พับเก็บ (ต่างจาก renderOwnerTimelineSection_ ของ Owner Dashboard ที่ปิดเริ่มต้นเสมอ —
+ * ฟังก์ชันนั้นไม่ถูกแตะเลย) reuse renderOwnerFullDetailItem_ (Views.gs) ต่อรายการเป๊ะ (ตัวเดียวกับที่คู่กับ
+ * buildOwnerFullWorkflowWithSkips_ มาแต่เดิม รองรับ skip/sub-state 7.x ครบอยู่แล้ว) แค่เปลี่ยน wrapper เป็น
+ * เปิดเสมอสำหรับหน้านี้โดยเฉพาะ
+ */
+function renderStaffWorkflowOverviewSection_(fullWithSkips) {
+  if (!fullWithSkips) return '';
+  return '<div class="owner-tl-section-title">ภาพรวม Workflow</div>' +
+    '<div class="owner-tl-wrap"><div class="pub-timeline">' +
+    fullWithSkips.map(renderOwnerFullDetailItem_).join('') + '</div></div>';
+}
+
+/**
+ * ส่วน C "ตารางรายละเอียดขั้นตอนและการดำเนินการ" ของหน้า Staff "Workflow เดียว" (2026-11-03 requirement เต็ม —
+ * ดูสรุปที่หัวไฟล์ Actions.gs/performStateTransition_/performEditStepDate_ สำหรับ business logic ที่ reuse)
+ *
+ * 1 แถว = 1 station จริงจาก WorkflowStates (listStationsSorted_ เดิม, Admin.gs) — ไม่ใช่ backbone 1-10 แบบ
+ * section B แต่เป็น state จริงทุกตัวรวม sub-state ทศนิยม (7.1-7.4/8.1-8.6/9.1-9.4) ตามข้อ 7/15/16 ("ทุกขั้นตอน
+ * ต้องเห็นในตารางเดียว") โหลด WorkflowStates + StatusHistory ของงานนี้ครั้งเดียว (history พารามิเตอร์ที่รับมา
+ * คือ getHistoryForWork_ เดิมจาก caller — ไม่ query ซ้ำ, ข้อ 25 ห้าม N+1)
+ *
+ * สถานะต่อแถว (ลำดับการตรวจ สำคัญ):
+ *   1) key === current_station_key -> 'current'
+ *   2) เคย "เข้าสู่ state นี้จริง" ตาม StatusHistory (to_station ตรง, action registered/transition/reassigned)
+ *      -> 'done' (เอาครั้งล่าสุดถ้าเคยวนกลับมาซ้ำ — ไม่เดา ใช้ประวัติจริงเท่านั้น)
+ *   3) อยู่ใน 8.x/9.x และ state 7 resolve แล้วเป็น "ผ่าน/ไม่ผ่าน" (computeSkippedMainSteps_ เดิม จาก
+ *      PublicTrack.gs — ใช้ร่วมกับ section B/Owner Dashboard ตัวเดียวกัน ไม่สร้าง logic แยก) -> 'skipped'
+ *   4) อื่นๆ -> 'pending'
+ *
+ * "วันที่ดำเนินการ" ของแถว done = action_date ของ StatusHistory แถวที่พา work เข้าสู่ state นั้น (ความหมาย
+ * เดียวกับ enteredAt ที่ buildPublicDetailedSteps_ ใช้อยู่แล้วทั้งระบบ — ข้อ 11 "ห้ามถือว่ากรอกวันที่=เปลี่ยน
+ * สถานะ" ตีความว่า: แถว current ไม่มีวันที่ของตัวเองให้แก้ไขตรงๆ (ยังไม่เกิดขึ้นจริง) มีแต่ปุ่ม "ดำเนินการขั้นตอน
+ * นี้/บันทึกวันที่" ที่เรียก performStateTransition_ จริง (ย้าย state จริงตาม WorkflowMaster) พร้อมให้เลือก
+ * วันที่เอง (ไม่บังคับเป็น "วันนี้" เสมอไป) ส่วนแถว done แก้ได้แค่ "วันที่" ของ StatusHistory ย้อนหลังอย่างเดียว
+ * (performEditStepDate_) ไม่มีทางเปลี่ยน state จากตรงนี้ — แยก 2 action ชัดเจนตามข้อ 11
+ *
+ * สิทธิ์: Admin ทำได้ทุกแถว, เจ้าหน้าที่ทั่วไปทำได้เฉพาะแถวที่หน่วยงานตนเองรับผิดชอบจริง (resolveResponsibleOrg_
+ * เดิม) — scoping เดียวกับ computeEligibleTransitions_/performEditStepDate_ ทั้งระบบ ไม่สร้างสิทธิ์ใหม่
+ *
+ * stepErrors/stepPrevValues (ถ้ามี — ส่งมาจาก doPost, Code.gs ตอน validate ไม่ผ่าน) ใช้ reopen panel เดิมที่
+ * กำลังกรอกอยู่พร้อมค่าที่กรอกไว้แล้ว (Edit Mode, pattern เดียวกับ renderTransitionFormBody_ เดิม) — ไม่ reload
+ * ไปหน้าอื่น ยังอยู่หน้าเดิม (ข้อ 10 "ห้าม reload ทั้งหน้าถ้าไม่จำเป็น" — ตีความว่าต้องไม่กระเด้งไปหน้า "สแกน QR"/
+ * "บันทึกสำเร็จ" แบบเดิม กลับมา render หน้ารายละเอียดนี้ตรงๆ เสมอ ดู Code.gs การ branch return_to==='detail')
+ */
+function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, baseUrl, stepErrors, stepPrevValues) {
+  stepPrevValues = stepPrevValues || {};
+  var isAdmin = user.role === 'Admin';
+
+  var doneMap = {};
+  history.forEach(function (h) {
+    if (!h.to_station) return;
+    if (h.action !== 'registered' && h.action !== 'transition' && h.action !== 'reassigned') return;
+    doneMap[h.to_station] = { enteredAt: h.action_date, historyId: h.history_id };
+  });
+
+  var skippedMainSteps = computeSkippedMainSteps_(data.steps);
+  var currentKey = work.current_station_key;
+  var currentStateDef = stationsMap[currentKey];
+  var eligibleTransitions = computeEligibleTransitions_(ss, work, currentStateDef, user);
+  var resolvedFirstRound = getResolvedFirstRoundStep_(data.steps);
+
+  var allStations = listStationsSorted_(ss).filter(function (s) { return s.active; });
+
+  var errorHtml = (stepErrors && stepErrors.length)
+    ? '<div class="error-banner"><ul>' + stepErrors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+
+  var rowsHtml = '';
+  var panelsHtml = '';
+
+  allStations.forEach(function (station) {
+    var key = station.station_key;
+    var order = String(station.station_order);
+    var parentOrder = parentStepOrder_(order);
+    var name = splitStationNameDesc_(station.station_name).main;
+    var orgResp = resolveResponsibleOrg_(station, work);
+
+    var state;
+    if (key === currentKey) state = 'current';
+    else if (doneMap[key]) state = 'done';
+    else if (skippedMainSteps[parentOrder]) state = 'skipped';
+    else state = 'pending';
+
+    var icon = state === 'done' ? '&#10003;' : (state === 'current' ? '&#9679;' : '&#9675;');
+    // 2026-11-03 — map state -> ชื่อ CSS modifier จริงที่มีอยู่แล้ว (reuse .wf-step-done/.wf-step-current/
+    // .wf-step-locked เดิมจากหน้าสแกน QR, .wf-step-skip ใหม่สำหรับ skipped เท่านั้น — "pending" ไม่มี class
+    // ตรงชื่อ ต้อง map ไปใช้ .wf-step-locked เดิม ไม่ใช่สร้าง .wf-step-pending ซ้ำซ้อนไม่มีสไตล์)
+    var rowClsSuffix = state === 'skipped' ? 'skip' : (state === 'pending' ? 'locked' : state);
+    var rowCls = 'wf-step-' + rowClsSuffix;
+
+    var dateHtml = '';
+    var detailHtml = '';
+    var actionsHtml = '';
+
+    if (state === 'done') {
+      var enteredAt = doneMap[key].enteredAt;
+      dateHtml = '<div class="wtbl-row-date">วันที่ดำเนินการ: ' + escapeHtml_(formatDateDDMMYYYYBuddhist_(enteredAt) || '-') + '</div>';
+      var canEditThis = isAdmin || (orgResp && user.organization === orgResp);
+      if (canEditThis) {
+        var historyId = doneMap[key].historyId;
+        var panelId = 'wtbl-editdate-' + historyId;
+        var isReopen = stepPrevValues.wtbl_action === 'edit_step_date' && stepPrevValues.history_id === historyId;
+        var dateVal = isReopen ? (stepPrevValues.action_date || '') : formatDateYYYYMMDD_(enteredAt);
+        actionsHtml = '<div class="wtbl-row-actions">' +
+          '<button type="button" class="btn-outline" data-wf-toggle="' + escapeHtml_(panelId) + '">แก้ไขวันที่</button></div>';
+        panelsHtml += '<div class="wf-confirm wtbl-panel" id="' + escapeHtml_(panelId) + '"' + (isReopen ? ' data-auto-open="1"' : '') + '>' +
+          '<div class="wf-confirm-title">แก้ไขวันที่ดำเนินการ — ' + escapeHtml_(name) + '</div>' +
+          '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;margin-top:8px">' +
+          '<input type="hidden" name="form_action" value="edit_step_date">' +
+          '<input type="hidden" name="return_to" value="detail">' +
+          '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
+          '<input type="hidden" name="history_id" value="' + escapeHtml_(historyId) + '">' +
+          '<div class="field"><label>วันที่ดำเนินการ</label>' +
+          '<input class="input" type="date" name="action_date" value="' + escapeHtml_(dateVal) + '" required></div>' +
+          '<div class="wf-confirm-actions">' +
+          '<button class="btn-outline" type="submit" data-loading-text="กำลังบันทึก...">บันทึกวันที่ที่แก้ไข</button>' +
+          '<button type="button" class="btn-outline wtbl-panel-cancel">ยกเลิก</button>' +
+          '</div></form></div>';
+      }
+    } else if (state === 'current') {
+      detailHtml = '<div class="wtbl-row-detail">กำลังดำเนินการ</div>';
+      if (!eligibleTransitions.length) {
+        dateHtml = orgResp
+          ? '<div class="wtbl-row-date wf-step-locked-resp">อยู่ในความรับผิดชอบของ ' + escapeHtml_(orgResp) + '</div>'
+          : '<div class="wtbl-row-date">ยังไม่มีการกระทำที่ทำได้ในขณะนี้</div>';
+      } else {
+        actionsHtml = '<div class="wtbl-row-actions">';
+        eligibleTransitions.forEach(function (t) {
+          var panelId = 'wtbl-confirm-' + t.transition_id;
+          var isReopen = stepPrevValues.wtbl_action === 'state_transition' && stepPrevValues.transition_id === t.transition_id;
+          var targetStation = stationsMap[t.to_state];
+          var targetName = targetStation ? splitStationNameDesc_(targetStation.station_name).main : t.to_state;
+          var needsDueDate = REVISION_DUE_DATE_STATE_KEYS_[t.to_state];
+          var btnLabel = eligibleTransitions.length === 1 ? 'บันทึกวันที่' : t.button_label;
+          actionsHtml += '<button type="button" class="wf-step-actionable" data-wf-toggle="' + escapeHtml_(panelId) + '">' +
+            '<span class="wf-step-actionable-label">' + escapeHtml_(btnLabel) + '</span>' +
+            '<span class="wf-step-actionable-hint">' + escapeHtml_(t.button_label) + ' &rarr; ' + escapeHtml_(targetName) + '</span></button>';
+          panelsHtml += '<div class="wf-confirm wtbl-panel" id="' + escapeHtml_(panelId) + '"' + (isReopen ? ' data-auto-open="1"' : '') + '>' +
+            '<div class="wf-confirm-title">กำลังเปลี่ยนสถานะ</div>' +
+            '<div class="wf-confirm-from">จาก: <b>' + escapeHtml_(name) + '</b></div>' +
+            '<div class="wf-confirm-to">เป็น: <b>' + escapeHtml_(targetName) + '</b></div>' +
+            '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;margin-top:8px">' +
+            '<input type="hidden" name="form_action" value="state_transition">' +
+            '<input type="hidden" name="return_to" value="detail">' +
+            '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
+            '<input type="hidden" name="transition_id" value="' + escapeHtml_(t.transition_id) + '">' +
+            '<div class="field"><label>วันที่ดำเนินการ</label>' +
+            '<input class="input" type="date" name="action_date" value="' + escapeHtml_(isReopen ? (stepPrevValues.action_date || '') : formatDateYYYYMMDD_(now_())) + '" required></div>' +
+            (needsDueDate ? '<div class="field"><label>วันครบกำหนดแก้ไข</label>' +
+              '<input class="input" type="date" name="revision_due_date" value="' + escapeHtml_(isReopen ? (stepPrevValues.revision_due_date || '') : '') + '" required></div>' : '') +
+            '<div class="field"><label>หมายเหตุ' + (t.requires_note ? '' : ' (ถ้ามี)') + '</label>' +
+            '<textarea class="input" name="note" rows="2">' + escapeHtml_(isReopen ? (stepPrevValues.note || '') : '') + '</textarea></div>' +
+            '<div class="wf-confirm-actions">' +
+            '<button class="btn-primary" type="submit" data-loading-text="กำลังบันทึก...">ยืนยัน' + escapeHtml_(t.button_label) + '</button>' +
+            '<button type="button" class="btn-outline wtbl-panel-cancel">ยกเลิก</button>' +
+            '</div></form></div>';
+        });
+        actionsHtml += '</div>'; // วันที่ดำเนินการของ transition เลือกอยู่ในฟอร์มยืนยันแต่ละปุ่มแล้ว (ไม่ต้องมีช่องลอยนอกฟอร์ม)
+      }
+    } else if (state === 'skipped') {
+      dateHtml = '<div class="wtbl-row-date wf-step-skip-reason">ไม่ใช้ในกรณีนี้</div>';
+    } else { // pending
+      dateHtml = orgResp
+        ? '<div class="wtbl-row-date wf-step-locked-resp">รอดำเนินการ &mdash; อยู่ในความรับผิดชอบของ ' + escapeHtml_(orgResp) + '</div>'
+        : '<div class="wtbl-row-date">รอดำเนินการ</div>';
+    }
+
+    // ข้อ 18 — step 7 ย่อย (7.1-7.4) แสดง badge สีตามผล 4 tone จริง (pass/revision2/revision3/fail — เหลืองอ่อน
+    // ต่างจากเหลืองเข้มจริงตามข้อ 18) reuse OWNER_RESULT_OUTCOME_ เดิม (PublicTrack.gs, ตัวเดียวกับที่ Owner
+    // Dashboard ใช้ — ไม่ใช่ subStatusToneClass_ ที่แยกได้แค่ 3 สีไม่พอ) + deadline revision_due_date ถ้ามี (7.2/7.3)
+    var subResultHtml = '';
+    if (parentOrder === '7' && order !== '7' && resolvedFirstRound && resolvedFirstRound.key === key) {
+      var outcome = OWNER_RESULT_OUTCOME_[key] || { text: name, tone: subStatusToneClass_(name) };
+      subResultHtml = '<div class="wtbl-row-detail"><span class="owner-result-badge owner-result-outcome-' + outcome.tone + '">' + escapeHtml_(outcome.text) + '</span>' +
+        (REVISION_DUE_DATE_STATE_KEYS_[key] && work.revision_due_date
+          ? '<span class="owner-result-outcome-duedate"> ภายในวันที่ :: ' + escapeHtml_(formatDateDDMMYYYYBuddhist_(work.revision_due_date)) + '</span>'
+          : '') + '</div>';
+    }
+
+    rowsHtml += '<div class="wf-step ' + rowCls + '" id="wtbl-row-' + escapeHtml_(key) + '">' +
+      '<div class="wf-step-icon">' + icon + '</div>' +
+      '<div style="flex:1;min-width:0">' +
+      '<div class="wf-step-label">' + escapeHtml_(order) + '. ' + escapeHtml_(name) + '</div>' +
+      (state === 'current' ? '<span class="wf-step-badge">สถานะปัจจุบัน</span>' : '') +
+      detailHtml + subResultHtml + dateHtml + actionsHtml +
+      '</div></div>';
+  });
+
+  return '' +
+    '<div class="wf-section-title">รายละเอียดขั้นตอนและการดำเนินการ</div>' +
+    '<div class="wf-section-hint">แต่ละขั้นตอนบันทึก/แก้ไขวันที่ได้จากแถวนี้โดยตรง</div>' +
+    errorHtml +
+    '<div class="wf-checklist">' + rowsHtml + '</div>' +
+    panelsHtml;
+}
+
+/**
+ * toggle พื้นที่ยืนยัน/แก้ไขวันที่ (.wtbl-panel) ของหน้า Staff "Workflow เดียว" (2026-11-03) — generic ด้วย
+ * [data-wf-toggle] (ต่างจาก WF_CONFIRM_TOGGLE_SCRIPT_ เดิมที่ผูกกับ .wf-step-actionable/.wf-confirm ตรงๆ สำหรับ
+ * หน้าสแกน QR เท่านั้น ไม่ถูกแตะ) รองรับ auto-open panel ที่ validate ไม่ผ่านรอบก่อน (data-auto-open="1" จาก
+ * server) ให้เลื่อนไปเห็น+เห็น error ทันทีโดยไม่ต้องกดปุ่มซ้ำ (Edit Mode) ไม่ใช่ AJAX — ฟอร์มข้างในยัง POST เต็ม
+ * รูปแบบไปที่ form_action=state_transition/edit_step_date เดิมทุกประการ (ตรวจสิทธิ์/business rule ซ้ำฝั่ง
+ * server เสมอ) toggle นี้แค่ซ่อน/โชว์ DOM เฉยๆ
+ */
+var STAFF_WORKFLOW_TOGGLE_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'var buttons = document.querySelectorAll("[data-wf-toggle]");' +
+  'var panels = document.querySelectorAll(".wtbl-panel");' +
+  'function closeAll() { panels.forEach(function (p) { p.style.display = "none"; }); }' +
+  'buttons.forEach(function (btn) {' +
+  'btn.addEventListener("click", function () {' +
+  'var targetId = btn.getAttribute("data-wf-toggle");' +
+  'var target = document.getElementById(targetId);' +
+  'if (!target) return;' +
+  'var alreadyOpen = target.style.display === "block";' +
+  'closeAll();' +
+  'if (!alreadyOpen) { target.style.display = "block"; target.scrollIntoView({ behavior: "smooth", block: "center" }); }' +
+  '});' +
+  '});' +
+  'document.querySelectorAll(".wtbl-panel-cancel").forEach(function (btn) {' +
+  'btn.addEventListener("click", closeAll);' +
+  '});' +
+  'var autoOpen = document.querySelector(".wtbl-panel[data-auto-open=\\"1\\"]");' +
+  'if (autoOpen) { autoOpen.style.display = "block"; autoOpen.scrollIntoView({ behavior: "smooth", block: "center" }); }' +
+  '});' +
+  '</script>';
 
 /** หน้าพิมพ์ QR ใหม่ — qr_token เดิมไม่เปลี่ยน จึงสร้างภาพ QR เดิมซ้ำได้ทุกเมื่อ (ใช้ตอน QR บนเอกสารเสีย/หาย) */
 function renderQrPrintBody_(work, qrImageUrl, baseUrl) {
@@ -3457,4 +3717,14 @@ var PUBLIC_CSS_ = '' +
   '.owner-tl-toggle-arrow{font-size:.7rem;color:var(--muted);flex-shrink:0;transition:transform .2s ease;}' +
   '.owner-tl-toggle[open] .owner-tl-toggle-arrow{transform:rotate(180deg);}' +
   '.owner-tl-toggle .owner-tl-wrap{padding:0 14px 14px;animation:ownerTlToggleFadeIn .2s ease;}' +
-  '@keyframes ownerTlToggleFadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}';
+  '@keyframes ownerTlToggleFadeIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:translateY(0);}}' +
+  // 2026-11-03 — หน้า Staff "Workflow เดียว" ใหม่ ส่วน C (renderStaffWorkflowTable_) — แถว "ถูกข้าม" (skipped,
+  // 8.x/9.x ตอนผล 7="ผ่าน/ไม่ผ่าน") ใช้โทนเทาจาง (ข้อ 5 "skipped = เทาอ่อน") reuse token เดิมเหมือน .wf-step-locked
+  // (opacity .55 ตามแบบ .owner-tl-skip เดิม) ไม่เพิ่มสีใหม่
+  '.wf-step-skip{border-color:var(--border);background:#f7f9fa;opacity:.55;}' +
+  '.wf-step-skip .wf-step-icon{background:#dde3e8;color:var(--muted);}' +
+  '.wf-step-skip .wf-step-label{color:var(--muted);}' +
+  '.wf-step-skip-reason{display:block;font-size:.76rem;color:var(--muted);font-style:italic;}' +
+  '.wtbl-row-date{font-size:.8rem;color:var(--text);margin-top:4px;line-height:1.5;}' +
+  '.wtbl-row-detail{font-size:.82rem;color:var(--muted);margin-top:3px;}' +
+  '.wtbl-row-actions{margin-top:8px;display:flex;flex-direction:column;gap:8px;align-items:flex-start;}';

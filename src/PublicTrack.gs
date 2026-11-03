@@ -394,21 +394,27 @@ function buildFixedMainTimeline_(steps, stationsMap, work) {
  * ผลการพิจารณา) เป็นข้อความสั้นตรงๆ "ไม่ใช้ในกรณีนี้" ตามตัวอย่างใน requirement (ข้อ 7) ห้ามแสดง "รอดำเนินการ"
  * กับขั้นตอนที่ถูกข้ามอีกต่อไป (เข้าใจผิดว่ายังต้องรอ)
  */
+/**
+ * 2026-11-03 (หน้า Staff "Workflow เดียว" ใหม่, renderStaffWorkflowTable_ ใน Views.gs) — แยก logic ตรวจ
+ * "ขั้นตอนหลัก 8/9 ถูกข้ามหรือไม่" ออกมาจาก buildOwnerFullWorkflowWithSkips_ เดิม (ย้ายมาตรงๆ ไม่เปลี่ยน
+ * เงื่อนไข) ให้ Staff Overview (ใช้ buildOwnerFullWorkflowWithSkips_/renderOwnerFullDetailItem_ ตัวเดิม) และ
+ * Staff ตารางรายละเอียดรายขั้นตอน (ต้องรู้ด้วยว่า station ไหนใน 8.x/9.x ถูกข้าม) ใช้ผลตรวจชุดเดียวกัน ไม่สร้าง
+ * logic แตกสายคู่ขนาน — จุดแตกสายจริงจุดเดียวในระบบ: step 7 resolve เป็น 7.1/7.4 (ผ่าน/ไม่ผ่าน) -> ข้าม 8/9
+ * ตรงไป 10, 7.2/7.3 (แก้ไข) -> ไม่ข้าม เข้าสู่ 8 จริง คืน {} ถ้ายังไม่ resolve/ไม่ต้องข้าม หรือ {'8':true,'9':true}
+ */
+function computeSkippedMainSteps_(steps) {
+  var step7Resolved = getResolvedFirstRoundStep_(steps);
+  if (!step7Resolved) return {};
+  var staysForRevision = step7Resolved.name.indexOf('แก้ไข') !== -1;
+  if (staysForRevision) return {};
+  return { '8': true, '9': true };
+}
+
 function buildOwnerFullWorkflowWithSkips_(steps, stationsMap, work) {
   var fixed = buildFixedMainTimeline_(steps, stationsMap, work);
   if (!fixed || !steps) return fixed;
 
-  // จุดแตกสายจริงจุดเดียวในระบบ: step 7 resolve เป็น 7.1/7.4 (ผ่าน/ไม่ผ่าน) -> ข้าม 8/9 ตรงไป 10, 7.2/7.3
-  // (แก้ไข) -> ไม่ข้าม เข้าสู่ 8 จริง
-  var step7Resolved = steps.filter(function (s) { return parentStepOrder_(s.order) === '7' && s.order !== '7'; })[0] || null;
-  var skippedMainSteps = {};
-  if (step7Resolved) {
-    var staysForRevision = step7Resolved.name.indexOf('แก้ไข') !== -1;
-    if (!staysForRevision) {
-      skippedMainSteps['8'] = true;
-      skippedMainSteps['9'] = true;
-    }
-  }
+  var skippedMainSteps = computeSkippedMainSteps_(steps);
 
   var prevSkipped = false;
   fixed.forEach(function (entry) {

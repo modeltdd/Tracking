@@ -133,6 +133,26 @@ function routeStaffPage_(e, user) {
   }
 }
 
+/**
+ * 2026-11-03 — หน้า Staff "Workflow เดียว" ใหม่: render หน้า "รายละเอียดผลงาน" (renderWorkDetailBody_, Views.gs)
+ * กลับไปตรงๆ หลังทำ action ของส่วน C (บันทึก/แก้ไขวันที่ขั้นตอน — state_transition/edit_step_date) ทั้งกรณี
+ * สำเร็จและไม่สำเร็จ (ข้อ 6/10 ของ requirement — ห้ามต้องเข้า-ออกหลายหน้า/reload ไปหน้าอื่น) โหลด work/history/
+ * stationsMap สดใหม่ครั้งเดียว (pattern เดียวกับ admin_set_owner_code/admin_set_revision_due_date เดิมที่ทำอยู่
+ * แล้วใน doPost — ไม่ใช่ของใหม่) stepErrors/stepPrevValues ส่งต่อให้ renderWorkDetailBody_ reopen panel เดิมที่
+ * validate ไม่ผ่านพร้อมค่าที่กรอกไว้ (ไม่มีทาง work หายไปกลางทาง เพราะ performStateTransition_/performEditStepDate_
+ * คืน errors แบบไม่เจองานเฉพาะกรณี work_id ผิดจริงเท่านั้น ซึ่งไม่เกิดจาก UI นี้ที่ embed work_id จาก SSR เสมอ)
+ */
+function renderStaffDetailAfterAction_(ss, user, baseUrl, workId, stepErrors, stepPrevValues) {
+  var work = findWorkById_(ss, workId);
+  if (!work) {
+    return renderStaffPage_('ไม่พบรายการ', renderStubBody_('ไม่พบงานที่ระบุ (work_id: ' + workId + ')', baseUrl), user, 'search', baseUrl);
+  }
+  var history = getHistoryForWork_(ss, workId);
+  var stationsMap = getStationsMap_(ss);
+  return renderStaffPage_('รายละเอียดผลงาน',
+    renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, [], [], stepErrors, stepPrevValues), user, 'search', baseUrl);
+}
+
 function doPost(e) {
   var formAction = e && e.parameter && e.parameter.form_action;
   var ss = getSpreadsheet_();
@@ -196,6 +216,14 @@ function doPost(e) {
   if (formAction === 'state_transition') {
     var transToken = e.parameter.qr_token || '';
     var transResult = performStateTransition_(ss, user, e);
+    // 2026-11-03 — หน้า Staff "Workflow เดียว" ใหม่ (renderWorkDetailBody_/renderStaffWorkflowTable_, Views.gs)
+    // ส่งฟอร์มมาพร้อม return_to=detail เสมอ (ต่างจากหน้าสแกน QR เดิมที่ไม่ส่งฟิลด์นี้มา) ต้อง render หน้า
+    // รายละเอียดเดิมกลับไปตรงๆ ทั้ง 2 กรณี (สำเร็จ/ไม่สำเร็จ) ไม่กระเด้งไปหน้า "สแกน QR"/"บันทึกสำเร็จ" แบบเดิม
+    // (ข้อ 6/10 ของ requirement — ห้ามต้องเข้า-ออกหลายหน้า) ไม่กระทบ flow เดิมของหน้าสแกน QR เลย (branch แยก)
+    if (e.parameter.return_to === 'detail') {
+      var transPrev = transResult.ok ? {} : Object.assign({}, e.parameter, { wtbl_action: 'state_transition' });
+      return renderStaffDetailAfterAction_(ss, user, baseUrl, e.parameter.work_id, transResult.ok ? [] : (transResult.errors || []), transPrev);
+    }
     if (!transResult.ok) {
       var transWork = transResult.work || findWorkById_(ss, e.parameter.work_id);
       if (!transWork) {
@@ -218,6 +246,16 @@ function doPost(e) {
         renderTransitionFormBody_(transWork, reTransition, baseUrl, transToken, transResult.errors, e.parameter), user, 'scan', baseUrl);
     }
     return renderStaffPage_('บันทึกสำเร็จ', renderActionSuccessBody_(transResult, baseUrl), user, 'scan', baseUrl);
+  }
+
+  if (formAction === 'edit_step_date') {
+    // 2026-11-03 — แก้ไข "วันที่ดำเนินการ" ย้อนหลังของขั้นตอนที่เสร็จแล้ว (performEditStepDate_, Actions.gs —
+    // ตรวจสิทธิ์ Admin/หน่วยงานผู้รับผิดชอบเองใน function นั้นแล้ว ไม่ต้องเช็คซ้ำที่นี่) อยู่หน้ารายละเอียดเดิม
+    // เสมอทั้งสำเร็จ/ไม่สำเร็จ (เหมือน work_action/state_transition ด้านบน) ไม่มี return_to อื่นให้เลือก (ฟีเจอร์
+    // นี้มีจุดเรียกเดียวคือหน้ารายละเอียด ไม่ได้มาจากหน้าสแกน QR เดิม)
+    var editResult = performEditStepDate_(ss, user, e);
+    var editPrev = editResult.ok ? {} : Object.assign({}, e.parameter, { wtbl_action: 'edit_step_date' });
+    return renderStaffDetailAfterAction_(ss, user, baseUrl, e.parameter.work_id, editResult.ok ? [] : (editResult.errors || []), editPrev);
   }
 
   if (formAction === 'admin_set_owner_code' || formAction === 'admin_reset_owner_code') {

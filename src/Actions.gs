@@ -81,6 +81,18 @@ function performStateTransition_(ss, user, e) {
     return { ok: false, errors: ['กรุณาระบุหมายเหตุ'], work: work };
   }
 
+  // 2026-11-03 (หน้า Staff "Workflow เดียว" ใหม่ — renderStaffWorkflowTable_, Views.gs) — รองรับให้เจ้าหน้าที่
+  // เลือก "วันที่ดำเนินการ" เองได้ตอนกดเปลี่ยนสถานะ (ของจริงอาจเกิดก่อนวันที่กดบันทึกในระบบ) ไม่บังคับ ถ้าไม่ส่ง
+  // action_date มา (ทุก caller เดิม เช่นหน้าสแกน QR) ใช้ now() เหมือนเดิมทุกประการ — เขียนลง StatusHistory.action_date
+  // เท่านั้น ไม่กระทบ Works.updated_at (ยังเป็นเวลาบันทึกจริงเสมอ ผ่าน updateWorkRow_ ค่าเริ่มต้นของมันเอง)
+  var actionDateTs = now_();
+  var rawActionDate = String(p.action_date || '').trim();
+  if (rawActionDate) {
+    var customActionDate = new Date(rawActionDate);
+    if (isNaN(customActionDate.getTime())) return { ok: false, errors: ['วันที่ดำเนินการไม่ถูกต้อง'], work: work };
+    actionDateTs = customActionDate;
+  }
+
   // 2026-10-21 ตามข้อแก้ไขผู้บริหาร — ผลการพิจารณาเป็น "แก้ไข 2 เดือน"/"แก้ไข 6 เดือน" (transition ไป s7_2/s7_3)
   // ต้องให้เจ้าหน้าที่ระบุ "วันครบกำหนดแก้ไข" เองจากปฏิทินเสมอ ห้ามคำนวณอัตโนมัติจาก 2/6 เดือน (ตามที่ผู้บริหารสั่ง
   // ชัดเจน) ตรวจจาก transition.to_state (workflow code จริง) ไม่ใช่ label/ข้อความปุ่ม — กันกระทบ transition อื่น
@@ -112,7 +124,7 @@ function performStateTransition_(ss, user, e) {
     history_id: Utilities.getUuid(), work_id: work.work_id, tracking_no: work.tracking_no, action: 'transition',
     from_station: work.current_station_key, to_station: newState.station_key,
     from_org: work.current_owner_org, to_org: newOwnerOrg,
-    action_by: user.user_email, action_by_org: user.organization, action_date: nowTs,
+    action_by: user.user_email, action_by_org: user.organization, action_date: actionDateTs,
     note: transition.button_label + (note ? ' — ' + note : ''),
     // revision_due_date: คอลัมน์นี้มีอยู่แล้วแต่เดิมเขียนค่าว่างเสมอ (ยังไม่เคยมี feature ใช้จริง) ตอนนี้บันทึกค่า
     // จริงเป็น audit trail ของการตั้งวันครบกำหนดแก้ไขแต่ละครั้ง (ข้อ 9 — ผู้แก้ไข/วันเวลา มีอยู่แล้วใน action_by/
@@ -180,6 +192,51 @@ function performSetRevisionDueDate_(ss, user, e) {
   writeAuditLog_(user.user_email, 'revision_due_date_edit', work.work_id, 'revision_due_date', oldDueText, formatDateDDMMYYYYBuddhist_(dueDateObj));
 
   return { ok: true, work_id: work.work_id, work: work, errors: [] };
+}
+
+/**
+ * 2026-11-03 — หน้า Staff "Workflow เดียว" ใหม่ (renderStaffWorkflowTable_, Views.gs) ข้อ 19 ของ requirement:
+ * แก้ไข "วันที่ดำเนินการ" ของขั้นตอนที่เสร็จแล้วย้อนหลัง — แก้แค่ StatusHistory.action_date ของแถวนั้นแถวเดียว
+ * (reuse updateSheetRowByKey_ เดิม, Utils.gs) ไม่แตะ Works เลยแม้แต่คอลัมน์เดียว (ไม่ใช่ state transition —
+ * current_station_key/current_status_public/evaluation_result/revision_due_date เดิมทั้งหมดไม่ถูกแตะ) ทุกครั้ง
+ * ที่แก้ต้องลง AuditLog เก่า/ใหม่/ผู้แก้/เวลา (ข้อ 19 — writeAuditLog_ เดิมมี user_email/timestamp ให้อยู่แล้ว)
+ * สิทธิ์: Admin แก้ได้ทุกแถว, เจ้าหน้าที่ทั่วไปแก้ได้เฉพาะ station ที่หน่วยงานตนเองเป็นผู้รับผิดชอบจริง
+ * (resolveResponsibleOrg_ เดิม — scoping เดียวกับ computeEligibleTransitions_ ทั้งระบบ ไม่สร้างสิทธิ์ใหม่)
+ * คืน { ok, work_id, errors }
+ */
+function performEditStepDate_(ss, user, e) {
+  var p = (e && e.parameter) || {};
+  var workId = String(p.work_id || '').trim();
+  var historyId = String(p.history_id || '').trim();
+  var work = findWorkById_(ss, workId);
+  if (!work) return { ok: false, errors: ['ไม่พบงานที่ระบุ'] };
+
+  var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
+  var historyRow = readSheetAsObjects_(historySheet).filter(function (h) {
+    return h.history_id === historyId && h.work_id === workId;
+  })[0];
+  if (!historyRow) return { ok: false, errors: ['ไม่พบประวัติขั้นตอนที่ระบุ'] };
+
+  var stationsMap = getStationsMap_(ss);
+  var stationDef = stationsMap[historyRow.to_station];
+  var isAdmin = user.role === 'Admin';
+  var isResponsible = stationDef && user.organization === resolveResponsibleOrg_(stationDef, work);
+  if (!isAdmin && !isResponsible) {
+    return { ok: false, errors: ['ไม่มีสิทธิ์แก้ไขวันที่ของขั้นตอนนี้'] };
+  }
+
+  var rawNewDate = String(p.action_date || '').trim();
+  var newDateObj = rawNewDate ? new Date(rawNewDate) : null;
+  if (!rawNewDate || isNaN(newDateObj.getTime())) {
+    return { ok: false, errors: ['กรุณาระบุวันที่ดำเนินการ'] };
+  }
+
+  var oldDateText = formatDateDDMMYYYYBuddhist_(historyRow.action_date) || '(ยังไม่เคยกำหนด)';
+  updateSheetRowByKey_(historySheet, 'history_id', historyId, { action_date: newDateObj });
+  writeAuditLog_(user.user_email, 'step_date_edit', work.work_id,
+    'action_date (' + historyRow.to_station + ')', oldDateText, formatDateDDMMYYYYBuddhist_(newDateObj));
+
+  return { ok: true, work_id: work.work_id, errors: [] };
 }
 
 /**

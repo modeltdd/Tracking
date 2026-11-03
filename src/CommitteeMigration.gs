@@ -443,3 +443,24 @@ function buildSecretaryLookupForRegisterForm_(ss) {
   });
   return lookup;
 }
+
+/**
+ * ประธาน+เลขาของคณะกรรมการ 1 คณะ ด้วย committee_code (2026-11-03 — หน้า Staff "Workflow เดียว" ใหม่ ส่วน A
+ * "ข้อมูลผลงาน" ต้องโชว์ประธาน/เลขาของงานนี้) reuse source of truth เดิมทั้งคู่ (ChairMaster ตรงๆ +
+ * buildSecretaryLookupForRegisterForm_ เดิมที่ index ด้วย committee_code อยู่แล้ว) ไม่สร้าง mapping ใหม่ซ้ำ —
+ * ต่างจาก buildCommitteeLookupForRegisterForm_ ที่ index ตาม profession (ใช้ตอนลงทะเบียน ยังไม่รู้ committee_code
+ * จริง) ที่นี่รู้ committee_code ของงานที่บันทึกไว้แล้วตรงๆ จึงค้นตรงด้วยคอลัมน์นี้ได้เลย คืนค่าว่าง '' ทั้งคู่
+ * ถ้า committee_code ว่าง/ไม่พบแถวจริง (งานเก่า/ตำแหน่งที่ยังไม่มีคณะกรรมการในระบบ) ไม่เดา
+ */
+function findChairAndSecretaryByCommitteeCode_(ss, committeeCode) {
+  if (!committeeCode) return { chairName: '', secretaryName: '' };
+  var chairSheet = ss.getSheetByName(SHEET.CHAIR_MASTER);
+  var chairRow = chairSheet ? readSheetAsObjects_(chairSheet).filter(function (r) {
+    return r.active && r.committee_code === committeeCode;
+  })[0] : null;
+  var secretaryEntry = buildSecretaryLookupForRegisterForm_(ss)[committeeCode];
+  return {
+    chairName: chairRow ? (chairRow.chair_name || '') : '',
+    secretaryName: secretaryEntry ? secretaryEntry.name : '',
+  };
+}
