@@ -258,6 +258,15 @@ function doPost(e) {
     return renderStaffDetailAfterAction_(ss, user, baseUrl, e.parameter.work_id, editResult.ok ? [] : (editResult.errors || []), editPrev);
   }
 
+  if (formAction === 'save_all_step_dates') {
+    // 2026-11-04 — Section G "บันทึกข้อมูลทั้งหมด" (performSaveAllStepDates_, Actions.gs — วนเรียก
+    // performEditStepDate_ เดิมทีละแถว ไม่สร้าง logic validate/permission/audit ใหม่) เหมือน edit_step_date
+    // อยู่หน้ารายละเอียดเดิมเสมอ errors (ถ้ามี) ระบุเป็นรายแถวที่ล้มเหลว แถวที่สำเร็จแล้วถูกบันทึกจริงไม่ rollback
+    var saveAllResult = performSaveAllStepDates_(ss, user, e);
+    var saveAllPrev = saveAllResult.ok ? {} : { wtbl_action: 'save_all_step_dates' };
+    return renderStaffDetailAfterAction_(ss, user, baseUrl, e.parameter.work_id, saveAllResult.ok ? [] : (saveAllResult.errors || []), saveAllPrev);
+  }
+
   if (formAction === 'admin_set_owner_code' || formAction === 'admin_reset_owner_code') {
     // ตั้ง/รีเซ็ตรหัสผ่านเจ้าของผลงาน (Login สำหรับเจ้าของผลงาน, OwnerAuth.gs) — Admin เท่านั้น เรียกจากหน้า
     // รายละเอียดผลงาน (renderWorkDetailBody_) ไม่ใช่หน้า Admin tab เพราะเป็น action ต่อรายการ ไม่ใช่ master data

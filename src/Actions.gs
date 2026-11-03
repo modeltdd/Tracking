@@ -240,6 +240,47 @@ function performEditStepDate_(ss, user, e) {
 }
 
 /**
+ * 2026-11-04 — หน้า Staff "Workflow Workspace" requirement ใหม่ Section G "บันทึกข้อมูลทั้งหมด" — แก้วันที่
+ * ย้อนหลังหลายขั้นตอนพร้อมกันเป็น batch (panel #swf-saveall-panel, renderStaffWorkflowTable_) ไม่สร้าง logic
+ * validate/permission/audit ใหม่ซ้ำ — วนเรียก performEditStepDate_ เดิมทีละแถว (field ชื่อ action_date_<history_id>
+ * ต่อแถว) แถวไหนไม่ได้แก้ค่า (ว่าง หรือค่าตรงกับที่มีอยู่แล้ว) ข้ามไปเฉยๆ ไม่เขียน AuditLog ซ้ำโดยไม่จำเป็น
+ * คืน { ok, work_id, updatedCount, errors } — errors ระบุ station ที่ล้มเหลวแต่ละแถว (เช่น ไม่มีสิทธิ์บางแถว)
+ * แถวที่สำเร็จแล้วยังคงถูกบันทึกจริง (ไม่ rollback ทั้ง batch เพราะ 1 แถวพลาด — field เดิมของ AuditLog เป็น
+ * append-only ต่อแถวอยู่แล้ว ไม่มีแนวคิด transaction รวมในระบบเดิม)
+ */
+function performSaveAllStepDates_(ss, user, e) {
+  var p = (e && e.parameter) || {};
+  var workId = String(p.work_id || '').trim();
+  var work = findWorkById_(ss, workId);
+  if (!work) return { ok: false, errors: ['ไม่พบงานที่ระบุ'], updatedCount: 0 };
+
+  var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
+  var historyById = {};
+  readSheetAsObjects_(historySheet).forEach(function (h) {
+    if (h.work_id === workId) historyById[h.history_id] = h;
+  });
+
+  var errors = [];
+  var updatedCount = 0;
+  Object.keys(p).forEach(function (key) {
+    var m = key.match(/^action_date_(.+)$/);
+    if (!m) return;
+    var historyId = m[1];
+    var historyRow = historyById[historyId];
+    if (!historyRow) return; // ไม่ใช่ประวัติของงานนี้จริง — ข้ามเงียบๆ (field แปลกปลอม ไม่ใช่ error ของผู้ใช้)
+    var rawDate = String(p[key] || '').trim();
+    if (!rawDate) return; // เว้นว่างไว้ = ไม่แก้แถวนี้ (รองรับแก้บางแถวได้ ไม่บังคับกรอกทุกช่อง)
+    if (rawDate === formatDateYYYYMMDD_(historyRow.action_date)) return; // ค่าไม่เปลี่ยน — ข้าม กันเขียน AuditLog เปล่า
+
+    var singleResult = performEditStepDate_(ss, user, { parameter: { work_id: workId, history_id: historyId, action_date: rawDate } });
+    if (singleResult.ok) updatedCount++;
+    else errors = errors.concat(singleResult.errors.map(function (msg) { return (historyRow.to_station || historyId) + ': ' + msg; }));
+  });
+
+  return { ok: errors.length === 0, work_id: workId, updatedCount: updatedCount, errors: errors };
+}
+
+/**
  * ประมวลผล action ที่ส่งมาจากฟอร์ม (e.parameter) — ตรวจสิทธิ์ซ้ำ, validate ฟิลด์เฉพาะ action,
  * อัปเดตแถว Works + บันทึก StatusHistory เสมอ (append-only)
  * คืน { ok:true, work_id, action } หรือ { ok:false, errors:[...] }

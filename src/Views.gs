@@ -1097,6 +1097,15 @@ function renderSearchResultList_(works, stationsMap, baseUrl) {
 function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, errors, dueDateErrors, stepErrors, stepPrevValues) {
   var ownerName = ((work.title_name || '') + (work.first_name || '') + ' ' + (work.last_name || '')).trim();
   var data = buildPublicResultData_(ss, work);
+  var backHref = baseUrl + '?page=search';
+
+  // 2026-11-04 — requirement ใหม่ "Workflow Workspace" ส่วน A (Header): ไอคอน+ชื่อหน้า ซ้าย, "← กลับ" ขวา
+  // พื้นขาว/compact — reuse โครง .owner-page-header/.owner-back-link เดิม (สี/ระยะห่างตรงตามที่ขอ: navy เข้ม,
+  // compact, ไม่สูงเกินไป) แทนการสร้าง header ใหม่ซ้ำ ย้ายลิงก์ "กลับหน้าค้นหา" (เดิมอยู่ท้ายหน้า) มาไว้ตรงนี้แทน
+  var swfHeaderHtml = '' +
+    '<div class="swf-header"><div class="swf-header-title"><span class="swf-header-icon">&#128100;</span>' +
+    'Staff &ndash; กระบวนการดำเนินงาน (Workflow)</div>' +
+    '<a class="swf-back-btn" target="_top" href="' + backHref + '">&larr; กลับ</a></div>';
 
   // ลำดับหัวหน้า (2026-09-24 ตามที่ผู้ใช้ขอ): ชื่อเจ้าของผลงาน (เด่นสุด) -> เลขทะเบียน (รอง, muted) -> ชื่อผลงาน
   var nameBlockHtml = '' +
@@ -1106,18 +1115,25 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
     '<div class="pub-name-title">ชื่อผลงาน: ' + escapeHtml_(work.work_title || '-') + '</div>' +
     '</div>';
 
-  // 2026-11-03 — หน้า Staff "Workflow เดียว" ใหม่ ส่วน A "ข้อมูลผลงาน": compact context ให้ Staff รู้ว่ากำลัง
-  // จัดการรายการใด (ตำแหน่ง/สาขา/หน่วยงาน/จังหวัด/ประธาน/เลขา) reuse renderPubOwnerRow_ เดิม (label ซ้าย/value
-  // ขวาบรรทัดเดียว ไม่ทำ card ใหญ่ ตามที่ผู้ใช้ขอข้อ 3) ประธาน/เลขามาจาก committee_code ที่บันทึกไว้ตอนลงทะเบียน
-  // จริง (findChairAndSecretaryByCommitteeCode_, CommitteeMigration.gs — reuse source of truth เดิม ไม่สร้าง
-  // mapping ใหม่) งานเก่า/ตำแหน่งที่ยังไม่มีคณะกรรมการ (committee_code ว่าง) แสดง "-" ธรรมดา ไม่เดา
+  // 2026-11-04 — ส่วน B "Summary Row" ใหม่ (requirement ใหม่): 4 กล่องแนวนอน ตำแหน่ง/สาขา/หน่วยงาน/จังหวัด
+  // (icon ซ้าย/label เล็ก/value หนา/พื้นฟ้าอ่อน) แทนที่รูปแบบ label-value แถวเดียวเดิม (compactInfoHtml เดิม)
+  // ประธาน/เลขา (ข้อกำหนดรอบก่อนหน้า ยังต้องมี) ย้ายไปแสดงเป็นแถว label-value ปกติต่อท้ายกล่อง 4 ใบนี้แทน (ไม่ได้
+  // ตัดออก) ประธาน/เลขามาจาก committee_code จริง (findChairAndSecretaryByCommitteeCode_ เดิม ไม่สร้าง mapping ใหม่)
   var chairSecretary = findChairAndSecretaryByCommitteeCode_(ss, work.committee_code);
-  var compactInfoHtml = '' +
+  var summaryBoxesHtml = '' +
+    '<div class="swf-summary-grid">' +
+    [
+      { icon: '&#128188;', label: 'ตำแหน่ง', value: work.position },
+      { icon: '&#129504;', label: 'สาขา', value: work.specialty },
+      { icon: '&#127973;', label: 'หน่วยงาน', value: work.org_from },
+      { icon: '&#128205;', label: 'จังหวัด', value: work.province },
+    ].map(function (b) {
+      return '<div class="swf-summary-box"><span class="swf-summary-icon">' + b.icon + '</span>' +
+        '<div><div class="swf-summary-label">' + escapeHtml_(b.label) + '</div>' +
+        '<div class="swf-summary-value">' + escapeHtml_(b.value || '-') + '</div></div></div>';
+    }).join('') +
+    '</div>' +
     '<div class="pub-details-body" style="margin-top:4px">' +
-    renderPubOwnerRow_('ตำแหน่ง', work.position) +
-    renderPubOwnerRow_('สาขา', work.specialty) +
-    renderPubOwnerRow_('หน่วยงาน', work.org_from) +
-    renderPubOwnerRow_('จังหวัด', work.province) +
     renderPubOwnerRow_('ประธานคณะกรรมการ', chairSecretary.chairName) +
     renderPubOwnerRow_('เลขา', chairSecretary.secretaryName) +
     '</div>';
@@ -1137,21 +1153,18 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
     { label: 'ส่งให้ผู้ว่า', value: data.governorForwardDate ? formatDateThShort_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า' },
   ]);
 
-  var progressHtml = data.progressSummary ? renderPubProgressSummary_(data.progressSummary) : '';
+  // 2026-11-04 — model กลาง (buildStaffWorkflowModel_ ใหม่) ให้ทั้งส่วน C (Overview แนวนอน+Progress) และ
+  // ส่วน E (ตารางรายละเอียด) อ่านสถานะ/สิทธิ์/ขั้นตอนปัจจุบันจากจุดเดียวกัน ไม่คำนวณซ้ำ/ไม่มี logic คู่ขนาน
+  var model = buildStaffWorkflowModel_(ss, work, history, stationsMap, data, user);
 
-  // 2026-11-03 — ส่วน B "ภาพรวม Workflow" (requirement ข้อ 4/5/17/18): ต้องเห็นเส้นทางทั้งหมด 1-10 ในครั้งเดียว
-  // (ไม่พับเก็บเหมือน Owner Dashboard) พร้อม skip state 8.x/9.x ตอนผล 7="ผ่าน/ไม่ผ่าน" (สีเทาจาง "ไม่ใช้ในกรณีนี้")
-  // reuse buildOwnerFullWorkflowWithSkips_/renderOwnerFullDetailItem_ เดิม (เคยสร้างไว้ให้ Owner Dashboard แล้ว
-  // เลิกใช้ตอนเปลี่ยนเป็น milestone 4 ขั้น — ของเดิมยังสมบูรณ์ครบทุก business rule ไม่ต้องสร้าง logic ใหม่ซ้ำ)
-  // แค่เปลี่ยน wrapper จาก <details> (ปิดเริ่มต้น) เป็นเปิดเสมอสำหรับหน้า Staff นี้โดยเฉพาะ (renderOwnerTimelineSection_
-  // เดิมของ Owner Dashboard ไม่ถูกแตะ ยังปิดเริ่มต้นเหมือนเดิมทุกประการ)
-  var staffOverviewHtml = renderStaffWorkflowOverviewSection_(buildOwnerFullWorkflowWithSkips_(data.steps, stationsMap, work));
-
-  // 2026-11-03 — ส่วน C "ตารางรายละเอียดขั้นตอนและการดำเนินการ" (requirement ข้อ 7-20): ทุก state จริงจาก
-  // WorkflowStates (listStationsSorted_ เดิม) พร้อมวันที่ดำเนินการ (จาก StatusHistory จริง)+ปุ่ม
-  // บันทึก/แก้ไขวันที่ ต่อแถว — ดู renderStaffWorkflowTable_ ด้านล่างสำหรับรายละเอียด logic ทั้งหมด
-  var staffWorkflowTableHtml = renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, baseUrl, stepErrors, stepPrevValues);
+  // ส่วน C "ภาพรวมกระบวนการ" (แนวนอน ●──●──●) + ส่วน D "Progress Card" (ข้างกัน) — requirement ใหม่
+  var staffOverviewHtml = renderStaffOverviewAndProgress_(model, stationsMap, data, work);
   if (data.isLegacyImportOnly) staffOverviewHtml += renderPubLegacyInfoBox_();
+
+  // ส่วน E "รายละเอียดขั้นตอนและการดำเนินการ" — ตาราง <table> จริง (requirement ใหม่ section E) + ส่วน G
+  // (ปุ่มประวัติ/บันทึกทั้งหมด) ฝังมาในผลลัพธ์เดียวกัน (ปุ่ม "บันทึกข้อมูลทั้งหมด" ต้องรู้ว่ามีแถวไหนแก้ได้บ้าง
+  // ซึ่งคำนวณอยู่แล้วตอน build ตาราง ไม่ต้องวน loop ซ้ำสองรอบ)
+  var staffWorkflowTableHtml = renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, baseUrl, stepErrors, stepPrevValues, model);
 
   // ข้อมูลภายในสำหรับเจ้าหน้าที่ — พับเก็บด้วย <details> ไม่ให้เด่นเกินสถานะ/Timeline ตามที่ผู้ใช้ขอ 2026-09-24
   var infoHtml = '' +
@@ -1221,7 +1234,7 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
   // ประวัติละเอียดทุกแถวจริง (ใครทำอะไรเมื่อไร+หมายเหตุ) — พับด้วย <details> ไม่ให้ดูเหมือน log ดิบกลางหน้า
   // + แปล LEGACY_IMPORT_MARKER_ เป็นข้อความอ่านง่าย ไม่โชว์ email ภายในดิบๆ (2026-09-24) ไม่ลบข้อมูลจริง แค่จัดรูปแบบ
   var auditLogHtml = history.length
-    ? '<details class="pub-details"><summary>ดูประวัติการดำเนินการทั้งหมด</summary><div class="pub-details-body">' +
+    ? '<details class="pub-details" id="swf-history"><summary>ดูประวัติการดำเนินการทั้งหมด</summary><div class="pub-details-body">' +
       history.map(function (h) {
         var label = h.action === 'transition'
           ? (stationsMap[h.to_station] ? stationsMap[h.to_station].station_name : h.to_station)
@@ -1241,29 +1254,129 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
     : '';
 
   return '' +
-    '<div class="pub-compact">' +
+    '<div class="pub-compact swf-page">' +
+    swfHeaderHtml +
     '<div class="detail-card">' +
-    nameBlockHtml + compactInfoHtml + heroHtml + actionHtml + infoGridHtml + progressHtml + staffOverviewHtml + staffWorkflowTableHtml +
+    nameBlockHtml + summaryBoxesHtml + heroHtml + actionHtml + infoGridHtml + staffOverviewHtml + staffWorkflowTableHtml +
     noteHtml + auditLogHtml + infoHtml + coverHtml + ownerCodeHtml + revisionDueDateHtml +
     '<p style="margin-top:12px"><a class="btn-outline" target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
     '</div>' +
-    '<p class="pub-back-link"><a target="_top" href="' + baseUrl + '?page=search">&larr; กลับหน้าค้นหา</a></p>' +
     '</div>' +
     STAFF_WORKFLOW_TOGGLE_SCRIPT_;
 }
 
 /**
- * ส่วน B "ภาพรวม Workflow" ของหน้า Staff "Workflow เดียว" (2026-11-03) — ครบ 1-10 ขั้นตอนเสมอ เห็นเส้นทาง
- * ทั้งหมดในครั้งเดียว ไม่พับเก็บ (ต่างจาก renderOwnerTimelineSection_ ของ Owner Dashboard ที่ปิดเริ่มต้นเสมอ —
- * ฟังก์ชันนั้นไม่ถูกแตะเลย) reuse renderOwnerFullDetailItem_ (Views.gs) ต่อรายการเป๊ะ (ตัวเดียวกับที่คู่กับ
- * buildOwnerFullWorkflowWithSkips_ มาแต่เดิม รองรับ skip/sub-state 7.x ครบอยู่แล้ว) แค่เปลี่ยน wrapper เป็น
- * เปิดเสมอสำหรับหน้านี้โดยเฉพาะ
+ * ส่วน B "ภาพรวม Workflow" เวอร์ชันแนวตั้งของ requirement รอบ 2026-11-03 — ถูกแทนที่ด้วยไดอะแกรมแนวนอน
+ * (renderStaffOverviewAndProgress_ ด้านล่าง) ตาม requirement ใหม่ 2026-11-04 (Section C "●──●──●") แล้ว
+ * ไม่มีจุดเรียกใช้แล้ว แต่ไม่ได้ลบทิ้ง (ตามธรรมเนียมโปรเจกต์ — เผื่อใช้อ้างอิง/ย้อนกลับภายหลัง)
  */
 function renderStaffWorkflowOverviewSection_(fullWithSkips) {
   if (!fullWithSkips) return '';
   return '<div class="owner-tl-section-title">ภาพรวม Workflow</div>' +
     '<div class="owner-tl-wrap"><div class="pub-timeline">' +
     fullWithSkips.map(renderOwnerFullDetailItem_).join('') + '</div></div>';
+}
+
+/**
+ * Model กลางของหน้า Staff "Workflow Workspace" (2026-11-04) — คำนวณสถานะ/สิทธิ์ครั้งเดียว ให้ทั้งไดอะแกรม
+ * แนวนอน (renderStaffOverviewAndProgress_) และตารางรายละเอียด (renderStaffWorkflowTable_) อ่านค่าเดียวกัน
+ * (สอดคล้องกับ EXPECTED ARCHITECTURE ที่ผู้ใช้ระบุ — buildStaffWorkflowModel_) ไม่มี business logic ใหม่ ทุก
+ * เงื่อนไขยกมาจากของเดิมที่มีอยู่แล้วทั้งหมด (computeEligibleTransitions_/computeSkippedMainSteps_/
+ * getResolvedFirstRoundStep_/resolveResponsibleOrg_) ไม่เรียกชีตซ้ำ (work/history/stationsMap/data รับมาจาก
+ * caller ที่โหลดมาแล้วครั้งเดียว — ข้อ "PERFORMANCE" ห้าม N+1)
+ *
+ * mainStepNumbers: อ่านจำนวน "ขั้นตอนหลัก" จริงจาก WorkflowMaster (stationsMap) เสมอ ไม่ fix 10 (ข้อกำหนด
+ * ใหม่ "ห้าม fix ว่ามี 7 step หากระบบจริงมี 10 step") — เอาเลขหน้าจุดของทุก station ที่ active มา dedupe+sort
+ */
+function buildStaffWorkflowModel_(ss, work, history, stationsMap, data, user) {
+  var doneMap = {};
+  history.forEach(function (h) {
+    if (!h.to_station) return;
+    if (h.action !== 'registered' && h.action !== 'transition' && h.action !== 'reassigned') return;
+    doneMap[h.to_station] = { enteredAt: h.action_date, historyId: h.history_id };
+  });
+
+  var skippedMainSteps = computeSkippedMainSteps_(data.steps);
+  var currentKey = work.current_station_key;
+  var currentStateDef = stationsMap[currentKey];
+  var eligibleTransitions = computeEligibleTransitions_(ss, work, currentStateDef, user);
+  var resolvedFirstRound = getResolvedFirstRoundStep_(data.steps);
+  var allStations = listStationsSorted_(ss).filter(function (s) { return s.active; });
+
+  var mainStepNumSet = {};
+  allStations.forEach(function (s) { mainStepNumSet[parseInt(parentStepOrder_(s.station_order), 10)] = true; });
+  var mainStepNumbers = Object.keys(mainStepNumSet).map(Number).sort(function (a, b) { return a - b; });
+  var currentMainStepNumber = currentStateDef ? (parseInt(parentStepOrder_(currentStateDef.station_order), 10) || 0) : 0;
+
+  return {
+    isAdmin: user.role === 'Admin', doneMap: doneMap, skippedMainSteps: skippedMainSteps, currentKey: currentKey,
+    currentStateDef: currentStateDef, eligibleTransitions: eligibleTransitions, resolvedFirstRound: resolvedFirstRound,
+    allStations: allStations, mainStepNumbers: mainStepNumbers, currentMainStepNumber: currentMainStepNumber,
+  };
+}
+
+/** ชื่อขั้นตอนหลัก (เลขหน้าจุด n) แบบ internal — ไม่ใช้ OWNER_STATE_LABELS_/mainStepNameFor_ (สงวนไว้เฉพาะ
+ *  Owner Timeline ตามที่ requirement ห้ามแตะ) หา station "เปล่า" (order===String(n)) ก่อน ถ้าไม่มีใช้ station
+ *  ลูกตัวแรกตามลำดับของเลขหลักนั้น (เช่น n=8 ไม่มี "s8" ตรงๆ ใช้ s8_1 แทน) */
+function staffMainStepLabel_(n, allStations) {
+  var bare = allStations.filter(function (s) { return String(s.station_order) === String(n); })[0];
+  if (bare) return splitStationNameDesc_(bare.station_name).main;
+  var child = allStations.filter(function (s) { return parentStepOrder_(s.station_order) === String(n); })[0];
+  return child ? splitStationNameDesc_(child.station_name).main : 'ขั้นตอนที่ ' + n;
+}
+
+/**
+ * ส่วน C "ภาพรวมกระบวนการ" (ไดอะแกรมแนวนอน ●──●──●──○──○) + ส่วน D "Progress Card" (วางข้างกัน) ตาม
+ * requirement 2026-11-04 — ใช้ model.mainStepNumbers (dynamic จาก WorkflowMaster จริง ไม่ fix จำนวน) สถานะต่อ
+ * step หลัก: current ตรง currentMainStepNumber, skipped ถ้า skippedMainSteps[n] (ข้ามจริงตาม state 7 resolve
+ * แล้ว ไม่ใช่แค่ยังไม่ถึง), n < current = done, n > current (ไม่ skip) = pending — กฎเดียวกับที่ใช้ทั่วระบบ
+ * (reuse ตัวเลขเปรียบเทียบ ไม่ใช่ logic ใหม่) Progress card ใช้ data.progressSummary เดิม (buildProgressSummary_,
+ * PublicTrack.gs) ไม่คำนวณซ้ำ — deadline "เป้าหมายแล้วเสร็จ" แสดงเฉพาะงานที่อยู่เส้นทางแก้ไขจริง (s7_2/s7_3) และ
+ * มี revision_due_date จริงเท่านั้น (ห้ามสร้างวันที่ประมาณเอง ตามข้อกำหนด)
+ */
+function renderStaffOverviewAndProgress_(model, stationsMap, data, work) {
+  var nodesHtml = '';
+  model.mainStepNumbers.forEach(function (n, i) {
+    var state = model.skippedMainSteps[String(n)] ? 'skipped'
+      : n === model.currentMainStepNumber ? 'current'
+      : n < model.currentMainStepNumber ? 'done' : 'pending';
+    var label = staffMainStepLabel_(n, model.allStations);
+    var statusText = { done: 'เสร็จแล้ว', current: 'กำลังดำเนินการ', pending: 'รอดำเนินการ', skipped: 'ไม่ใช้ในกรณีนี้' }[state];
+    var icon = state === 'done' ? '&#10003;' : (state === 'current' ? String(n) : (state === 'skipped' ? '&#10005;' : String(n)));
+    if (i > 0) {
+      var prevN = model.mainStepNumbers[i - 1];
+      var connectorDone = prevN < model.currentMainStepNumber && !model.skippedMainSteps[String(prevN)];
+      nodesHtml += '<div class="swf-diagram-connector' + (connectorDone ? ' swf-diagram-connector-done' : '') +
+        (state === 'skipped' ? ' swf-diagram-connector-skipped' : '') + '"></div>';
+    }
+    nodesHtml += '<div class="swf-diagram-node">' +
+      '<div class="swf-diagram-circle swf-diagram-circle-' + state + '">' + icon + '</div>' +
+      '<div class="swf-diagram-label">' + escapeHtml_(n + '. ' + label) + '</div>' +
+      '<div class="swf-diagram-status">(' + statusText + ')</div>' +
+      '</div>';
+  });
+
+  var overviewHtml = '' +
+    '<div class="swf-overview-card"><div class="swf-overview-title">ภาพรวมกระบวนการ</div>' +
+    '<div class="swf-diagram">' + nodesHtml + '</div></div>';
+
+  var summary = data.progressSummary;
+  var progressHtml = '<div class="swf-progress-card"><div class="swf-progress-title">ความคืบหน้า</div>';
+  if (summary) {
+    progressHtml += '<div class="swf-progress-percent">' + summary.progressPercent + '%</div>' +
+      '<div class="swf-progress-bar-track"><div class="swf-progress-bar-fill" style="width:' + summary.progressPercent + '%"></div></div>' +
+      '<div class="swf-progress-text">เสร็จแล้ว ' + summary.completedCount + ' ขั้นตอน จาก ' + summary.totalMainSteps + ' ขั้นตอน</div>';
+    // เป้าหมายแล้วเสร็จ — เฉพาะเส้นทางแก้ไขจริง (s7_2/s7_3) ที่มี revision_due_date จริงเท่านั้น ไม่ประมาณเอง
+    var resolvedForTarget = model.resolvedFirstRound;
+    if (resolvedForTarget && REVISION_DUE_DATE_STATE_KEYS_[resolvedForTarget.key] && work.revision_due_date) {
+      progressHtml += '<div class="swf-progress-target">เป้าหมายแล้วเสร็จ :: ' + escapeHtml_(formatDateDDMMYYYYBuddhist_(work.revision_due_date)) + '</div>';
+    }
+  } else {
+    progressHtml += '<div class="swf-progress-text">งานนี้ยุติกระบวนการแล้ว ไม่มี progress ให้แสดง</div>';
+  }
+  progressHtml += '</div>';
+
+  return '<div class="swf-overview-row">' + overviewHtml + progressHtml + '</div>';
 }
 
 /**
@@ -1298,24 +1411,45 @@ function renderStaffWorkflowOverviewSection_(fullWithSkips) {
  * ไปหน้าอื่น ยังอยู่หน้าเดิม (ข้อ 10 "ห้าม reload ทั้งหน้าถ้าไม่จำเป็น" — ตีความว่าต้องไม่กระเด้งไปหน้า "สแกน QR"/
  * "บันทึกสำเร็จ" แบบเดิม กลับมา render หน้ารายละเอียดนี้ตรงๆ เสมอ ดู Code.gs การ branch return_to==='detail')
  */
-function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, baseUrl, stepErrors, stepPrevValues) {
+var STAFF_ORDER_OUTCOME_TONE_MAP_ = { pass: 'done', revision2: 'revision2', revision3: 'revision3', fail: 'fail' };
+
+/** ไอคอนคอลัมน์ "ขั้นตอน" — heuristic จากคำในชื่อ station จริง (ไม่ใช่ hardcode ต่อ work/ต่อ state_key เจาะจง)
+ *  ใช้ Unicode glyph เดิมที่ระบบนี้ใช้อยู่แล้วทั่วไป (ดู NAV_ITEMS_/ไอคอน checkmark ฯลฯ) ไม่เพิ่ม icon library ใหม่ */
+function staffStepIcon_(name) {
+  name = String(name || '');
+  if (name.indexOf('รับเรื่อง') !== -1 || name.indexOf('รับเอกสาร') !== -1) return '&#128229;';
+  if (name.indexOf('ตรวจสอบ') !== -1) return '&#128269;';
+  if (name.indexOf('ประชุม') !== -1 || name.indexOf('พิจารณา') !== -1) return '&#128101;';
+  if (name.indexOf('นัด') !== -1) return '&#128197;';
+  if (name.indexOf('แจ้ง') !== -1) return '&#128227;';
+  if (name.indexOf('แก้ไข') !== -1) return '&#9999;';
+  if (name.indexOf('ส่ง') !== -1) return '&#128228;';
+  return '&#128196;';
+}
+
+/** ข้อความ+สี badge คอลัมน์ "สถานะ" (Section E คอลัมน์ 5) — current ที่ตรง s7_2/s7_3/s7_4 ใช้ข้อความผล
+ *  การพิจารณาจริงแทน "กำลังดำเนินการ" ทั่วไป (ตาม requirement badge: เสร็จแล้ว/กำลังดำเนินการ/รอดำเนินการ/
+ *  รอแก้ไข/ไม่ผ่าน/ไม่ใช้ในกรณีนี้) ไม่ใช่ business logic ใหม่ แค่เลือกข้อความแสดงผลจาก state/key ที่มีอยู่แล้ว */
+function staffStatusBadgeInfo_(state, key) {
+  if (state === 'current') {
+    if (key === 's7_2' || key === 's7_3') return { text: 'รอแก้ไข', tone: 'revision' };
+    if (key === 's7_4') return { text: 'ไม่ผ่าน', tone: 'fail' };
+    return { text: 'กำลังดำเนินการ', tone: 'current' };
+  }
+  if (state === 'done') return { text: 'เสร็จแล้ว', tone: 'done' };
+  if (state === 'skipped') return { text: 'ไม่ใช้ในกรณีนี้', tone: 'skip' };
+  return { text: 'รอดำเนินการ', tone: 'pending' };
+}
+
+function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, baseUrl, stepErrors, stepPrevValues, model) {
   stepPrevValues = stepPrevValues || {};
-  var isAdmin = user.role === 'Admin';
-
-  var doneMap = {};
-  history.forEach(function (h) {
-    if (!h.to_station) return;
-    if (h.action !== 'registered' && h.action !== 'transition' && h.action !== 'reassigned') return;
-    doneMap[h.to_station] = { enteredAt: h.action_date, historyId: h.history_id };
-  });
-
-  var skippedMainSteps = computeSkippedMainSteps_(data.steps);
-  var currentKey = work.current_station_key;
-  var currentStateDef = stationsMap[currentKey];
-  var eligibleTransitions = computeEligibleTransitions_(ss, work, currentStateDef, user);
-  var resolvedFirstRound = getResolvedFirstRoundStep_(data.steps);
-
-  var allStations = listStationsSorted_(ss).filter(function (s) { return s.active; });
+  var isAdmin = model.isAdmin;
+  var doneMap = model.doneMap;
+  var skippedMainSteps = model.skippedMainSteps;
+  var currentKey = model.currentKey;
+  var eligibleTransitions = model.eligibleTransitions;
+  var resolvedFirstRound = model.resolvedFirstRound;
+  var allStations = model.allStations;
 
   var errorHtml = (stepErrors && stepErrors.length)
     ? '<div class="error-banner"><ul>' + stepErrors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
@@ -1323,6 +1457,7 @@ function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, b
 
   var rowsHtml = '';
   var panelsHtml = '';
+  var saveAllRows = []; // แถว done ที่ผู้ใช้นี้แก้ไขได้ — ใช้ประกอบ panel "บันทึกข้อมูลทั้งหมด" (Section G)
 
   allStations.forEach(function (station) {
     var key = station.station_key;
@@ -1330,6 +1465,8 @@ function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, b
     var parentOrder = parentStepOrder_(order);
     var name = splitStationNameDesc_(station.station_name).main;
     var orgResp = resolveResponsibleOrg_(station, work);
+    // คอลัมน์ 3 "รายละเอียด" — ดึงจาก WorkflowStates.public_hint จริง (ฟิลด์เดิม ไม่ hardcode คำอธิบายซ้ำที่นี่)
+    var descText = station.public_hint || '-';
 
     var state;
     if (key === currentKey) state = 'current';
@@ -1337,28 +1474,24 @@ function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, b
     else if (skippedMainSteps[parentOrder]) state = 'skipped';
     else state = 'pending';
 
-    var icon = state === 'done' ? '&#10003;' : (state === 'current' ? '&#9679;' : '&#9675;');
-    // 2026-11-03 — map state -> ชื่อ CSS modifier จริงที่มีอยู่แล้ว (reuse .wf-step-done/.wf-step-current/
-    // .wf-step-locked เดิมจากหน้าสแกน QR, .wf-step-skip ใหม่สำหรับ skipped เท่านั้น — "pending" ไม่มี class
-    // ตรงชื่อ ต้อง map ไปใช้ .wf-step-locked เดิม ไม่ใช่สร้าง .wf-step-pending ซ้ำซ้อนไม่มีสไตล์)
-    var rowClsSuffix = state === 'skipped' ? 'skip' : (state === 'pending' ? 'locked' : state);
-    var rowCls = 'wf-step-' + rowClsSuffix;
+    var isSubResult = parentOrder === '7' && order !== '7' && resolvedFirstRound && resolvedFirstRound.key === key;
+    var orderOutcome = isSubResult ? OWNER_RESULT_OUTCOME_[key] : null;
+    var orderTone = orderOutcome ? STAFF_ORDER_OUTCOME_TONE_MAP_[orderOutcome.tone] : state;
+    var statusInfo = staffStatusBadgeInfo_(state, key);
 
-    var dateHtml = '';
-    var detailHtml = '';
-    var actionsHtml = '';
+    var dateCellHtml = '';
+    var actionCellHtml = '<span class="swf-date-text" style="color:var(--muted)">&ndash;</span>';
 
     if (state === 'done') {
       var enteredAt = doneMap[key].enteredAt;
-      dateHtml = '<div class="wtbl-row-date">วันที่ดำเนินการ: ' + escapeHtml_(formatDateDDMMYYYYBuddhist_(enteredAt) || '-') + '</div>';
+      dateCellHtml = '<span class="swf-date-text">' + escapeHtml_(formatDateDDMMYYYYBuddhist_(enteredAt) || '-') + '</span>';
       var canEditThis = isAdmin || (orgResp && user.organization === orgResp);
       if (canEditThis) {
         var historyId = doneMap[key].historyId;
         var panelId = 'wtbl-editdate-' + historyId;
         var isReopen = stepPrevValues.wtbl_action === 'edit_step_date' && stepPrevValues.history_id === historyId;
         var dateVal = isReopen ? (stepPrevValues.action_date || '') : formatDateYYYYMMDD_(enteredAt);
-        actionsHtml = '<div class="wtbl-row-actions">' +
-          '<button type="button" class="btn-outline" data-wf-toggle="' + escapeHtml_(panelId) + '">แก้ไขวันที่</button></div>';
+        actionCellHtml = '<button type="button" class="btn-outline" data-wf-toggle="' + escapeHtml_(panelId) + '">แก้ไขวันที่</button>';
         panelsHtml += '<div class="wf-confirm wtbl-panel" id="' + escapeHtml_(panelId) + '"' + (isReopen ? ' data-auto-open="1"' : '') + '>' +
           '<div class="wf-confirm-title">แก้ไขวันที่ดำเนินการ — ' + escapeHtml_(name) + '</div>' +
           '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;margin-top:8px">' +
@@ -1372,15 +1505,16 @@ function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, b
           '<button class="btn-outline" type="submit" data-loading-text="กำลังบันทึก...">บันทึกวันที่ที่แก้ไข</button>' +
           '<button type="button" class="btn-outline wtbl-panel-cancel">ยกเลิก</button>' +
           '</div></form></div>';
+        saveAllRows.push({ historyId: historyId, label: order + '. ' + name, dateVal: formatDateYYYYMMDD_(enteredAt) });
       }
     } else if (state === 'current') {
-      detailHtml = '<div class="wtbl-row-detail">กำลังดำเนินการ</div>';
       if (!eligibleTransitions.length) {
-        dateHtml = orgResp
-          ? '<div class="wtbl-row-date wf-step-locked-resp">อยู่ในความรับผิดชอบของ ' + escapeHtml_(orgResp) + '</div>'
-          : '<div class="wtbl-row-date">ยังไม่มีการกระทำที่ทำได้ในขณะนี้</div>';
+        dateCellHtml = '<span class="swf-date-text" style="color:var(--muted)">' +
+          (orgResp ? 'อยู่ในความรับผิดชอบของ ' + escapeHtml_(orgResp) : 'ยังไม่มีการกระทำที่ทำได้ในขณะนี้') + '</span>';
+        actionCellHtml = '<button type="button" class="btn-primary" disabled>บันทึกวันที่</button>';
       } else {
-        actionsHtml = '<div class="wtbl-row-actions">';
+        dateCellHtml = '<span class="swf-date-text" style="color:var(--muted)">เลือกวันที่ในฟอร์มยืนยัน &rarr;</span>';
+        actionCellHtml = '<div class="wtbl-row-actions">';
         eligibleTransitions.forEach(function (t) {
           var panelId = 'wtbl-confirm-' + t.transition_id;
           var isReopen = stepPrevValues.wtbl_action === 'state_transition' && stepPrevValues.transition_id === t.transition_id;
@@ -1388,9 +1522,7 @@ function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, b
           var targetName = targetStation ? splitStationNameDesc_(targetStation.station_name).main : t.to_state;
           var needsDueDate = REVISION_DUE_DATE_STATE_KEYS_[t.to_state];
           var btnLabel = eligibleTransitions.length === 1 ? 'บันทึกวันที่' : t.button_label;
-          actionsHtml += '<button type="button" class="wf-step-actionable" data-wf-toggle="' + escapeHtml_(panelId) + '">' +
-            '<span class="wf-step-actionable-label">' + escapeHtml_(btnLabel) + '</span>' +
-            '<span class="wf-step-actionable-hint">' + escapeHtml_(t.button_label) + ' &rarr; ' + escapeHtml_(targetName) + '</span></button>';
+          actionCellHtml += '<button type="button" class="btn-primary" data-wf-toggle="' + escapeHtml_(panelId) + '">' + escapeHtml_(btnLabel) + '</button>';
           panelsHtml += '<div class="wf-confirm wtbl-panel" id="' + escapeHtml_(panelId) + '"' + (isReopen ? ' data-auto-open="1"' : '') + '>' +
             '<div class="wf-confirm-title">กำลังเปลี่ยนสถานะ</div>' +
             '<div class="wf-confirm-from">จาก: <b>' + escapeHtml_(name) + '</b></div>' +
@@ -1411,43 +1543,75 @@ function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, b
             '<button type="button" class="btn-outline wtbl-panel-cancel">ยกเลิก</button>' +
             '</div></form></div>';
         });
-        actionsHtml += '</div>'; // วันที่ดำเนินการของ transition เลือกอยู่ในฟอร์มยืนยันแต่ละปุ่มแล้ว (ไม่ต้องมีช่องลอยนอกฟอร์ม)
+        actionCellHtml += '</div>';
       }
     } else if (state === 'skipped') {
-      dateHtml = '<div class="wtbl-row-date wf-step-skip-reason">ไม่ใช้ในกรณีนี้</div>';
+      dateCellHtml = '<span class="swf-date-text" style="color:var(--muted)">&ndash;</span>';
+      actionCellHtml = '<span class="swf-date-text" style="color:var(--muted)">&ndash;</span>'; // skipped = ไม่มี action ตามข้อกำหนด
     } else { // pending
-      dateHtml = orgResp
-        ? '<div class="wtbl-row-date wf-step-locked-resp">รอดำเนินการ &mdash; อยู่ในความรับผิดชอบของ ' + escapeHtml_(orgResp) + '</div>'
-        : '<div class="wtbl-row-date">รอดำเนินการ</div>';
+      dateCellHtml = '<span class="swf-date-text" style="color:var(--muted)">' +
+        (orgResp ? 'รอดำเนินการ &mdash; ' + escapeHtml_(orgResp) : 'รอดำเนินการ') + '</span>';
+      actionCellHtml = '<button type="button" class="btn-outline" disabled>บันทึกวันที่</button>';
     }
 
-    // ข้อ 18 — step 7 ย่อย (7.1-7.4) แสดง badge สีตามผล 4 tone จริง (pass/revision2/revision3/fail — เหลืองอ่อน
-    // ต่างจากเหลืองเข้มจริงตามข้อ 18) reuse OWNER_RESULT_OUTCOME_ เดิม (PublicTrack.gs, ตัวเดียวกับที่ Owner
-    // Dashboard ใช้ — ไม่ใช่ subStatusToneClass_ ที่แยกได้แค่ 3 สีไม่พอ) + deadline revision_due_date ถ้ามี (7.2/7.3)
-    var subResultHtml = '';
-    if (parentOrder === '7' && order !== '7' && resolvedFirstRound && resolvedFirstRound.key === key) {
-      var outcome = OWNER_RESULT_OUTCOME_[key] || { text: name, tone: subStatusToneClass_(name) };
-      subResultHtml = '<div class="wtbl-row-detail"><span class="owner-result-badge owner-result-outcome-' + outcome.tone + '">' + escapeHtml_(outcome.text) + '</span>' +
+    // ข้อ 18/RESULT COLORS — step 7 ย่อย (7.1-7.4) แสดง badge สีตามผล 4 tone จริง (pass/revision2/revision3/fail)
+    // reuse OWNER_RESULT_OUTCOME_ เดิม (PublicTrack.gs) + deadline revision_due_date ถ้ามี (7.2/7.3 เท่านั้น)
+    var descHtml = escapeHtml_(descText);
+    if (isSubResult) {
+      var outcome = orderOutcome || { text: name, tone: subStatusToneClass_(name) };
+      descHtml += '<div style="margin-top:4px"><span class="owner-result-badge owner-result-outcome-' + outcome.tone + '">' + escapeHtml_(outcome.text) + '</span>' +
         (REVISION_DUE_DATE_STATE_KEYS_[key] && work.revision_due_date
-          ? '<span class="owner-result-outcome-duedate"> ภายในวันที่ :: ' + escapeHtml_(formatDateDDMMYYYYBuddhist_(work.revision_due_date)) + '</span>'
+          ? '<div class="owner-result-outcome-duedate">ภายในวันที่ :: ' + escapeHtml_(formatDateDDMMYYYYBuddhist_(work.revision_due_date)) + '</div>'
           : '') + '</div>';
     }
 
-    rowsHtml += '<div class="wf-step ' + rowCls + '" id="wtbl-row-' + escapeHtml_(key) + '">' +
-      '<div class="wf-step-icon">' + icon + '</div>' +
-      '<div style="flex:1;min-width:0">' +
-      '<div class="wf-step-label">' + escapeHtml_(order) + '. ' + escapeHtml_(name) + '</div>' +
-      (state === 'current' ? '<span class="wf-step-badge">สถานะปัจจุบัน</span>' : '') +
-      detailHtml + subResultHtml + dateHtml + actionsHtml +
-      '</div></div>';
+    rowsHtml += '<tr id="wtbl-row-' + escapeHtml_(key) + '" class="wf-step-' + (state === 'skipped' ? 'skip' : (state === 'pending' ? 'locked' : state)) +
+      (state === 'current' ? ' swf-row-current' : '') + '">' +
+      '<td data-label="ลำดับ"><span class="swf-order-badge swf-order-' + orderTone + '">' + escapeHtml_(order) + '</span></td>' +
+      '<td data-label="ขั้นตอน"><span class="swf-step-cell"><span class="swf-step-icon-sm">' + staffStepIcon_(name) + '</span>' + escapeHtml_(name) + '</span></td>' +
+      '<td data-label="รายละเอียด" class="swf-desc-cell">' + descHtml + '</td>' +
+      '<td data-label="วันที่ดำเนินการ">' + dateCellHtml + '</td>' +
+      '<td data-label="สถานะ"><span class="swf-badge swf-badge-' + statusInfo.tone + '">' + escapeHtml_(statusInfo.text) + '</span></td>' +
+      '<td data-label="การดำเนินการ">' + actionCellHtml + '</td>' +
+      '</tr>';
   });
+
+  // Section G — ปุ่มประวัติ/บันทึกทั้งหมด + Section H หมายเหตุ (bottom bar)
+  var saveAllPanelHtml = '';
+  var saveAllBtnHtml = '';
+  if (saveAllRows.length) {
+    saveAllBtnHtml = '<button type="button" class="swf-btn-saveall" data-wf-toggle="swf-saveall-panel">บันทึกข้อมูลทั้งหมด</button>';
+    saveAllPanelHtml = '<div class="wf-confirm wtbl-panel" id="swf-saveall-panel">' +
+      '<div class="wf-confirm-title">บันทึกข้อมูลวันที่ทั้งหมด</div>' +
+      '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;margin-top:8px">' +
+      '<input type="hidden" name="form_action" value="save_all_step_dates">' +
+      '<input type="hidden" name="return_to" value="detail">' +
+      '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
+      saveAllRows.map(function (r) {
+        return '<div class="swf-saveall-row"><label>' + escapeHtml_(r.label) + '</label>' +
+          '<input class="input" type="date" name="action_date_' + escapeHtml_(r.historyId) + '" value="' + escapeHtml_(r.dateVal) + '"></div>';
+      }).join('') +
+      '<div class="wf-confirm-actions">' +
+      '<button class="btn-primary" type="submit" data-loading-text="กำลังบันทึก...">บันทึกทั้งหมด</button>' +
+      '<button type="button" class="btn-outline wtbl-panel-cancel">ยกเลิก</button>' +
+      '</div></form></div>';
+  }
+  var bottomBarHtml = '' +
+    '<div class="swf-bottom-bar">' +
+    '<div class="swf-bottom-note">หมายเหตุ :: สามารถบันทึกหรือแก้ไขวันที่ในแต่ละขั้นตอนได้โดยไม่ต้องออกจากหน้านี้</div>' +
+    '<div class="swf-bottom-actions">' +
+    '<button type="button" class="swf-btn-history" onclick="var d=document.getElementById(&quot;swf-history&quot;);if(d){d.open=true;d.scrollIntoView({behavior:&quot;smooth&quot;});}">ดูประวัติการเปลี่ยนแปลง</button>' +
+    saveAllBtnHtml +
+    '</div></div>' +
+    saveAllPanelHtml;
 
   return '' +
     '<div class="wf-section-title">รายละเอียดขั้นตอนและการดำเนินการ</div>' +
-    '<div class="wf-section-hint">แต่ละขั้นตอนบันทึก/แก้ไขวันที่ได้จากแถวนี้โดยตรง</div>' +
     errorHtml +
-    '<div class="wf-checklist">' + rowsHtml + '</div>' +
-    panelsHtml;
+    '<div class="swf-table-wrap"><table class="swf-table"><thead><tr>' +
+    '<th>ลำดับ</th><th>ขั้นตอน</th><th>รายละเอียด</th><th>วันที่ดำเนินการ</th><th>สถานะ</th><th>การดำเนินการ</th>' +
+    '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
+    panelsHtml + bottomBarHtml;
 }
 
 /**
@@ -3733,4 +3897,97 @@ var PUBLIC_CSS_ = '' +
   '.wf-step-skip-reason{display:block;font-size:.76rem;color:var(--muted);font-style:italic;}' +
   '.wtbl-row-date{font-size:.8rem;color:var(--text);margin-top:4px;line-height:1.5;}' +
   '.wtbl-row-detail{font-size:.82rem;color:var(--muted);margin-top:3px;}' +
-  '.wtbl-row-actions{margin-top:8px;display:flex;flex-direction:column;gap:8px;align-items:flex-start;}';
+  '.wtbl-row-actions{margin-top:8px;display:flex;flex-direction:column;gap:8px;align-items:flex-start;}' +
+  // 2026-11-04 — หน้า Staff "Workflow Workspace" redesign ตาม requirement ใหม่ (ใกล้เคียงภาพอ้างอิง): header/
+  // summary 4 กล่อง/ไดอะแกรมแนวนอน/progress card ข้างกัน/ตาราง <table> จริง/bottom action bar — คลาส "swf-"
+  // ทั้งหมดสโคปเฉพาะหน้านี้เท่านั้น (ไม่กระทบ .wf-*/.pub-*/.owner-* เดิมที่หน้าสแกน QR/Owner Dashboard ใช้ร่วมกัน)
+  // สีอ้างอิงตามที่ผู้ใช้ระบุตรงๆ (navy #1f3b54, success #1f8a4c = var(--done), bg #eef4f6 = var(--bg)) ไม่เพิ่ม
+  // token สีใหม่นอกจากที่ระบุชัดเจน (เช่น current-row highlight #e8f2ff)
+  '.swf-header{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#fff;' +
+  'border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-bottom:14px;}' +
+  '.swf-header-title{display:flex;align-items:center;gap:8px;font-size:1.15rem;font-weight:700;color:var(--navy);}' +
+  '.swf-header-icon{font-size:1.1rem;}' +
+  '.swf-back-btn{flex-shrink:0;display:inline-flex;align-items:center;gap:4px;color:var(--navy);font-size:.8rem;' +
+  'font-weight:600;text-decoration:none;border:1px solid var(--border);border-radius:999px;padding:7px 14px;' +
+  'background:#fff;white-space:nowrap;}' +
+  '@media (max-width:480px){.swf-header{flex-direction:column;align-items:flex-start;}' +
+  '.swf-header-title{font-size:1.02rem;}}' +
+  '.swf-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:10px;}' +
+  '@media (max-width:1024px){.swf-summary-grid{grid-template-columns:repeat(2,1fr);}}' +
+  '@media (max-width:420px){.swf-summary-grid{grid-template-columns:1fr;}}' +
+  '.swf-summary-box{display:flex;align-items:center;gap:10px;background:#f3f9fc;border:1px solid var(--border);' +
+  'border-radius:12px;padding:12px 14px;min-height:58px;box-sizing:border-box;}' +
+  '.swf-summary-icon{flex-shrink:0;font-size:1.2rem;}' +
+  '.swf-summary-label{font-size:.72rem;color:var(--muted);margin-bottom:2px;}' +
+  '.swf-summary-value{font-size:.9rem;font-weight:700;color:var(--navy);word-break:break-word;}' +
+  '.swf-overview-row{display:flex;gap:16px;align-items:stretch;margin:16px 0;flex-wrap:wrap;}' +
+  '.swf-overview-card{flex:1 1 560px;background:#fff;border:1px solid var(--border);border-radius:14px;' +
+  'padding:16px;min-width:280px;box-sizing:border-box;}' +
+  '.swf-overview-title{font-size:1rem;font-weight:700;color:var(--navy);margin-bottom:12px;}' +
+  '.swf-diagram{display:flex;align-items:flex-start;overflow-x:auto;padding-bottom:6px;}' +
+  '.swf-diagram-node{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:84px;text-align:center;}' +
+  '.swf-diagram-circle{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;' +
+  'font-size:.78rem;font-weight:700;color:#fff;border:2px solid transparent;margin-bottom:4px;flex-shrink:0;}' +
+  '.swf-diagram-circle-done{background:var(--done);border-color:var(--done);}' +
+  '.swf-diagram-circle-current{background:var(--navy);border-color:var(--navy);box-shadow:0 0 0 4px rgba(31,59,84,.15);}' +
+  '.swf-diagram-circle-pending{background:#fff;border-color:var(--pending);color:var(--pending);}' +
+  '.swf-diagram-circle-skipped{background:#f1f2f4;border-color:var(--border);color:var(--muted);opacity:.5;}' +
+  '.swf-diagram-label{font-size:.7rem;color:var(--text);font-weight:600;line-height:1.3;}' +
+  '.swf-diagram-status{font-size:.64rem;color:var(--muted);margin-top:1px;}' +
+  '.swf-diagram-connector{flex:0 0 26px;height:2px;background:var(--pending);margin-top:14px;align-self:flex-start;}' +
+  '.swf-diagram-connector-done{background:var(--done);}' +
+  '.swf-diagram-connector-skipped{background:transparent;border-top:2px dashed var(--border);height:0;opacity:.6;}' +
+  '@media (max-width:768px){.swf-diagram{flex-direction:column;align-items:flex-start;overflow-x:visible;}' +
+  '.swf-diagram-node{flex-direction:row;width:100%;text-align:left;gap:8px;padding:4px 0;}' +
+  '.swf-diagram-connector{display:none;}}' +
+  '.swf-progress-card{flex:0 0 260px;background:#fff;border:1px solid var(--border);border-radius:14px;' +
+  'padding:16px;min-width:220px;box-sizing:border-box;}' +
+  '.swf-progress-title{font-size:.92rem;font-weight:700;color:var(--navy);margin-bottom:10px;}' +
+  '.swf-progress-bar-track{background:#e5ebf0;border-radius:999px;height:10px;overflow:hidden;margin-bottom:6px;}' +
+  '.swf-progress-bar-fill{background:var(--teal);height:100%;border-radius:999px;}' +
+  '.swf-progress-percent{font-size:1.3rem;font-weight:700;color:var(--navy);}' +
+  '.swf-progress-text{font-size:.8rem;color:var(--muted);margin-top:4px;}' +
+  '.swf-progress-target{font-size:.8rem;color:var(--text);margin-top:10px;padding-top:10px;border-top:1px solid var(--border);}' +
+  '.swf-table-wrap{overflow-x:auto;}' +
+  '.swf-table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;border:1px solid var(--border);' +
+  'border-radius:14px;overflow:hidden;font-size:.86rem;}' +
+  '.swf-table thead th{background:#f3f7f9;color:var(--navy);font-weight:700;text-align:left;padding:10px 12px;' +
+  'font-size:.78rem;position:sticky;top:0;z-index:1;border-bottom:1px solid var(--border);}' +
+  '.swf-table tbody td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top;}' +
+  '.swf-table tbody tr:last-child td{border-bottom:none;}' +
+  '.swf-row-current{background:#e8f2ff;}' +
+  '.swf-order-badge{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:26px;' +
+  'border-radius:999px;font-size:.76rem;font-weight:700;color:#fff;padding:0 6px;}' +
+  '.swf-order-done{background:var(--done);}.swf-order-current{background:var(--navy);}' +
+  '.swf-order-pending{background:var(--pending);}.swf-order-locked{background:var(--pending);}' +
+  '.swf-order-revision2{background:#e8c547;}.swf-order-revision3{background:var(--revision);}' +
+  '.swf-order-fail{background:var(--danger);}.swf-order-skip{background:#c3c9cf;}' +
+  '.swf-step-cell{display:flex;align-items:center;gap:6px;font-weight:600;}' +
+  '.swf-step-icon-sm{font-size:.95rem;}' +
+  '.swf-desc-cell{color:var(--muted);font-size:.8rem;max-width:240px;}' +
+  '.swf-date-text{font-size:.82rem;}' +
+  '.swf-badge{display:inline-block;font-size:.74rem;font-weight:700;padding:3px 10px;border-radius:999px;}' +
+  '.swf-badge-done{background:#d9f0e1;color:#166534;}' +
+  '.swf-badge-current{background:#dbe8f7;color:#1f3b54;}' +
+  '.swf-badge-pending{background:#e3e8eb;color:var(--muted);}' +
+  '.swf-badge-revision{background:#fbecc0;color:#8a6300;}' +
+  '.swf-badge-fail{background:#f6d4d1;color:#9a2d24;}' +
+  '.swf-badge-skip{background:#f1f2f4;color:var(--muted);}' +
+  '@media (max-width:768px){' +
+  '.swf-table thead{display:none;}' +
+  '.swf-table, .swf-table tbody, .swf-table tr, .swf-table td{display:block;width:100%;box-sizing:border-box;}' +
+  '.swf-table tr{border:1px solid var(--border);border-radius:12px;margin-bottom:10px;padding:8px 4px;}' +
+  '.swf-table td{border-bottom:none;padding:6px 10px;}' +
+  '.swf-table td[data-label]::before{content:attr(data-label);display:block;font-size:.68rem;color:var(--muted);' +
+  'font-weight:700;margin-bottom:2px;}' +
+  '}' +
+  '.swf-bottom-bar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;margin-top:18px;}' +
+  '.swf-bottom-note{font-size:.76rem;color:var(--muted);}' +
+  '.swf-bottom-actions{display:flex;gap:10px;flex-wrap:wrap;margin-left:auto;}' +
+  '.swf-btn-history{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--teal);color:var(--teal);' +
+  'background:#fff;border-radius:10px;padding:9px 16px;font-size:.84rem;font-weight:700;cursor:pointer;}' +
+  '.swf-btn-saveall{display:inline-flex;align-items:center;gap:4px;border:none;color:#fff;background:var(--done);' +
+  'border-radius:10px;padding:9px 16px;font-size:.84rem;font-weight:700;cursor:pointer;}' +
+  '.swf-saveall-row{display:flex;align-items:center;gap:10px;padding:6px 0;flex-wrap:wrap;}' +
+  '.swf-saveall-row label{flex:1 1 220px;font-size:.82rem;}' +
+  '@media (min-width:1100px){.swf-page.pub-compact{max-width:1600px;}}';
