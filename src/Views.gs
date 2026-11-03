@@ -446,8 +446,9 @@ function renderResponsibleDashboardBody_(ss, user, m, month, year, baseUrl) {
       '<td>' + formatDateTh_(w.received_date) + '</td>' +
       '<td>' + escapeHtml_(station ? station.station_name : w.current_station_key) + '</td>' +
       '<td>' + formatDateTh_(w.updated_at) + '</td>' +
+      // 2026-11-03 — ย้ายไป page=detail เหมือนลิงก์ "ดูรายละเอียด/จัดการ" ของหน้าทะเบียน (เหตุผลเดียวกัน)
       '<td><a class="btn-action btn-action-primary btn-action-sm" target="_top" href="' + baseUrl +
-      '?page=scan&t=' + encodeURIComponent(w.qr_token) + '">จัดการ</a></td>' +
+      '?page=detail&id=' + encodeURIComponent(w.work_id) + '">จัดการ</a></td>' +
       '</tr>';
   }).join('');
 
@@ -528,8 +529,9 @@ function renderForwardListBody_(org, works, stationsMap, baseUrl) {
           '<div class="work-main"><span class="tracking">' + escapeHtml_(w.tracking_no) + '</span>' +
           '<span class="worktitle">' + escapeHtml_(w.work_title || '-') + '</span>' +
           '<span class="tl-meta">' + escapeHtml_(station ? station.station_name : '-') + '</span></div>' +
+          // 2026-11-03 — ย้ายไป page=detail เหมือนลิงก์อื่นในหน้าค้นหา/ทะเบียน (เหตุผลเดียวกัน — ข้อ 6)
           '<a class="btn-action btn-action-primary btn-action-sm" target="_top" href="' + baseUrl +
-          '?page=scan&t=' + encodeURIComponent(w.qr_token) + '">ดำเนินการ</a>' +
+          '?page=detail&id=' + encodeURIComponent(w.work_id) + '">ดำเนินการ</a>' +
           '</div>';
       }).join('')
     : '<div class="empty">ไม่มีงานที่ต้องดำเนินการในขณะนี้</div>';
@@ -717,8 +719,12 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
       '<td class="reg-main-col-date">' + escapeHtml_(formatOwnerReceivedDate_(w.received_date)) + '</td>' +
       '<td class="reg-main-col-team">' + escapeHtml_(w.legacy_team || '-') + '</td>' +
       '<td class="reg-main-col-state">' + escapeHtml_(registryStateDisplayText_(station)) + '</td>' +
+      // 2026-11-03 — หน้า Staff "Workflow เดียว" ใหม่ (page=detail) ครบทุก action (ดู/เปลี่ยนสถานะ/บันทึก-แก้ไข
+      // วันที่) อยู่ในตัวแล้ว ย้ายลิงก์นี้จาก page=scan (หน้าเดิม ไม่มี action/การแก้ไขวันที่ให้ทำอีกต่อไปในที่นี้)
+      // มาที่ page=detail&id= ตรงๆ (ข้อ 6 — ห้ามต้องเข้า-ออกหลายหน้า) ไม่ได้ลบ/ตัด route page=scan ทิ้ง (ยังมี
+      // ไว้เผื่อ URL เดิม/ QR จริงเรียกเข้ามาอยู่)
       '<td class="reg-main-col-action"><a class="btn-action btn-action-primary btn-action-sm" target="_top" href="' + baseUrl +
-      '?page=scan&t=' + encodeURIComponent(w.qr_token) + '">ดูรายละเอียด/จัดการ</a></td>' +
+      '?page=detail&id=' + encodeURIComponent(w.work_id) + '">ดูรายละเอียด/จัดการ</a></td>' +
       '</tr>';
   }).join('');
 
