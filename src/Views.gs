@@ -2218,7 +2218,7 @@ var REG_RESPONSIBLE_SCRIPT_ = '' +
   'committeeField.style.display = "none"; infoDiv.innerHTML = "";' +
   'if (result.mode === "empty") { setBothEmpty("เลือกตำแหน่งก่อน"); return; }' +
   'if (result.mode === "waiting") { setBothEmpty("เลือก \\u0022ด้าน/สาขา\\u0022 ก่อน"); return; }' +
-  'if (result.mode === "none") { setBothEmpty("ยังไม่ได้กำหนด"); return; }' +
+  'if (result.mode === "none") { setBothEmpty("ยังไม่ได้กำหนดคณะกรรมการที่รับผิดชอบ"); return; }' +
   'setField(chairEl, result.chairName + (result.chairOrg ? " (" + result.chairOrg + ")" : ""), false);' +
   'if (result.secretary) setField(secEl, result.secretary.name + (result.secretary.org ? " (" + result.secretary.org + ")" : ""), false);' +
   'else setField(secEl, "ยังไม่ได้กำหนด", true);' +
