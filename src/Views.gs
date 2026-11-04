@@ -1441,15 +1441,24 @@ function staffStatusBadgeInfo_(state, key) {
   return { text: 'รอดำเนินการ', tone: 'pending' };
 }
 
+/**
+ * 2026-11-04 — requirement ใหม่ "กระชับ อ่านจบได้ในจอ 1366px" ย่อตารางจากทุก station จริง (รวม sub-state
+ * 7.1-7.4/8.1-8.6/9.1-9.4 — เวอร์ชันก่อนหน้า) เหลือ 10 แถว = 10 ขั้นตอนหลักจาก WorkflowMaster (model.mainStepNumbers,
+ * buildStaffWorkflowModel_ เดิม — ตัวเดียวกับที่ไดอะแกรมแนวนอน Section C ใช้ ไม่สร้าง logic คำนวณคู่ขนาน) และเหลือ
+ * 4 คอลัมน์ตามที่ระบุ (ลำดับ/ขั้นตอน/วันที่ดำเนินการ/บันทึกวันที่) — ตัด รายละเอียด/สถานะ/การดำเนินการ(เดิม) ออก
+ * ข้อมูลที่เคยอยู่ตรงนั้น (public_hint, ผลการพิจารณา 7.x สี, revision_due_date) ยังไม่หายไปจากระบบ — ยังเห็นได้ที่
+ * การ์ด "สถานะปัจจุบัน" (renderPubHero_, ส่วนบนสุด) และ "ความคืบหน้า" (Progress Card, Section D) เหมือนเดิมทุกจุด
+ * เพียงแค่ไม่ซ้ำแสดงในตารางนี้อีกต่อไปตามที่ระบุ ("ตารางต้องเหลือ 4 คอลัมน์เท่านั้น")
+ *
+ * วันที่ดำเนินการ/สิทธิ์แก้ไข ของ "ขั้นตอนหลัก N" ที่ map กับ station จริงมากกว่า 1 ตัว (เช่น 8 = s8_1..s8_6) ใช้
+ * รายการล่าสุดที่ถูกบันทึกจริงใน group นั้น (ไม่เดา — "ล่าสุด" มาจาก StatusHistory.action_date จริงเท่านั้น
+ * เหมือนที่ buildFixedMainTimeline_/PublicTrack.gs ใช้หลักการเดียวกันกับ Owner Timeline เดิม — แค่คำนวณแยกไม่ผ่าน
+ * ฟังก์ชันนั้นตรงๆ เพราะ requirement ห้ามแตะ Owner Timeline) แก้วันที่ย้อนหลังยังเรียก performEditStepDate_ เดิม
+ * ตรงๆ (ผูกกับ historyId ของแถวจริงที่เลือกมา ไม่ใช่ state ใหม่ใดๆ)
+ */
 function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, baseUrl, stepErrors, stepPrevValues, model) {
   stepPrevValues = stepPrevValues || {};
   var isAdmin = model.isAdmin;
-  var doneMap = model.doneMap;
-  var skippedMainSteps = model.skippedMainSteps;
-  var currentKey = model.currentKey;
-  var eligibleTransitions = model.eligibleTransitions;
-  var resolvedFirstRound = model.resolvedFirstRound;
-  var allStations = model.allStations;
 
   var errorHtml = (stepErrors && stepErrors.length)
     ? '<div class="error-banner"><ul>' + stepErrors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
@@ -1459,73 +1468,71 @@ function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, b
   var panelsHtml = '';
   var saveAllRows = []; // แถว done ที่ผู้ใช้นี้แก้ไขได้ — ใช้ประกอบ panel "บันทึกข้อมูลทั้งหมด" (Section G)
 
-  allStations.forEach(function (station) {
-    var key = station.station_key;
-    var order = String(station.station_order);
-    var parentOrder = parentStepOrder_(order);
-    var name = splitStationNameDesc_(station.station_name).main;
-    var orgResp = resolveResponsibleOrg_(station, work);
-    // คอลัมน์ 3 "รายละเอียด" — ดึงจาก WorkflowStates.public_hint จริง (ฟิลด์เดิม ไม่ hardcode คำอธิบายซ้ำที่นี่)
-    var descText = station.public_hint || '-';
+  model.mainStepNumbers.forEach(function (n) {
+    var groupStations = model.allStations.filter(function (s) { return parentStepOrder_(s.station_order) === String(n); });
+    var label = staffMainStepLabel_(n, model.allStations);
 
     var state;
-    if (key === currentKey) state = 'current';
-    else if (doneMap[key]) state = 'done';
-    else if (skippedMainSteps[parentOrder]) state = 'skipped';
+    if (n === model.currentMainStepNumber) state = 'current';
+    else if (model.skippedMainSteps[String(n)]) state = 'skipped';
+    else if (n < model.currentMainStepNumber) state = 'done';
     else state = 'pending';
 
-    var isSubResult = parentOrder === '7' && order !== '7' && resolvedFirstRound && resolvedFirstRound.key === key;
-    var orderOutcome = isSubResult ? OWNER_RESULT_OUTCOME_[key] : null;
-    var orderTone = orderOutcome ? STAFF_ORDER_OUTCOME_TONE_MAP_[orderOutcome.tone] : state;
-    var statusInfo = staffStatusBadgeInfo_(state, key);
+    // รายการล่าสุดที่ถูกบันทึกจริงใน group นี้ (ไม่เดา — ใช้ StatusHistory.action_date จริงเท่านั้น)
+    var rep = null;
+    groupStations.forEach(function (s) {
+      var d = model.doneMap[s.station_key];
+      if (d && (!rep || new Date(d.enteredAt).getTime() >= new Date(rep.enteredAt).getTime())) {
+        rep = { enteredAt: d.enteredAt, historyId: d.historyId, stationKey: s.station_key };
+      }
+    });
 
-    var dateCellHtml = '';
-    var actionCellHtml = '<span class="swf-date-text" style="color:var(--muted)">&ndash;</span>';
+    var dateCellHtml = '&mdash;';
+    var actionCellHtml = '<button type="button" class="btn-outline swf-crow-btn" disabled>บันทึกวันที่</button>';
 
-    if (state === 'done') {
-      var enteredAt = doneMap[key].enteredAt;
-      dateCellHtml = '<span class="swf-date-text">' + escapeHtml_(formatDateDDMMYYYYBuddhist_(enteredAt) || '-') + '</span>';
+    if (state === 'done' && rep) {
+      dateCellHtml = escapeHtml_(formatDateDDMMYYYYBuddhist_(rep.enteredAt) || '-');
+      var repStationDef = stationsMap[rep.stationKey];
+      var orgResp = repStationDef ? resolveResponsibleOrg_(repStationDef, work) : '';
       var canEditThis = isAdmin || (orgResp && user.organization === orgResp);
       if (canEditThis) {
-        var historyId = doneMap[key].historyId;
-        var panelId = 'wtbl-editdate-' + historyId;
-        var isReopen = stepPrevValues.wtbl_action === 'edit_step_date' && stepPrevValues.history_id === historyId;
-        var dateVal = isReopen ? (stepPrevValues.action_date || '') : formatDateYYYYMMDD_(enteredAt);
-        actionCellHtml = '<button type="button" class="btn-outline" data-wf-toggle="' + escapeHtml_(panelId) + '">แก้ไขวันที่</button>';
+        var panelId = 'wtbl-editdate-' + rep.historyId;
+        var isReopen = stepPrevValues.wtbl_action === 'edit_step_date' && stepPrevValues.history_id === rep.historyId;
+        var dateVal = isReopen ? (stepPrevValues.action_date || '') : formatDateYYYYMMDD_(rep.enteredAt);
+        actionCellHtml = '<button type="button" class="btn-outline swf-crow-btn" data-wf-toggle="' + escapeHtml_(panelId) + '">แก้ไข</button>';
         panelsHtml += '<div class="wf-confirm wtbl-panel" id="' + escapeHtml_(panelId) + '"' + (isReopen ? ' data-auto-open="1"' : '') + '>' +
-          '<div class="wf-confirm-title">แก้ไขวันที่ดำเนินการ — ' + escapeHtml_(name) + '</div>' +
+          '<div class="wf-confirm-title">แก้ไขวันที่ดำเนินการ &mdash; ' + escapeHtml_(n + '. ' + label) + '</div>' +
           '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;margin-top:8px">' +
           '<input type="hidden" name="form_action" value="edit_step_date">' +
           '<input type="hidden" name="return_to" value="detail">' +
           '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
-          '<input type="hidden" name="history_id" value="' + escapeHtml_(historyId) + '">' +
+          '<input type="hidden" name="history_id" value="' + escapeHtml_(rep.historyId) + '">' +
           '<div class="field"><label>วันที่ดำเนินการ</label>' +
           '<input class="input" type="date" name="action_date" value="' + escapeHtml_(dateVal) + '" required></div>' +
           '<div class="wf-confirm-actions">' +
-          '<button class="btn-outline" type="submit" data-loading-text="กำลังบันทึก...">บันทึกวันที่ที่แก้ไข</button>' +
+          '<button class="btn-outline" type="submit" data-loading-text="กำลังบันทึก...">บันทึก</button>' +
           '<button type="button" class="btn-outline wtbl-panel-cancel">ยกเลิก</button>' +
           '</div></form></div>';
-        saveAllRows.push({ historyId: historyId, label: order + '. ' + name, dateVal: formatDateYYYYMMDD_(enteredAt) });
+        saveAllRows.push({ historyId: rep.historyId, label: n + '. ' + label, dateVal: formatDateYYYYMMDD_(rep.enteredAt) });
+      } else {
+        actionCellHtml = '<span class="swf-crow-muted">&mdash;</span>';
       }
     } else if (state === 'current') {
-      if (!eligibleTransitions.length) {
-        dateCellHtml = '<span class="swf-date-text" style="color:var(--muted)">' +
-          (orgResp ? 'อยู่ในความรับผิดชอบของ ' + escapeHtml_(orgResp) : 'ยังไม่มีการกระทำที่ทำได้ในขณะนี้') + '</span>';
-        actionCellHtml = '<button type="button" class="btn-primary" disabled>บันทึกวันที่</button>';
+      if (!model.eligibleTransitions.length) {
+        actionCellHtml = '<button type="button" class="btn-primary swf-crow-btn" disabled>บันทึกวันที่</button>';
       } else {
-        dateCellHtml = '<span class="swf-date-text" style="color:var(--muted)">เลือกวันที่ในฟอร์มยืนยัน &rarr;</span>';
-        actionCellHtml = '<div class="wtbl-row-actions">';
-        eligibleTransitions.forEach(function (t) {
+        actionCellHtml = '<div class="swf-crow-actions">';
+        model.eligibleTransitions.forEach(function (t) {
           var panelId = 'wtbl-confirm-' + t.transition_id;
           var isReopen = stepPrevValues.wtbl_action === 'state_transition' && stepPrevValues.transition_id === t.transition_id;
           var targetStation = stationsMap[t.to_state];
           var targetName = targetStation ? splitStationNameDesc_(targetStation.station_name).main : t.to_state;
           var needsDueDate = REVISION_DUE_DATE_STATE_KEYS_[t.to_state];
-          var btnLabel = eligibleTransitions.length === 1 ? 'บันทึกวันที่' : t.button_label;
-          actionCellHtml += '<button type="button" class="btn-primary" data-wf-toggle="' + escapeHtml_(panelId) + '">' + escapeHtml_(btnLabel) + '</button>';
+          var btnLabel = model.eligibleTransitions.length === 1 ? 'บันทึกวันที่' : t.button_label;
+          actionCellHtml += '<button type="button" class="btn-primary swf-crow-btn" data-wf-toggle="' + escapeHtml_(panelId) + '">' + escapeHtml_(btnLabel) + '</button>';
           panelsHtml += '<div class="wf-confirm wtbl-panel" id="' + escapeHtml_(panelId) + '"' + (isReopen ? ' data-auto-open="1"' : '') + '>' +
             '<div class="wf-confirm-title">กำลังเปลี่ยนสถานะ</div>' +
-            '<div class="wf-confirm-from">จาก: <b>' + escapeHtml_(name) + '</b></div>' +
+            '<div class="wf-confirm-from">จาก: <b>' + escapeHtml_(n + '. ' + label) + '</b></div>' +
             '<div class="wf-confirm-to">เป็น: <b>' + escapeHtml_(targetName) + '</b></div>' +
             '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;margin-top:8px">' +
             '<input type="hidden" name="form_action" value="state_transition">' +
@@ -1546,37 +1553,24 @@ function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, b
         actionCellHtml += '</div>';
       }
     } else if (state === 'skipped') {
-      dateCellHtml = '<span class="swf-date-text" style="color:var(--muted)">&ndash;</span>';
-      actionCellHtml = '<span class="swf-date-text" style="color:var(--muted)">&ndash;</span>'; // skipped = ไม่มี action ตามข้อกำหนด
-    } else { // pending
-      dateCellHtml = '<span class="swf-date-text" style="color:var(--muted)">' +
-        (orgResp ? 'รอดำเนินการ &mdash; ' + escapeHtml_(orgResp) : 'รอดำเนินการ') + '</span>';
-      actionCellHtml = '<button type="button" class="btn-outline" disabled>บันทึกวันที่</button>';
+      dateCellHtml = 'ไม่ใช้ในกรณีนี้';
+      actionCellHtml = '<span class="swf-crow-muted">&mdash;</span>';
     }
+    // state === 'pending' (ไม่มี rep): ใช้ dateCellHtml/actionCellHtml ค่าเริ่มต้นด้านบน (&mdash; / ปุ่ม disabled)
 
-    // ข้อ 18/RESULT COLORS — step 7 ย่อย (7.1-7.4) แสดง badge สีตามผล 4 tone จริง (pass/revision2/revision3/fail)
-    // reuse OWNER_RESULT_OUTCOME_ เดิม (PublicTrack.gs) + deadline revision_due_date ถ้ามี (7.2/7.3 เท่านั้น)
-    var descHtml = escapeHtml_(descText);
-    if (isSubResult) {
-      var outcome = orderOutcome || { text: name, tone: subStatusToneClass_(name) };
-      descHtml += '<div style="margin-top:4px"><span class="owner-result-badge owner-result-outcome-' + outcome.tone + '">' + escapeHtml_(outcome.text) + '</span>' +
-        (REVISION_DUE_DATE_STATE_KEYS_[key] && work.revision_due_date
-          ? '<div class="owner-result-outcome-duedate">ภายในวันที่ :: ' + escapeHtml_(formatDateDDMMYYYYBuddhist_(work.revision_due_date)) + '</div>'
-          : '') + '</div>';
-    }
+    // ข้อ 5 — badge คอลัมน์ "ลำดับ" ใช้แค่ 3 โทนตามที่ระบุ (เขียว/น้ำเงิน/เทา) skipped ใช้โทนเทาเดียวกับ pending
+    // (ไม่เพิ่มสีใหม่ตามข้อกำหนด ส่วนรายละเอียดผลการพิจารณา 7.x สี/deadline ยังอยู่ที่การ์ด "สถานะปัจจุบัน" ด้านบนเหมือนเดิม)
+    var orderTone = state === 'skipped' ? 'pending' : state;
 
-    rowsHtml += '<tr id="wtbl-row-' + escapeHtml_(key) + '" class="wf-step-' + (state === 'skipped' ? 'skip' : (state === 'pending' ? 'locked' : state)) +
-      (state === 'current' ? ' swf-row-current' : '') + '">' +
-      '<td data-label="ลำดับ"><span class="swf-order-badge swf-order-' + orderTone + '">' + escapeHtml_(order) + '</span></td>' +
-      '<td data-label="ขั้นตอน"><span class="swf-step-cell"><span class="swf-step-icon-sm">' + staffStepIcon_(name) + '</span>' + escapeHtml_(name) + '</span></td>' +
-      '<td data-label="รายละเอียด" class="swf-desc-cell">' + descHtml + '</td>' +
-      '<td data-label="วันที่ดำเนินการ">' + dateCellHtml + '</td>' +
-      '<td data-label="สถานะ"><span class="swf-badge swf-badge-' + statusInfo.tone + '">' + escapeHtml_(statusInfo.text) + '</span></td>' +
-      '<td data-label="การดำเนินการ">' + actionCellHtml + '</td>' +
+    rowsHtml += '<tr id="wtbl-row-m' + n + '" class="swf-crow swf-crow-' + state + '">' +
+      '<td class="swf-crow-order" data-label="ลำดับ"><span class="swf-order-badge swf-order-' + orderTone + '">' + n + '</span></td>' +
+      '<td class="swf-crow-name" data-label="ขั้นตอน">' + escapeHtml_(label) + '</td>' +
+      '<td class="swf-crow-date" data-label="วันที่ดำเนินการ">' + dateCellHtml + '</td>' +
+      '<td class="swf-crow-action" data-label="บันทึกวันที่">' + actionCellHtml + '</td>' +
       '</tr>';
   });
 
-  // Section G — ปุ่มประวัติ/บันทึกทั้งหมด + Section H หมายเหตุ (bottom bar)
+  // Section G — ปุ่มประวัติ/บันทึกทั้งหมด + Section H หมายเหตุ (bottom bar) — ไม่เปลี่ยนจากเดิม
   var saveAllPanelHtml = '';
   var saveAllBtnHtml = '';
   if (saveAllRows.length) {
@@ -1608,8 +1602,10 @@ function renderStaffWorkflowTable_(ss, work, history, stationsMap, data, user, b
   return '' +
     '<div class="wf-section-title">รายละเอียดขั้นตอนและการดำเนินการ</div>' +
     errorHtml +
-    '<div class="swf-table-wrap"><table class="swf-table"><thead><tr>' +
-    '<th>ลำดับ</th><th>ขั้นตอน</th><th>รายละเอียด</th><th>วันที่ดำเนินการ</th><th>สถานะ</th><th>การดำเนินการ</th>' +
+    '<div class="swf-table-wrap"><table class="swf-table swf-table-compact"><colgroup>' +
+    '<col style="width:8%"><col style="width:47%"><col style="width:20%"><col style="width:25%">' +
+    '</colgroup><thead><tr>' +
+    '<th>ลำดับ</th><th>ขั้นตอน</th><th>วันที่ดำเนินการ</th><th>บันทึกวันที่</th>' +
     '</tr></thead><tbody>' + rowsHtml + '</tbody></table></div>' +
     panelsHtml + bottomBarHtml;
 }
@@ -3973,6 +3969,26 @@ var PUBLIC_CSS_ = '' +
   '.swf-badge-revision{background:#fbecc0;color:#8a6300;}' +
   '.swf-badge-fail{background:#f6d4d1;color:#9a2d24;}' +
   '.swf-badge-skip{background:#f1f2f4;color:var(--muted);}' +
+  // 2026-11-04 — requirement "กระชับ อ่านจบได้ในจอ 1366px ไม่ scroll แนวนอน": ตาราง 4 คอลัมน์ fix สัดส่วน
+  // 8/47/20/25% (ข้อ 4), แถวสูง ~46px (ข้อ 12, ระหว่าง 44-52px ตามที่ระบุ), font 13-14px (ข้อ 13), ปุ่ม/input
+  // สูง ~34px (ข้อ 14) — ใช้ table-layout:fixed ให้สัดส่วน <col> คุมจริง ไม่ล้น container เกิน scroll
+  '.swf-table-compact{table-layout:fixed;}' +
+  '.swf-table-compact thead th{padding:8px 10px;font-size:.8rem;font-weight:600;background:#f3f7f9;}' +
+  '.swf-table-compact tbody td{padding:0 10px;font-size:.84rem;}' +
+  '.swf-crow{height:46px;}' +
+  '.swf-crow-order{text-align:center;}' +
+  '.swf-crow-name{font-weight:600;white-space:normal;word-break:break-word;line-height:1.3;}' +
+  '.swf-crow-date{font-size:.82rem;color:var(--text);white-space:nowrap;}' +
+  '.swf-crow-skipped .swf-crow-date,.swf-crow-skipped .swf-crow-name{color:var(--muted);opacity:.6;}' +
+  '.swf-crow-action{white-space:nowrap;}' +
+  '.swf-crow-btn{height:34px;min-height:34px;padding:0 14px;font-size:.78rem;line-height:34px;}' +
+  '.swf-crow-actions{display:flex;flex-wrap:wrap;gap:6px;}' +
+  '.swf-crow-muted{color:var(--muted);}' +
+  // Section F — current row highlight เบา (ข้อ 9: #eef6ff + border-left 3px navy แทน swf-row-current เดิม
+  // #e8f2ff เต็มแถวตรงๆ ที่ requirement รอบก่อนกำหนดไว้ — ใช้คู่กับคอมเมนต์เดิมด้านบน .swf-row-current)
+  '.swf-crow-current{background:#eef6ff;border-left:3px solid var(--navy);}' +
+  '.swf-crow-current td:first-child{padding-left:7px;}' +
+  '@media (max-width:1366px){.swf-table-compact{width:100%;}}' +
   '@media (max-width:768px){' +
   '.swf-table thead{display:none;}' +
   '.swf-table, .swf-table tbody, .swf-table tr, .swf-table td{display:block;width:100%;box-sizing:border-box;}' +
