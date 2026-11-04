@@ -240,13 +240,23 @@ function performEditStepDate_(ss, user, e) {
 }
 
 /**
- * 2026-11-04 — หน้า Staff "Workflow Workspace" requirement ใหม่ Section G "บันทึกข้อมูลทั้งหมด" — แก้วันที่
- * ย้อนหลังหลายขั้นตอนพร้อมกันเป็น batch (panel #swf-saveall-panel, renderStaffWorkflowTable_) ไม่สร้าง logic
- * validate/permission/audit ใหม่ซ้ำ — วนเรียก performEditStepDate_ เดิมทีละแถว (field ชื่อ action_date_<history_id>
- * ต่อแถว) แถวไหนไม่ได้แก้ค่า (ว่าง หรือค่าตรงกับที่มีอยู่แล้ว) ข้ามไปเฉยๆ ไม่เขียน AuditLog ซ้ำโดยไม่จำเป็น
- * คืน { ok, work_id, updatedCount, errors } — errors ระบุ station ที่ล้มเหลวแต่ละแถว (เช่น ไม่มีสิทธิ์บางแถว)
- * แถวที่สำเร็จแล้วยังคงถูกบันทึกจริง (ไม่ rollback ทั้ง batch เพราะ 1 แถวพลาด — field เดิมของ AuditLog เป็น
- * append-only ต่อแถวอยู่แล้ว ไม่มีแนวคิด transaction รวมในระบบเดิม)
+ * 2026-11-04 (รอบล่าสุด — ตารางกริดแนวนอนเดียว, renderStaffWorkflowGrid_, Views.gs) "✓ อัปเดตข้อมูล" ปุ่มเดียว
+ * บันทึก "วันที่ดำเนินการ" ของหลายขั้นตอนหลักพร้อมกันเป็น batch — ไม่สร้าง logic validate/permission/audit ใหม่
+ * ซ้ำเลย วนเรียกฟังก์ชันเดิม 2 ตัวตามประเภทของแต่ละ field ที่ส่งมา:
+ *
+ *   1) action_date_<history_id> (ขั้นที่ "เสร็จแล้ว" อยู่แล้ว — แก้ไขวันที่ย้อนหลัง) -> performEditStepDate_ เดิม
+ *      ทีละแถว (field ไม่เปลี่ยนจากรอบก่อนหน้า)
+ *   2) transition_date + transition_id (ขั้นตอน "ปัจจุบัน" ที่มีทางเดียวไม่แตกสาย — กรอกวันที่ = บันทึกว่าขั้นนี้
+ *      เสร็จแล้ว ย้ายไปขั้นถัดไปจริง) -> performStateTransition_ เดิม ตรวจ eligibility/permission ซ้ำในนั้นเสมอ
+ *      (ห้ามเชื่อ transition_id จาก client เปล่าๆ — ถ้าไม่ตรง eligible จริงจะ error กลับมาเฉยๆ ไม่มีทางเปลี่ยน
+ *      state ผิดได้) — ไม่มีทางได้ field คู่นี้มาจาก "ขั้นตอนแตกสาย" เลย (UI ฝั่ง renderStaffWorkflowGrid_ ไม่สร้าง
+ *      input นี้ให้ขั้นที่ eligibleTransitions.length>1 ตั้งแต่ต้น — ป้องกัน "เดา" ผลการพิจารณาจากวันที่เพียงอย่างเดียว)
+ *
+ * แถวไหนไม่ได้แก้ค่า (ว่าง หรือค่าตรงกับที่มีอยู่แล้ว) ข้ามไปเฉยๆ ไม่เขียน AuditLog/StatusHistory ซ้ำโดยไม่จำเป็น
+ * (ข้อ 19 — "ห้ามเปลี่ยน state เพียงเพราะมีวันที่โดยอัตโนมัติ ถ้า rule เดิมไม่ได้กำหนดไว้" — ตีความว่าต้องเป็นการ
+ * เปลี่ยนแปลงค่าจริงที่ผู้ใช้ตั้งใจแก้เท่านั้น ไม่ auto-fire จากค่าที่ไม่ได้ถูกแตะเลย)
+ * คืน { ok, work_id, updatedCount, errors } — แถวที่สำเร็จแล้วยังคงถูกบันทึกจริง (ไม่ rollback ทั้ง batch เพราะ
+ * 1 แถวพลาด — append-only เหมือนเดิมทั้งระบบ ไม่มีแนวคิด transaction รวม)
  */
 function performSaveAllStepDates_(ss, user, e) {
   var p = (e && e.parameter) || {};
@@ -276,6 +286,15 @@ function performSaveAllStepDates_(ss, user, e) {
     if (singleResult.ok) updatedCount++;
     else errors = errors.concat(singleResult.errors.map(function (msg) { return (historyRow.to_station || historyId) + ': ' + msg; }));
   });
+
+  // ขั้นตอนปัจจุบัน (ทางเดียว ไม่แตกสาย) — กรอกวันที่ = เสร็จสิ้นขั้นนี้จริง เรียก performStateTransition_ เดิม
+  var rawTransitionDate = String(p.transition_date || '').trim();
+  var transitionId = String(p.transition_id || '').trim();
+  if (rawTransitionDate && transitionId) {
+    var transResult = performStateTransition_(ss, user, { parameter: { work_id: workId, transition_id: transitionId, action_date: rawTransitionDate, note: '' } });
+    if (transResult.ok) updatedCount++;
+    else errors = errors.concat(transResult.errors.map(function (msg) { return 'ขั้นตอนปัจจุบัน: ' + msg; }));
+  }
 
   return { ok: errors.length === 0, work_id: workId, updatedCount: updatedCount, errors: errors };
 }

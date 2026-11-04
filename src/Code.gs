@@ -142,7 +142,7 @@ function routeStaffPage_(e, user) {
  * validate ไม่ผ่านพร้อมค่าที่กรอกไว้ (ไม่มีทาง work หายไปกลางทาง เพราะ performStateTransition_/performEditStepDate_
  * คืน errors แบบไม่เจองานเฉพาะกรณี work_id ผิดจริงเท่านั้น ซึ่งไม่เกิดจาก UI นี้ที่ embed work_id จาก SSR เสมอ)
  */
-function renderStaffDetailAfterAction_(ss, user, baseUrl, workId, stepErrors, stepPrevValues) {
+function renderStaffDetailAfterAction_(ss, user, baseUrl, workId, stepErrors, stepPrevValues, successMessage) {
   var work = findWorkById_(ss, workId);
   if (!work) {
     return renderStaffPage_('ไม่พบรายการ', renderStubBody_('ไม่พบงานที่ระบุ (work_id: ' + workId + ')', baseUrl), user, 'search', baseUrl);
@@ -150,7 +150,7 @@ function renderStaffDetailAfterAction_(ss, user, baseUrl, workId, stepErrors, st
   var history = getHistoryForWork_(ss, workId);
   var stationsMap = getStationsMap_(ss);
   return renderStaffPage_('รายละเอียดผลงาน',
-    renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, [], [], stepErrors, stepPrevValues), user, 'search', baseUrl);
+    renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, [], [], stepErrors, stepPrevValues, successMessage), user, 'search', baseUrl);
 }
 
 function doPost(e) {
@@ -222,7 +222,8 @@ function doPost(e) {
     // (ข้อ 6/10 ของ requirement — ห้ามต้องเข้า-ออกหลายหน้า) ไม่กระทบ flow เดิมของหน้าสแกน QR เลย (branch แยก)
     if (e.parameter.return_to === 'detail') {
       var transPrev = transResult.ok ? {} : Object.assign({}, e.parameter, { wtbl_action: 'state_transition' });
-      return renderStaffDetailAfterAction_(ss, user, baseUrl, e.parameter.work_id, transResult.ok ? [] : (transResult.errors || []), transPrev);
+      return renderStaffDetailAfterAction_(ss, user, baseUrl, e.parameter.work_id, transResult.ok ? [] : (transResult.errors || []), transPrev,
+        transResult.ok ? 'อัปเดตข้อมูลเรียบร้อย' : '');
     }
     if (!transResult.ok) {
       var transWork = transResult.work || findWorkById_(ss, e.parameter.work_id);
@@ -255,16 +256,18 @@ function doPost(e) {
     // นี้มีจุดเรียกเดียวคือหน้ารายละเอียด ไม่ได้มาจากหน้าสแกน QR เดิม)
     var editResult = performEditStepDate_(ss, user, e);
     var editPrev = editResult.ok ? {} : Object.assign({}, e.parameter, { wtbl_action: 'edit_step_date' });
-    return renderStaffDetailAfterAction_(ss, user, baseUrl, e.parameter.work_id, editResult.ok ? [] : (editResult.errors || []), editPrev);
+    return renderStaffDetailAfterAction_(ss, user, baseUrl, e.parameter.work_id, editResult.ok ? [] : (editResult.errors || []), editPrev,
+      editResult.ok ? 'อัปเดตข้อมูลเรียบร้อย' : '');
   }
 
   if (formAction === 'save_all_step_dates') {
-    // 2026-11-04 — Section G "บันทึกข้อมูลทั้งหมด" (performSaveAllStepDates_, Actions.gs — วนเรียก
-    // performEditStepDate_ เดิมทีละแถว ไม่สร้าง logic validate/permission/audit ใหม่) เหมือน edit_step_date
+    // 2026-11-04 — ปุ่ม "✓ อัปเดตข้อมูล" เดียว (renderStaffWorkflowGrid_, Views.gs — performSaveAllStepDates_,
+    // Actions.gs วนเรียก performEditStepDate_/performStateTransition_ เดิมทีละรายการ ไม่สร้าง logic ใหม่ซ้ำ)
     // อยู่หน้ารายละเอียดเดิมเสมอ errors (ถ้ามี) ระบุเป็นรายแถวที่ล้มเหลว แถวที่สำเร็จแล้วถูกบันทึกจริงไม่ rollback
     var saveAllResult = performSaveAllStepDates_(ss, user, e);
     var saveAllPrev = saveAllResult.ok ? {} : { wtbl_action: 'save_all_step_dates' };
-    return renderStaffDetailAfterAction_(ss, user, baseUrl, e.parameter.work_id, saveAllResult.ok ? [] : (saveAllResult.errors || []), saveAllPrev);
+    return renderStaffDetailAfterAction_(ss, user, baseUrl, e.parameter.work_id, saveAllResult.ok ? [] : (saveAllResult.errors || []), saveAllPrev,
+      (saveAllResult.ok && saveAllResult.updatedCount > 0) ? 'อัปเดตข้อมูลเรียบร้อย' : '');
   }
 
   if (formAction === 'admin_set_owner_code' || formAction === 'admin_reset_owner_code') {
