@@ -900,3 +900,425 @@ function restoreReceiveDatesFromLatestBackup() {
   Logger.log('=== restoreReceiveDatesFromLatestBackup เสร็จ === กู้คืนรอบล่าสุด (fixed_at=' + new Date(latestTs) +
     '): กู้คืนสำเร็จ ' + restored + ' รายการ, parse ค่าเดิมไม่ได้ ' + skippedUnparseable + ' รายการ, ไม่พบใน Works ' + skippedNotFound + ' รายการ');
 }
+
+/* =======================================================================================================
+ * 2026-11-05 — นำเข้าข้อมูลชุดใหม่ "อวช70(11)" จากไฟล์ C:\Users\Acer\Documents\อวช\1อวช121069.xlsx
+ * (sheet "อวช70(11)", 11 แถวข้อมูลจริง — ตรวจไฟล์จริงแล้ว ไม่เดา) คนละไฟล์/ชุดจาก LegacyImport (244 แถว)
+ * ด้านบน แต่ column layout A-K เหมือนกันทุกประการ (ลำดับ/ชื่อ-สกุล/ตำแหน่ง/ด้าน/จังหวัด/วันที่ลงรับ/ทีม/เลขา/
+ * ส่วนราชการตำแหน่งที่ขอแต่งตั้ง/เดือน/สถานะ) — reuse helper เดิมที่ behavior เหมือนกันจริง
+ * (splitLegacyName_/buildLegacyStationOrderIndex_/normalizeLegacyStateCode_/normalizeLegacyReportPeriod_/
+ * findSheetLoose_/excelSerialToDate_/LEGACY_IMPORT_MARKER_) เขียนใหม่เฉพาะจุดที่ตรวจไฟล์จริงแล้วพบว่าต่างจาก
+ * ชุดเดิม 2 จุด (ยืนยันกับผู้ใช้แล้วทั้ง 2 ข้อก่อนเขียนโค้ดนี้):
+ *
+ * 1) คอลัมน์ A "ลำดับ" เป็น "<seq>/70" (เช่น "1/70") ไม่ใช่ตัวเลขเปล่าแบบชุดเดิม — เลขทะเบียนต้องมาจาก suffix
+ *    "70" ของค่านี้เอง (= เลขปีชุดงาน คนละค่ากับปี พ.ศ. ของ received_date ซึ่งจริงๆคือ 2569/"69") ไม่ใช่สูตร
+ *    shortBuddhistYear_(receivedDate)+legacy_seq ที่ migrateLegacyRegistrations() ชุดเดิมใช้ — ดู
+ *    parseLegacy70Seq_() ด้านล่าง
+ * 2) คอลัมน์ K "สถานะ" ตรวจแล้วมีค่าจริงต่างกันต่อแถว (พบจริงทั้ง 1/2/3.1/4 ใน 11 แถว) ไม่ใช่ "2" ทุกแถวตามที่
+ *    มีคนขอมาทีแรก — ใช้ค่าจริงต่อแถว map เข้า station_order ผ่าน stationOrderIndex เดียวกับชุดเดิม (ยืนยันกับ
+ *    ผู้ใช้แล้วว่าต้องใช้ค่าจริง ไม่ force เป็น 2 — ข้อ 7 "ตรวจ WorkflowMaster ก่อน หยุด import ถ้าไม่ตรง" ทำผ่าน
+ *    stationOrderIndex[stateCode] อยู่แล้วในตัว ไม่ต้องเพิ่ม)
+ * 3) แถว legacy_seq="6/70" (นายกานต์ ธีระสัมพันธ์) วันที่ลงรับเป็น serial ที่ตรงกับปี ค.ศ. จริงอยู่แล้ว
+ *    (ต่างจาก 10 แถวอื่นที่พิมพ์ปี พ.ศ. ลงช่อง date ตรงๆ ต้อง -543 ปีตามบั๊กเดิมที่เจอมาก่อนในระบบนี้) —
+ *    correctLegacy70ReceivedDate_() เช็ค "ปีที่อ่านได้จาก input > 2400" ก่อนเสมอ (เกณฑ์ทั่วไป ไม่ hardcode
+ *    เจาะจงแถวนี้ — ปี ค.ศ. จริงไม่มีทางเกิน 2400 ในอนาคตอันใกล้ ส่วนปี พ.ศ. ที่พิมพ์ผิดช่องจะอยู่แถว 2560-2580
+ *    เสมอ) ยืนยันกับผู้ใช้แล้วว่าแถวนี้ควรอ่านเป็น "5 ต.ค. 2569" ตรงๆ ไม่ลบ 543 ซ้ำ
+ *
+ * ลำดับการทำงาน (ห้ามข้ามขั้นตอน เหมือนชุดเดิม): analyzeLegacy70Sheet() -> validateLegacy70Data() ->
+ * backupBeforeLegacy70Import() (แนะนำก่อนรันจริง ตามข้อ 16 — สำรอง Works/StatusHistory เป็นแท็บ timestamp ใน
+ * สเปรดชีตเดียวกัน ไม่ใช้ Drive API) -> previewLegacy70Migration() (เขียนผลลัพธ์ลงชีต "LegacyPreview70" ให้
+ * ตรวจก่อน ไม่แตะ Works/StatusHistory จริงเลย) -> ผู้ใช้ตรวจเอง -> migrateLegacy70Registrations() (รันเอง
+ * เท่านั้น ห้าม auto-run, ปลอดภัยรันซ้ำได้ — เช็ค legacy_seq ซ้ำเหมือนชุดเดิม + เพิ่มเช็ค registration_no ชน
+ * งานอื่นแยกเป็น CONFLICT ตามข้อ 9-11 ของ requirement)
+ *
+ * ก่อนรันต้องคัดลอกแท็บ "อวช70(11)" จากไฟล์ Excel (เปิดไฟล์เอง เลือกทั้งแท็บ Ctrl+C) มาวางเป็นแท็บใหม่ชื่อ
+ * "LegacyImport70" ในสเปรดชีตฐานข้อมูลจริงก่อนเสมอ (แบบเดียวกับที่ทำกับชุด LegacyImport 244 แถวเดิม) —
+ * session นี้ไม่มีช่องทางเขียนข้อมูลเข้า Google Sheet จริงโดยตรง
+ * ===================================================================================================== */
+
+var LEGACY70_SHEET_NAME_ = 'LegacyImport70';
+var LEGACY70_PREVIEW_SHEET_NAME_ = 'LegacyPreview70';
+// column layout เหมือน LEGACY_COL_ เป๊ะ (ยืนยันจากไฟล์จริง) แยก var ของตัวเองไว้เผื่อ layout เพี้ยนไปจากกันใน
+// อนาคต — ไม่ผูกกับ LEGACY_COL_ เดิมตรงๆ กันแก้ชุดหนึ่งกระทบอีกชุดโดยไม่ตั้งใจ
+var LEGACY70_COL_ = { SEQ: 0, NAME: 1, POSITION: 2, SPECIALTY: 3, PROVINCE: 4, RECEIVED: 5, TEAM: 6, SECRETARY: 7, ORG_POSITION: 8, MONTH: 9, STATE: 10 };
+
+/** อ่านชีต LegacyImport70 ทั้งชีตเป็น array of array ดิบ (แพทเทิร์นเดียวกับ readLegacySheetRaw_ เดิมทุกประการ) */
+function readLegacy70SheetRaw_(ss) {
+  var sheet = findSheetLoose_(ss, LEGACY70_SHEET_NAME_);
+  if (!sheet) {
+    var sheetInfo = ss.getSheets().map(function (s) { return JSON.stringify(s.getName()) + '(len=' + s.getName().length + ')'; });
+    throw new Error('ไม่พบชีต "' + LEGACY70_SHEET_NAME_ + '" ใน Spreadsheet ID=' + ss.getId() +
+      ' — ต้องคัดลอกแท็บ "อวช70(11)" จากไฟล์ 1อวช121069.xlsx มาวางเป็นแท็บนี้ก่อน (แท็บที่มีอยู่จริงตอนนี้: ' + sheetInfo.join(', ') + ')');
+  }
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2) return [];
+  var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  var displays = sheet.getRange(2, 1, lastRow - 1, lastCol).getDisplayValues();
+  var displayRows = [];
+  var rows = values.filter(function (r, i) {
+    var keep = String(r[LEGACY70_COL_.NAME] || '').trim();
+    if (keep) displayRows.push(displays[i]);
+    return keep;
+  });
+  rows.displayRows = displayRows;
+  return rows;
+}
+
+/** แปลง "<seq>/<ปีชุดงาน 2 หลัก>" (เช่น "1/70") -> { seq:"1", yearSuffix:"70", registrationNo:"70-001" } — คืน
+ *  null ถ้า pattern ไม่ตรง (ข้อ 2-4 ของ requirement — ห้ามบันทึกรูปแบบอื่นเข้า registration_no เด็ดขาด เช่น
+ *  "1/70"/"70-1"/"70/001" ดิบๆ) ตรวจ registrationNo สุดท้ายซ้ำอีกชั้นว่าต้องเป็น XX-XXX เป๊ะ (3 หลักท้ายเสมอ) */
+function parseLegacy70Seq_(raw) {
+  var s = String(raw || '').trim();
+  var m = s.match(/^(\d{1,2})\/(\d{2})$/);
+  if (!m) return null;
+  var registrationNo = m[2] + '-' + padLeft_(m[1], 3);
+  if (!/^\d{2}-\d{3}$/.test(registrationNo)) return null;
+  return { seq: m[1], yearSuffix: m[2], registrationNo: registrationNo };
+}
+
+/**
+ * เหมือน correctLegacyReceivedDate_ เดิมทุกประการ (รองรับ Date object/ข้อความ "D/M/YYYY"/serial ดิบ 3 รูปแบบ
+ * จากเซลล์ Excel ที่อ่านต่างกันตามการ paste — ดู docstring ของ correctLegacyReceivedDate_ ด้านบนสำหรับ 3 กรณี)
+ * ต่างแค่จุดเดียวที่ยืนยันกับผู้ใช้แล้ว: ลบ 543 ปีเฉพาะกรณีปีที่อ่านได้จาก input จริง > 2400 (ชัดเจนว่าเป็น
+ * ตัวเลข พ.ศ. ที่พิมพ์ผิดลงช่อง ค.ศ. ตรงๆ) เท่านั้น ถ้าปี <= 2400 (เป็น ค.ศ. ที่ถูกต้องอยู่แล้ว เช่นแถว "6/70"
+ * ที่ตรวจไฟล์จริงแล้วพบว่า serial ตรงกับปี ค.ศ.2026 ตรงๆ) ใช้ตรงๆ ไม่ลบซ้ำ — เกณฑ์ทั่วไปจากตัวเลขปี ไม่
+ * hardcode เจาะจงว่าเป็นแถวไหน (ปี ค.ศ. จริงไม่มีทางเกิน 2400 ในอนาคตอันใกล้)
+ */
+function correctLegacy70ReceivedDate_(serial, displayText) {
+  if (!serial) return null;
+  var d;
+  var textSource = serial instanceof Date ? String(displayText || '').trim() : String(serial).trim();
+  var textMatch = textSource.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (textMatch) {
+    var day = Number(textMatch[1]), month = Number(textMatch[2]), year = Number(textMatch[3]);
+    d = new Date(year, month - 1, day);
+    if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+  } else if (serial instanceof Date) {
+    if (isNaN(serial.getTime())) return null;
+    d = new Date(serial.getTime());
+  } else if (!isNaN(Number(serial))) {
+    d = excelSerialToDate_(serial);
+  } else {
+    return null;
+  }
+  if (d.getFullYear() > 2400) d.setFullYear(d.getFullYear() - 543);
+  return d;
+}
+
+/** ตรวจ 1 แถวดิบจาก LegacyImport70 -> { mapped:{...}, issues:[...] } — รูปแบบเดียวกับ analyzeLegacyRow_ เดิม
+ *  ทุกประการ ต่างแค่ seq/registration_no (parseLegacy70Seq_) และวันที่ (correctLegacy70ReceivedDate_) */
+function analyzeLegacy70Row_(ss, row, positionRows, stationOrderIndex, provinceList, displayRow) {
+  var issues = [];
+  var seqInfo = parseLegacy70Seq_(row[LEGACY70_COL_.SEQ]);
+  if (!seqInfo) issues.push('คอลัมน์ "ลำดับ" ไม่ตรงรูปแบบ "<เลข>/<ปี 2 หลัก>" หรือแปลงเป็น XX-XXX ไม่ได้: ' + JSON.stringify(row[LEGACY70_COL_.SEQ]));
+
+  var nameParts = splitLegacyName_(row[LEGACY70_COL_.NAME]);
+  if (!nameParts.splitOk) issues.push('แยกคำนำหน้า/ชื่อ/นามสกุลอัตโนมัติไม่ได้ชัดเจน (ตรวจสอบด้วยตนเอง)');
+
+  var positionRaw = String(row[LEGACY70_COL_.POSITION] || '').trim();
+  var positionRow = positionRows.filter(function (p) { return p.position_name === positionRaw; })[0];
+  if (!positionRow) issues.push('ตำแหน่ง "' + positionRaw + '" ไม่พบใน MasterPositions เป๊ะ (ตรวจสอบ/เพิ่มที่ Admin > ข้อมูลหลัก ก่อน import แถวนี้)');
+
+  var specialtyRaw = String(row[LEGACY70_COL_.SPECIALTY] || '').trim();
+
+  var provinceRaw = String(row[LEGACY70_COL_.PROVINCE] || '').trim();
+  if (provinceList.indexOf(provinceRaw) === -1) issues.push('จังหวัด "' + provinceRaw + '" ไม่ตรงกับ 7 จังหวัดเขต 11 ที่ตั้งไว้ (สะกดผิด?)');
+
+  var displayDate = displayRow ? displayRow[LEGACY70_COL_.RECEIVED] : undefined;
+  var receivedDate = correctLegacy70ReceivedDate_(row[LEGACY70_COL_.RECEIVED], displayDate);
+  var dateWarning = false;
+  if (!receivedDate) {
+    issues.push('วันที่ลงรับไม่ใช่ตัวเลข/แปลงไม่ได้: ' + JSON.stringify(row[LEGACY70_COL_.RECEIVED]));
+  } else {
+    // ข้อ 12 — flag ไว้เป็น warning ไม่บล็อก ถ้าปีดิบที่อ่านได้ตรง/ไม่ตรงกับที่คาด (ช่วย reviewer เห็นว่าแถวไหน
+    // ถูกปรับปี/แถวไหนไม่ถูกปรับ ตรวจ LegacyPreview70 เองอีกชั้นก่อน migrate จริง)
+    var rawYearMatch = String(displayDate || row[LEGACY70_COL_.RECEIVED]).match(/(\d{4})$/);
+    dateWarning = !!(rawYearMatch && Number(rawYearMatch[1]) > 2400);
+  }
+
+  var stateCode = normalizeLegacyStateCode_(row[LEGACY70_COL_.STATE]);
+  var mappedStation = null, isTerminated = false;
+  if (stateCode === '0') {
+    isTerminated = true;
+  } else if (stationOrderIndex[stateCode]) {
+    mappedStation = stationOrderIndex[stateCode];
+  } else {
+    // ข้อ 7 — "ถ้าไม่ตรง หยุด import และรายงาน" ทำผ่าน issues ตรงนี้ (แถวนี้จะไม่ถูก insert จริงเพราะ
+    // station_key จะว่าง -> hasBlockingIssue ที่ migrateLegacy70Registrations() ด้านล่าง)
+    issues.push('สถานะ "' + row[LEGACY70_COL_.STATE] + '" ไม่ตรงกับ station_order ใดใน WorkflowStates และไม่ใช่ "0" — ห้าม import แถวนี้จนกว่าจะตรวจ WorkflowMaster');
+  }
+
+  var secretaryRaw = String(row[LEGACY70_COL_.SECRETARY] || '').trim();
+  var secretary = '';
+  if (secretaryRaw === '(รอข้อมูล)' || !secretaryRaw) {
+    secretary = '';
+  } else if (secretaryRaw === 'ขอถอนคืน') {
+    issues.push('คอลัมน์เลขาระบุ "ขอถอนคืน" (ไม่ใช่ชื่อคน) — ตรวจสอบว่ารายการนี้ถอนเรื่องจริงหรือไม่ก่อน import');
+    secretary = '';
+  } else {
+    secretary = secretaryRaw;
+  }
+
+  var reportPeriod = normalizeLegacyReportPeriod_(row[LEGACY70_COL_.MONTH]);
+  if (!reportPeriod) issues.push('คอลัมน์เดือน "' + row[LEGACY70_COL_.MONTH] + '" ไม่ชัดเจนพอจะระบุเดือน (ไม่ normalize ให้ ต้องตรวจสอบเอง)');
+
+  var orgPosition = String(row[LEGACY70_COL_.ORG_POSITION] || '').trim();
+
+  return {
+    legacy_seq: String(row[LEGACY70_COL_.SEQ] || '').trim(),
+    registration_no: seqInfo ? seqInfo.registrationNo : '',
+    title_name: nameParts.title_name, first_name: nameParts.first_name, last_name: nameParts.last_name,
+    position: positionRow ? positionRow.position_name : positionRaw,
+    specialty: specialtyRaw,
+    province: provinceRaw,
+    received_date: receivedDate,
+    dateWarning: dateWarning,
+    legacy_team: String(row[LEGACY70_COL_.TEAM] || '').trim(),
+    secretary: secretary,
+    requested_org_position: orgPosition,
+    org_from: orgPosition,
+    report_period: reportPeriod,
+    station_key: isTerminated ? 's1' : (mappedStation ? mappedStation.station_key : ''),
+    current_status_public: isTerminated ? 'terminated' : (mappedStation ? mappedStation.public_status : ''),
+    current_owner_org: isTerminated ? 'สนง เขต' : (mappedStation ? resolveResponsibleOrg_(mappedStation, { org_from: orgPosition }) : ''),
+    next_step_text: mappedStation ? (mappedStation.public_hint || '') : '',
+    issues: issues,
+  };
+}
+
+/** ขั้นที่ 1 (เหมือน analyzeLegacySheet เดิม): วิเคราะห์ชีต LegacyImport70 แบบสด ไม่แก้อะไร — log สรุปจำนวน/
+ *  ค่าที่พบต่อคอลัมน์ */
+function analyzeLegacy70Sheet() {
+  var ss = getSpreadsheet_();
+  var rows = readLegacy70SheetRaw_(ss);
+  Logger.log('=== analyzeLegacy70Sheet: พบ ' + rows.length + ' แถว (ชื่อ-สกุลไม่ว่าง) ===');
+
+  function distinctCounts(colIdx, label) {
+    var counts = {};
+    rows.forEach(function (r) {
+      var v = String(r[colIdx] === undefined || r[colIdx] === null || r[colIdx] === '' ? '(ว่าง)' : r[colIdx]).trim() || '(ว่าง)';
+      counts[v] = (counts[v] || 0) + 1;
+    });
+    var lines = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; })
+      .map(function (k) { return counts[k] + 'x ' + k; });
+    Logger.log(label + ' (' + Object.keys(counts).length + ' ค่าต่าง): ' + lines.join(' | '));
+  }
+
+  distinctCounts(LEGACY70_COL_.POSITION, 'ตำแหน่ง');
+  distinctCounts(LEGACY70_COL_.SPECIALTY, 'ด้าน');
+  distinctCounts(LEGACY70_COL_.PROVINCE, 'จังหวัด');
+  distinctCounts(LEGACY70_COL_.SECRETARY, 'เลขา');
+  distinctCounts(LEGACY70_COL_.MONTH, 'เดือน');
+  distinctCounts(LEGACY70_COL_.STATE, 'สถานะ');
+
+  var seqCounts = {};
+  rows.forEach(function (r) { var v = String(r[LEGACY70_COL_.SEQ]); seqCounts[v] = (seqCounts[v] || 0) + 1; });
+  var dupSeq = Object.keys(seqCounts).filter(function (k) { return seqCounts[k] > 1; });
+  Logger.log('ลำดับซ้ำภายในไฟล์เดียวกัน: ' + (dupSeq.length ? dupSeq.join(', ') : 'ไม่มี'));
+}
+
+/** ขั้นที่ 2 (เหมือน validateLegacyData เดิม): ตรวจความถูกต้องทีละแถว ไม่แก้อะไร */
+function validateLegacy70Data() {
+  var ss = getSpreadsheet_();
+  var rows = readLegacy70SheetRaw_(ss);
+  var positionRows = getActiveMasterRows_(ss, SHEET.MASTER_POSITIONS);
+  var stationOrderIndex = buildLegacyStationOrderIndex_(ss);
+  var provinceList = getSettingList_(ss, 'district11_provinces', []);
+
+  var clean = 0, flagged = 0;
+  rows.forEach(function (row, i) {
+    var result = analyzeLegacy70Row_(ss, row, positionRows, stationOrderIndex, provinceList, rows.displayRows[i]);
+    if (result.issues.length) {
+      flagged++;
+      Logger.log('ลำดับ ' + result.legacy_seq + ' -> ' + result.registration_no + ' (' + row[LEGACY70_COL_.NAME] + '): ' + result.issues.join(' / '));
+    } else {
+      clean++;
+    }
+  });
+  Logger.log('=== validateLegacy70Data สรุป: พร้อม import ' + clean + ' แถว, มีข้อสงสัยต้องตรวจ ' + flagged + ' แถว (จากทั้งหมด ' + rows.length + ') ===');
+}
+
+/**
+ * สำรอง Works/StatusHistory ก่อน import จริง (ข้อ 16) — คัดลอกทั้ง 2 ชีตเป็นแท็บใหม่ชื่อ
+ * "Backup_Works_<timestamp>"/"Backup_StatusHistory_<timestamp>" ในสเปรดชีตเดียวกัน (sheet.copyTo() ของ Apps
+ * Script เอง ไม่พึ่ง Drive API/ไฟล์แยก) rollback = ลบแท็บจริงที่เสีย แล้ว rename แท็บ backup กลับเป็นชื่อเดิม
+ * ด้วยตนเอง (ไม่ auto-rollback — เป็น safety net ให้ตรวจ/กู้คืนเองตามจังหวะ)
+ */
+function backupBeforeLegacy70Import() {
+  var ss = getSpreadsheet_();
+  var ts = Utilities.formatDate(now_(), 'Asia/Bangkok', 'yyyyMMdd_HHmmss');
+  var worksBackup = ss.getSheetByName(SHEET.WORKS).copyTo(ss);
+  worksBackup.setName('Backup_Works_' + ts);
+  var historyBackup = ss.getSheetByName(SHEET.STATUS_HISTORY).copyTo(ss);
+  historyBackup.setName('Backup_StatusHistory_' + ts);
+  Logger.log('=== backupBeforeLegacy70Import เสร็จ — สร้างแท็บ "' + worksBackup.getName() + '" และ "' +
+    historyBackup.getName() + '" แล้ว (rollback: ลบแท็บจริงที่เสีย แล้ว copyTo()/rename แท็บ backup นี้กลับ) ===');
+}
+
+/**
+ * ขั้นที่ 3 (เหมือน previewLegacyMigration เดิม + เพิ่ม classification/reconciliation ตามข้อ 17-18 ของ
+ * requirement): เขียนชีต "LegacyPreview70" แสดงค่าที่ "จะ" ถูก import จริงทุกแถว + classification + issues —
+ * ไม่แตะ Works/StatusHistory เลย (DRY RUN ล้วน)
+ */
+function previewLegacy70Migration() {
+  var ss = getSpreadsheet_();
+  var rows = readLegacy70SheetRaw_(ss);
+  var positionRows = getActiveMasterRows_(ss, SHEET.MASTER_POSITIONS);
+  var stationOrderIndex = buildLegacyStationOrderIndex_(ss);
+  var provinceList = getSettingList_(ss, 'district11_provinces', []);
+
+  var existingWorks = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var existingSeqs = {}; var existingTrackingNos = {};
+  existingWorks.forEach(function (w) {
+    if (w.legacy_seq) existingSeqs[String(w.legacy_seq)] = w;
+    if (w.tracking_no) existingTrackingNos[String(w.tracking_no)] = w;
+  });
+
+  var previewSheet = ss.getSheetByName(LEGACY70_PREVIEW_SHEET_NAME_);
+  if (previewSheet) ss.deleteSheet(previewSheet);
+  previewSheet = ss.insertSheet(LEGACY70_PREVIEW_SHEET_NAME_);
+  var headers = ['legacy_seq', 'registration_no', 'title_name', 'first_name', 'last_name', 'position', 'specialty',
+    'province', 'received_date (แก้ปีแล้ว)', 'secretary', 'report_period', 'station_key', 'current_status_public',
+    'classification', 'issues'];
+  previewSheet.appendRow(headers);
+  previewSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+
+  var counts = { VALID: 0, NEW: 0, EXISTING: 0, DUPLICATE: 0, CONFLICT: 0, INVALID: 0, DATE_WARNING: 0, STATE2: 0 };
+  var seenRegNoInBatch = {};
+
+  rows.forEach(function (row, i) {
+    var r = analyzeLegacy70Row_(ss, row, positionRows, stationOrderIndex, provinceList, rows.displayRows[i]);
+    if (r.dateWarning) counts.DATE_WARNING++;
+    if (r.station_key === 's2') counts.STATE2++;
+
+    var classification;
+    if (!r.registration_no) {
+      classification = 'INVALID REGISTRATION'; counts.INVALID++;
+    } else if (seenRegNoInBatch[r.registration_no]) {
+      classification = 'DUPLICATE (ซ้ำกันเองในไฟล์ Excel นี้)'; counts.DUPLICATE++;
+    } else if (existingSeqs[r.legacy_seq]) {
+      classification = 'EXISTING (legacy_seq นี้เคย import แล้ว — ข้าม ไม่ reset state)'; counts.EXISTING++;
+    } else if (existingTrackingNos[r.registration_no]) {
+      classification = 'CONFLICT (registration_no ชนกับงานอื่นที่มีอยู่แล้ว — ข้าม ไม่ reset state)'; counts.CONFLICT++;
+    } else if (!r.station_key || !r.received_date || !positionRows.some(function (p) { return p.position_name === r.position; })) {
+      classification = 'SKIP (ข้อมูลไม่พร้อม — ดู issues)';
+    } else {
+      classification = 'NEW'; counts.NEW++;
+      if (!r.issues.length) counts.VALID++;
+    }
+    seenRegNoInBatch[r.registration_no] = true;
+
+    previewSheet.appendRow([
+      r.legacy_seq, r.registration_no, r.title_name, r.first_name, r.last_name, r.position, r.specialty,
+      r.province, r.received_date ? formatDateTh_(r.received_date) : '(แปลงไม่ได้)', r.secretary || '(รอกำหนด)',
+      r.report_period || '(ไม่ชัดเจน)', r.station_key, r.current_status_public, classification, r.issues.join(' / '),
+    ]);
+  });
+  previewSheet.setFrozenRows(1);
+
+  Logger.log('=== previewLegacy70Migration (DRY RUN — ไม่เขียน Works/StatusHistory เลย) ===');
+  Logger.log('SOURCE ROWS = ' + rows.length);
+  Logger.log('VALID = ' + counts.VALID);
+  Logger.log('NEW = ' + counts.NEW);
+  Logger.log('EXISTING = ' + counts.EXISTING);
+  Logger.log('DUPLICATE = ' + counts.DUPLICATE);
+  Logger.log('CONFLICT = ' + counts.CONFLICT);
+  Logger.log('INVALID REGISTRATION = ' + counts.INVALID);
+  Logger.log('DATE WARNING = ' + counts.DATE_WARNING);
+  Logger.log('WILL SET STATE 2 (ตรวจสอบเอกสาร) = ' + counts.STATE2);
+  Logger.log('ตรวจรายละเอียดทุกแถวที่ชีต "' + LEGACY70_PREVIEW_SHEET_NAME_ + '" ก่อนรัน migrateLegacy70Registrations()');
+}
+
+/**
+ * ขั้นที่ 4 (รันเองเท่านั้น หลังตรวจ LegacyPreview70 แล้ว — ห้ามเรียกจากฟังก์ชันอื่นอัตโนมัติ, ปลอดภัยรันซ้ำได้):
+ * import จริงแบบ batch (appendRowByHeader_ ต่อแถว — reuse function เดิม ไม่มี batch-insert API แยกในระบบนี้)
+ * ข้าม legacy_seq ที่เคย import ไปแล้ว (กันซ้ำ) + ข้ามแถวที่มี registration_no ชนกับงานอื่นที่มีอยู่แล้วแยกเป็น
+ * CONFLICT (ข้อ 9-11 — ห้าม insert ซ้ำ ห้าม reset state งานเดิม) + ข้ามแถวที่มีปัญหาบล็อก (ตำแหน่ง/สถานะ/
+ * วันที่/เลขทะเบียนไม่ผ่าน) สร้าง StatusHistory 1 รายการต่องาน action='INITIAL_IMPORT' เท่านั้น (เหมือนชุดเดิม
+ * ทุกประการ — ข้อ 21 ห้ามสร้าง fake history/ย้อนหลัง Step 1)
+ */
+function migrateLegacy70Registrations() {
+  var ss = getSpreadsheet_();
+  var rows = readLegacy70SheetRaw_(ss);
+  var positionRows = getActiveMasterRows_(ss, SHEET.MASTER_POSITIONS);
+  var stationOrderIndex = buildLegacyStationOrderIndex_(ss);
+  var provinceList = getSettingList_(ss, 'district11_provinces', []);
+
+  var worksSheet = ss.getSheetByName(SHEET.WORKS);
+  var historySheet = ss.getSheetByName(SHEET.STATUS_HISTORY);
+  var existingWorks = readSheetAsObjects_(worksSheet);
+  var existingSeqs = {}; var existingTrackingNos = {};
+  existingWorks.forEach(function (w) {
+    if (w.legacy_seq) existingSeqs[String(w.legacy_seq)] = w;
+    if (w.tracking_no) existingTrackingNos[String(w.tracking_no)] = w;
+  });
+
+  var imported = 0, skippedDupSeq = 0, skippedBlocked = 0, skippedConflict = 0;
+  var nowTs = now_();
+
+  rows.forEach(function (row, i) {
+    var r = analyzeLegacy70Row_(ss, row, positionRows, stationOrderIndex, provinceList, rows.displayRows[i]);
+
+    if (existingSeqs[r.legacy_seq]) {
+      skippedDupSeq++;
+      Logger.log('ข้ามลำดับ ' + r.legacy_seq + ' (เคย import แล้ว — legacy_seq ซ้ำกับ work_id=' + existingSeqs[r.legacy_seq].work_id + ')');
+      return;
+    }
+
+    var hasBlockingIssue = !r.registration_no || !r.station_key || !r.received_date ||
+      !positionRows.some(function (p) { return p.position_name === r.position; });
+    if (hasBlockingIssue) {
+      skippedBlocked++;
+      Logger.log('ข้ามลำดับ ' + r.legacy_seq + ' (ยังมีปัญหาบล็อก): ' + r.issues.join(' / '));
+      return;
+    }
+
+    // ข้อ 9-11 — registration_no ชนกับงานอื่นที่มีอยู่แล้ว (คนละ legacy_seq/ไม่เคย import ชุดนี้มาก่อน) ห้าม
+    // insert ซ้ำ/ห้าม reset state ของงานเดิม classify เป็น conflict แล้วข้าม ไม่แก้ไขอะไรกับงานเดิมเลย
+    if (existingTrackingNos[r.registration_no]) {
+      var conflictWork = existingTrackingNos[r.registration_no];
+      skippedConflict++;
+      Logger.log('CONFLICT ลำดับ ' + r.legacy_seq + ' -> registration_no "' + r.registration_no +
+        '" ชนกับงานที่มีอยู่แล้ว (work_id=' + conflictWork.work_id + ', current_station_key=' +
+        conflictWork.current_station_key + ') — ข้าม ไม่แก้ไข/ไม่ reset สถานะเดิม');
+      return;
+    }
+
+    var workId = Utilities.getUuid();
+    var qrToken = generateUniqueQrToken_(ss);
+
+    appendRowByHeader_(worksSheet, SHEET_HEADERS[SHEET.WORKS], {
+      work_id: workId, tracking_no: r.registration_no, qr_token: qrToken,
+      citizen_id_last4: '', citizen_id_encrypted: '', citizen_id_hash: '',
+      title_name: r.title_name, first_name: r.first_name, last_name: r.last_name,
+      position: r.position, current_level: '', requested_level: '',
+      work_type: '', work_title: '', org_from: r.org_from, phone: '', email: '', cover_image_url: '',
+      received_date: r.received_date,
+      current_station_key: r.station_key, current_status_public: r.current_status_public,
+      handoff_pending: false, current_owner_org: r.current_owner_org, current_handler_name: '',
+      updated_at: nowTs, next_step_text: r.next_step_text,
+      created_by: LEGACY_IMPORT_MARKER_, created_at: nowTs, evaluation_result: '',
+      position_no: '', medical_domain: '', medical_specialty: '', province: r.province, specialty: r.specialty,
+      secretary: r.secretary, requested_org_position: r.requested_org_position, report_period: r.report_period || '',
+      legacy_seq: r.legacy_seq, legacy_team: r.legacy_team,
+    });
+
+    appendRowByHeader_(historySheet, SHEET_HEADERS[SHEET.STATUS_HISTORY], {
+      history_id: Utilities.getUuid(), work_id: workId, tracking_no: r.registration_no, action: 'INITIAL_IMPORT',
+      from_station: '', to_station: r.station_key, from_org: '', to_org: r.current_owner_org,
+      action_by: LEGACY_IMPORT_MARKER_, action_by_org: '', action_date: nowTs,
+      note: 'นำเข้าจากข้อมูลเดิม (ลำดับเดิม: ' + r.legacy_seq + ', วันที่ลงรับจริง: ' + formatDateTh_(r.received_date) + ')',
+      revision_reasons: '', revision_due_date: '', attachment_url: '', created_at: nowTs,
+    });
+
+    existingTrackingNos[r.registration_no] = { work_id: workId, current_station_key: r.station_key }; // กันชนกันเองถ้า source มีแถวซ้ำ (ไม่ควรเกิด แต่กันไว้)
+    imported++;
+  });
+
+  var reconciled = imported + skippedDupSeq + skippedBlocked + skippedConflict;
+  Logger.log('=== migrateLegacy70Registrations เสร็จ === source rows=' + rows.length + ', import สำเร็จ=' + imported +
+    ', ข้าม(เคย import แล้ว)=' + skippedDupSeq + ', ข้าม(มีปัญหาบล็อก)=' + skippedBlocked +
+    ', ข้าม(registration_no ชนงานอื่น CONFLICT)=' + skippedConflict +
+    ' | reconcile: ' + rows.length + ' = ' + reconciled + ' -> ' + (rows.length === reconciled ? 'ตรงกัน ✓' : 'ไม่ตรงกัน!! ตรวจสอบ'));
+}
