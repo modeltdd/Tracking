@@ -3218,29 +3218,42 @@ function renderRegisterSuccessBody_(work, baseUrl, dateOrderWarning) {
   var ownerName = (String(work.title_name || '') + String(work.first_name || '') + ' ' + String(work.last_name || '')).trim() || '-';
 
   // ข้อ 24 — ไม่มีชื่อผลงานจริง (ไม่ควรเกิดเพราะเป็นฟิลด์บังคับ แต่กันไว้) ไม่ต้อง render แถวนี้เลย ห้ามแสดง "-"
+  // icon &#128221; เดียวกับ summaryItem("ชื่อผลงาน", ...) ของ Owner Summary Card เดิม (renderOwnerDashboardBody_,
+  // OwnerAuth.gs) — reuse code point เดิมของระบบ ไม่คิดไอคอนใหม่
   var workTitleRowHtml = work.work_title
-    ? '<div class="detail-row regsuccess-row"><span class="detail-label">ชื่อผลงาน</span>' +
-      '<span class="detail-value regsuccess-value">' + escapeHtml_(work.work_title) + '</span></div>'
+    ? regsuccessRow_('&#128221;', 'ชื่อผลงาน', escapeHtml_(work.work_title), '')
     : '';
 
   return '' +
     dateWarningHtml +
     '<div class="regsuccess-card">' +
-    '<div class="regsuccess-icon-circle" aria-hidden="true">&#10003;</div>' +
+    '<div class="regsuccess-icon-ring"><div class="regsuccess-icon-circle" aria-hidden="true">&#10003;</div></div>' +
     '<h1 class="regsuccess-title">บันทึกข้อมูลเรียบร้อยแล้ว</h1>' +
     '<p class="regsuccess-desc">ระบบได้บันทึกข้อมูลผลงานเรียบร้อยแล้ว สามารถดูรายละเอียดหรือติดตามกระบวนการดำเนินงานได้</p>' +
     '<div class="regsuccess-summary">' +
-    '<div class="detail-row regsuccess-row"><span class="detail-label">ชื่อเจ้าของผลงาน</span>' +
-    '<span class="detail-value regsuccess-value">' + escapeHtml_(ownerName) + '</span></div>' +
+    regsuccessRow_('&#128100;', 'ชื่อเจ้าของผลงาน', escapeHtml_(ownerName), '') +
     workTitleRowHtml +
     // ข้อ 25 — เลขทะเบียน (tracking_no จริงที่ backend สร้าง — ห้ามเลขบัตรประชาชน) ให้เด่นกว่าแถวอื่นเล็กน้อย
-    '<div class="detail-row regsuccess-row"><span class="detail-label">เลขทะเบียน</span>' +
-    '<span class="detail-value regsuccess-value regsuccess-tracking">' + escapeHtml_(work.tracking_no) + '</span></div>' +
+    // icon &#128196; เดียวกับ summaryItem("เลขทะเบียน", ...) ของ Owner Summary Card เดิม
+    regsuccessRow_('&#128196;', 'เลขทะเบียน', escapeHtml_(work.tracking_no), ' regsuccess-tracking') +
     '</div>' +
     '<div class="regsuccess-actions">' +
-    '<a class="btn-primary regsuccess-btn" target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(work.work_id) + '">ดูกระบวนการดำเนินงาน</a>' +
-    '<a class="btn-outline regsuccess-btn" target="_top" href="' + baseUrl + '?page=registry">กลับไปหน้ารายการ</a>' +
+    '<a class="btn-primary regsuccess-btn regsuccess-btn-primary" target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(work.work_id) + '">' +
+    '<span class="regsuccess-btn-icon" aria-hidden="true">&#9881;</span>ดูกระบวนการดำเนินงาน</a>' +
+    '<a class="btn-outline regsuccess-btn regsuccess-btn-secondary" target="_top" href="' + baseUrl + '?page=registry">' +
+    '<span class="regsuccess-btn-icon" aria-hidden="true">&#9636;</span>กลับไปหน้ารายการ</a>' +
     '</div>' +
+    '</div>';
+}
+
+/** แถวเดียวของ Summary Panel หน้า Success (icon container | label คงที่ | value) — reuse จุดเดียวกันทั้ง 3 แถว
+ *  กันแก้ไม่ครบ/ลืมคลาสตกหล่น (ข้อ 6/7/8 ของ requirement ต้องหน้าตาเดียวกันทุกแถว ต่างกันแค่ icon/label/value) */
+function regsuccessRow_(iconHtml, label, valueHtmlEscaped, extraValueClass) {
+  return '' +
+    '<div class="regsuccess-row">' +
+    '<div class="regsuccess-row-icon" aria-hidden="true">' + iconHtml + '</div>' +
+    '<div class="regsuccess-row-label">' + escapeHtml_(label) + '</div>' +
+    '<div class="regsuccess-row-value' + (extraValueClass || '') + '">' + valueHtmlEscaped + '</div>' +
     '</div>';
 }
 
@@ -4512,38 +4525,58 @@ PUBLIC_CSS_ += '' +
   // ข้อ 40 — Mobile: Drawer เต็มจอ
   '@media (max-width:640px){.swft-drawer{width:100%;max-width:100%;}}';
 
-// 2026-11-05 — requirement ใหม่ "Success Confirmation Page" หลังบันทึกข้อมูลใหม่ (renderRegisterSuccessBody_,
-// Views.gs) คลาส "regsuccess-" ใหม่ทั้งหมด สโคปเฉพาะหน้านี้ — ตั้งใจไม่ reuse/แก้ .success-card เดิม (ใช้ร่วมกับ
-// renderQrPrintBody_ อยู่ — ถ้าแก้ขนาด/padding ของ .success-card จะกระทบหน้าพิมพ์ QR ไปด้วยทันที ซึ่งอยู่นอกสโคป
-// งานนี้) reuse .detail-row/.detail-label/.detail-value เดิม (ข้อ 11 label/value) เติม modifier เฉพาะสีให้ตรง
-// ข้อกำหนดเท่านั้น
+// 2026-11-05 รอบ 2 — requirement ใหม่ "ปรับ UX/UI หน้า Success ให้ใกล้เคียงภาพอ้างอิงล่าสุด" (ยังเป็นหน้าเดียวกับ
+// renderRegisterSuccessBody_/regsuccessRow_ รอบก่อน — แก้ visual เท่านั้น ไม่แตะ flow/data source/bounce ที่ทำไว้
+// แล้ว) คลาส "regsuccess-" เดิมทั้งหมด สโคปเฉพาะหน้านี้ ไม่แก้ .success-card เดิม (renderQrPrintBody_ ใช้ร่วม) —
+// เปลี่ยนจาก reuse .detail-row/.detail-label/.detail-value (2 คอลัมน์) เป็น grid 3 คอลัมน์ icon|label|value ของ
+// ตัวเอง (ข้อ 12/13 ขอ icon container + label กว้างคงที่ตรงๆ ซึ่ง .detail-row เดิมไม่มี)
 PUBLIC_CSS_ += '' +
-  // ข้อ 17 — max-width 800-950px กึ่งกลาง, radius 16px, border บาง, shadow เบามาก, padding 32-40px desktop
-  '.regsuccess-card{max-width:900px;margin:0 auto;background:#fff;border:1px solid var(--border);' +
-  'border-radius:16px;box-shadow:0 2px 10px rgba(31,59,84,.06);padding:36px 32px;text-align:center;}' +
-  // ข้อ 3 — วงกลมเขียว เครื่องหมาย ✓ ขาว ขนาดพอเหมาะ (ไม่ใหญ่เกินไป)
-  '.regsuccess-icon-circle{width:56px;height:56px;border-radius:50%;background:var(--done);color:#fff;' +
-  'font-size:1.6rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;}' +
-  // ข้อ 4/18 — หัวข้อ 26-32px/700/navy, spacing 8px ก่อนคำอธิบาย
-  '.regsuccess-title{font-size:1.7rem;font-weight:700;color:var(--navy);margin:0 0 8px;font-family:Sarabun,sans-serif;}' +
-  // ข้อ 5 — คำอธิบายสี muted ไม่ตัวใหญ่, spacing 24px ก่อน Summary Panel
-  '.regsuccess-desc{color:var(--muted);font-size:.9rem;margin:0 0 24px;}' +
-  // ข้อ 6/10 — Summary Panel การ์ดเดียว ไม่แยก 3 ใบ, spacing 24px ก่อนปุ่ม
-  '.regsuccess-summary{background:var(--bg);border:1px solid var(--border);border-radius:12px;' +
-  'padding:4px 16px;margin:0 0 24px;text-align:left;}' +
-  '.regsuccess-row{border-top-color:var(--border);}' +
+  // ข้อ 17/18 — max-width 1000-1100px กึ่งกลาง, radius 20-24px, shadow เบา, padding 40-52px desktop, พื้นหลังหน้า #eef4f6 (ใช้ --bg เดิมของ body อยู่แล้ว ไม่ต้องเพิ่ม)
+  '.regsuccess-card{max-width:1040px;margin:0 auto;background:#fff;border:1px solid var(--border);' +
+  'border-radius:22px;box-shadow:0 4px 18px rgba(31,59,84,.08);padding:48px 44px;text-align:center;}' +
+  // ข้อ 2 — วงกลมเขียว 64-80px + outer ring เขียวอ่อน (glow เบาๆ ไม่ใช้ animation)
+  '.regsuccess-icon-ring{width:104px;height:104px;border-radius:50%;background:#e3f6e8;' +
+  'display:inline-flex;align-items:center;justify-content:center;margin-bottom:18px;}' +
+  '.regsuccess-icon-circle{width:72px;height:72px;border-radius:50%;background:var(--done);color:#fff;' +
+  'font-size:2rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center;' +
+  'box-shadow:0 4px 14px rgba(31,138,76,.3);}' +
+  // ข้อ 3 — หัวข้อ 28-34px/700/navy, spacing 12-16px จาก icon, 8px ก่อนคำอธิบาย
+  '.regsuccess-title{font-size:1.9rem;font-weight:700;color:var(--navy);margin:0 0 8px;font-family:Sarabun,sans-serif;}' +
+  // ข้อ 4 — คำอธิบายสี muted 15-17px line-height อ่านง่าย, spacing 24px ก่อน Summary Panel
+  '.regsuccess-desc{color:var(--muted);font-size:1rem;line-height:1.6;margin:0 auto 24px;max-width:640px;}' +
+  // ข้อ 5/11 — Summary Panel การ์ดเดียว พื้นฟ้าอ่อนมาก border #d8e5eb radius 12-14px, spacing 24px ก่อนปุ่ม
+  '.regsuccess-summary{background:#f7fbfd;border:1px solid #d8e5eb;border-radius:14px;' +
+  'margin:0 0 28px;text-align:left;overflow:hidden;}' +
+  // ข้อ 6-8/13 — แต่ละแถว icon|label(กว้างคงที่)|value, divider บางระหว่างแถว, padding 14-18px
+  '.regsuccess-row{display:grid;grid-template-columns:40px 240px 1fr;align-items:start;gap:14px;' +
+  'padding:16px 18px;border-top:1px solid #d8e5eb;}' +
   '.regsuccess-row:first-child{border-top:none;}' +
-  // ข้อ 11 — value สี navy/600 (ต่าง .detail-value ปกติที่ไม่กำหนดสี/weight) ชื่อผลงาน wrap ได้ ห้าม truncate
-  '.regsuccess-value{color:var(--navy);font-weight:600;white-space:normal;word-break:break-word;}' +
-  // ข้อ 25 — เลขทะเบียนเด่นกว่าแถวอื่นเล็กน้อย
-  '.regsuccess-tracking{font-size:1.05rem;font-variant-numeric:tabular-nums;}' +
-  // ข้อ 12/14 — ปุ่มเรียงแนวนอน primary ซ้าย secondary ขวา ไม่เต็มหน้าจอ
-  '.regsuccess-actions{display:flex;gap:12px;justify-content:center;}' +
-  '.regsuccess-btn{text-decoration:none;}' +
-  // ข้อ 19 — Mobile 375/430px: การ์ดเกือบเต็มจอ padding ลด ปุ่ม stack แนวตั้งได้ ไม่ horizontal scroll
+  // ข้อ 12 — icon container เล็ก teal อ่อน เดี่ยวสี ไม่รก
+  '.regsuccess-row-icon{width:34px;height:34px;border-radius:9px;background:rgba(14,124,134,.12);color:var(--teal);' +
+  'display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;}' +
+  '.regsuccess-row-label{color:var(--muted);font-size:.86rem;padding-top:6px;}' +
+  // ข้อ 7 — value สี navy/600 ชื่อผลงานยาว wrap 2-3 บรรทัดได้ ห้าม ellipsis
+  '.regsuccess-row-value{color:var(--navy);font-weight:600;font-size:.94rem;white-space:normal;' +
+  'overflow-wrap:break-word;padding-top:4px;}' +
+  // ข้อ 8/25 — เลขทะเบียนเด่นกว่าแถวอื่นเล็กน้อย
+  '.regsuccess-tracking{font-size:1.1rem;font-variant-numeric:tabular-nums;}' +
+  // ข้อ 14-16 — ปุ่มเรียงแนวนอนกึ่งกลาง gap 16-20px, สูง 48-52px, primary กว้างกว่า secondary เล็กน้อย
+  '.regsuccess-actions{display:flex;gap:18px;justify-content:center;flex-wrap:wrap;}' +
+  '.regsuccess-btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center;' +
+  'height:50px;padding:0 26px;border-radius:11px;font-weight:600;font-size:.92rem;}' +
+  '.regsuccess-btn-icon{margin-right:8px;font-size:1rem;}' +
+  '.regsuccess-btn-primary{background:var(--teal);border-color:var(--teal);color:#fff;padding:0 30px;}' +
+  '.regsuccess-btn-secondary{color:var(--navy);border-color:var(--border);}' +
+  // ข้อ 20/30 — Mobile 375px: การ์ดเกือบเต็มจอ padding ลด, แถว stack icon/label/value, ปุ่ม stack แนวตั้ง, ไม่ horizontal scroll
   '@media (max-width:480px){' +
-  '.regsuccess-card{padding:24px 18px;}' +
-  '.regsuccess-title{font-size:1.4rem;}' +
+  '.regsuccess-card{padding:28px 18px;border-radius:18px;}' +
+  '.regsuccess-icon-ring{width:88px;height:88px;}' +
+  '.regsuccess-icon-circle{width:60px;height:60px;font-size:1.6rem;}' +
+  '.regsuccess-title{font-size:1.5rem;}' +
+  '.regsuccess-row{grid-template-columns:28px 1fr;grid-template-areas:"icon label" "value value";padding:14px;}' +
+  '.regsuccess-row-icon{grid-area:icon;width:28px;height:28px;}' +
+  '.regsuccess-row-label{grid-area:label;padding-top:2px;}' +
+  '.regsuccess-row-value{grid-area:value;padding-top:6px;}' +
   '.regsuccess-actions{flex-direction:column;}' +
-  '.regsuccess-btn{width:100%;text-align:center;}' +
+  '.regsuccess-btn{width:100%;}' +
   '}';
