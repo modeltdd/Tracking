@@ -115,6 +115,17 @@ function routeStaffPage_(e, user) {
       return renderStaffPage_('พิมพ์ QR', renderQrPrintBody_(qrWork, buildQrImageUrl_(ss, qrWork.qr_token), baseUrl), user, 'search', baseUrl);
     case 'register':
       return renderStaffPage_('รับเอกสารใหม่', renderRegisterFormBody_(ss, {}, [], baseUrl), user, 'register', baseUrl);
+    case 'register_success':
+      // 2026-11-05 — requirement ใหม่ "Success Confirmation Page" (ข้อ 22): GET ล้วนๆ โหลด record สด reload
+      // จาก work_id ทุกครั้ง (findWorkById_/canViewWorkDetail_ เดิม — permission เดียวกับ page=detail) ไม่เขียน
+      // ชีตใดๆ ที่นี่ — Refresh หน้านี้กี่ครั้งก็ไม่สร้างงานซ้ำ หา record ไม่ได้/ไม่มีสิทธิ์ (เช่น ลิงก์เก่า/ผิด) ให้
+      // กลับหน้า Registry อย่างปลอดภัยตามที่ระบุ (ไม่ใช่หน้า error)
+      var regSuccessWork = findWorkById_(ss, params.id);
+      if (!regSuccessWork || !canViewWorkDetail_(regSuccessWork, user, getHistoryForWork_(ss, params.id))) {
+        return renderRegistryRoute_(ss, user, params, baseUrl, '');
+      }
+      return renderStaffPage_('บันทึกข้อมูลเรียบร้อยแล้ว',
+        renderRegisterSuccessBody_(regSuccessWork, baseUrl, params.dw === '1'), user, 'register', baseUrl);
     case 'dashboard':
     default:
       if (user.role === 'ผู้รับผิดชอบ') {
@@ -193,7 +204,11 @@ function doPost(e) {
     if (!result.ok) {
       return renderStaffPage_('รับเอกสารใหม่', renderRegisterFormBody_(ss, result.values, result.errors, baseUrl), user, 'register', baseUrl);
     }
-    return renderStaffPage_('ลงทะเบียนสำเร็จ', renderRegisterSuccessBody_(result, baseUrl), user, 'register', baseUrl);
+    // 2026-11-05 — requirement ใหม่ "ป้องกัน record ซ้ำตอน Refresh หน้า Success" ไม่ render Success Page ตรงใน
+    // response ของ POST นี้แล้ว (ดูคอมเมนต์เต็มที่ renderRegisterSaveBounceBody_, Views.gs) ส่งต่อไปหน้า GET
+    // ?page=register_success แทน ซึ่งโหลด record สดจาก work_id เสมอ ไม่เขียนชีตซ้ำไม่ว่า Refresh กี่ครั้ง
+    return renderStaffPage_('บันทึกข้อมูลเรียบร้อยแล้ว',
+      renderRegisterSaveBounceBody_(baseUrl, result.work_id, result.dateOrderWarning), user, 'register', baseUrl);
   }
 
   if (formAction === 'work_action') {

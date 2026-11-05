@@ -3172,22 +3172,75 @@ var WF_CONFIRM_TOGGLE_SCRIPT_ = '' +
   '});' +
   '</script>';
 
-/** หน้าสำเร็จหลังลงทะเบียน — แสดงเลขติดตาม + QR ให้พิมพ์แปะเอกสาร */
-function renderRegisterSuccessBody_(result, baseUrl) {
-  // 2026-10-20 — เตือนไม่บล็อกการบันทึก (ข้อ 10): วันที่ธุรการรับเรื่องก่อนวันที่ส่งหนังสือ — บันทึกไปแล้วจริง
-  // แค่เตือนให้ตรวจสอบ ไม่ย้อนกลับไปกันบันทึกเหมือน error ปกติ
-  var dateWarningHtml = result.dateOrderWarning
+/**
+ * 2026-11-05 — requirement ใหม่ "ป้องกัน record ซ้ำตอน Refresh หน้า Success" (ข้อ 20-22) เดิม doPost
+ * (form_action=register_work) render renderRegisterSuccessBody_ ตรงใน response ของ POST เลย — ถ้าผู้ใช้ Refresh
+ * หน้านั้น browser จะเสนอ "ส่งฟอร์มซ้ำ?" ซึ่งถ้ากดยืนยันจะเรียก registerNewWork_ ซ้ำ เกิด record ซ้ำจริง
+ * เปลี่ยนมาเป็นหน้า "bounce" ชั่วคราวที่พา redirect ไปหน้า GET ?page=register_success&id=<work_id> แทน (GET
+ * ล้วนๆ ไม่มีการเขียนชีตใดๆ — Refresh กี่ครั้งก็ปลอดภัย) ใช้ลวดลาย/CSS class เดียวกับ
+ * renderOwnerLoginBounceBody_ (OwnerAuth.gs) ที่พิสูจน์แล้วจากรอบนั้นว่า top.location.replace() อัตโนมัติไม่ทำงาน
+ * 100% บน Apps Script Web App (sandbox iframe ไม่มี user gesture) จึงต้องมีปุ่มกดได้ทันทีสำรองไว้เสมอ — ไม่ใช่
+ * save logic ใหม่ ไม่ใช่ระบบ log ใหม่ แค่เปลี่ยน "Post-save navigation" ตามที่ข้อ 27 อนุญาตให้แก้ได้ตรงๆ
+ * dateOrderWarning (ข้อ 10 เดิม) ส่งผ่าน query string ต่อไปเพราะเป็นค่าชั่วคราวตอน save ไม่ได้เก็บลงชีต
+ */
+function renderRegisterSaveBounceBody_(baseUrl, workId, dateOrderWarning) {
+  var url = baseUrl + '?page=register_success&id=' + encodeURIComponent(workId) + (dateOrderWarning ? '&dw=1' : '');
+  return '' +
+    '<div class="detail-card owner-bounce-loading" id="regsuccess-bounce-fallback">' +
+    '<div class="owner-bounce-spinner" aria-hidden="true"></div>' +
+    '<p class="owner-bounce-text">กำลังเปิดหน้าบันทึกสำเร็จ...</p>' +
+    '<a target="_top" id="regsuccess-bounce-link" class="owner-bounce-link btn-primary" style="display:inline-block;text-decoration:none" href="' + escapeHtml_(url) + '">เปิดหน้าบันทึกสำเร็จ</a>' +
+    '</div>' +
+    '<script>(function () {' +
+    'var u = ' + JSON.stringify(url) + ';' +
+    'try { top.location.replace(u); } catch (err) { /* เงียบไว้ ใช้ปุ่มลิงก์แทน — ข้อจำกัด sandbox iframe ไม่มี user gesture */ }' +
+    'var link = document.getElementById("regsuccess-bounce-link");' +
+    'if (link) link.focus();' +
+    '})();</script>';
+}
+
+/**
+ * Success Confirmation Page หลังบันทึกข้อมูลใหม่สำเร็จ (requirement ใหม่ 2026-11-05 — เดิมหน้านี้โชว์ QR + ลิงก์
+ * "ลงทะเบียนรายการถัดไป", ระบบ QR ถูกถอดออกจาก flow นี้แล้วตามที่ระบุ ห้ามเพิ่มกลับมา)
+ *
+ * รับ "work" ที่โหลดสดจาก work_id ผ่าน findWorkById_ เดิม (เรียกจาก case 'register_success', Code.gs — ไม่ใช่
+ * ค่าที่ client เดา/ไม่ใช่ค่าจาก input form เดิม ข้อ 8/9 "ต้องใช้ข้อมูลหลัง Save จริง") เพราะหน้านี้มาจาก GET
+ * (reload ซ้ำได้ไม่จำกัดโดยไม่สร้าง record ใหม่ ดูคอมเมนต์ renderRegisterSaveBounceBody_ ด้านบน) ค่าทุกฟิลด์จึง
+ * เป็นค่าที่ถูก Save ลงชีต Works จริงเท่านั้น (title_name/first_name/last_name/work_title/tracking_no)
+ */
+function renderRegisterSuccessBody_(work, baseUrl, dateOrderWarning) {
+  var dateWarningHtml = dateOrderWarning
     ? '<div class="warning-banner">วันที่ธุรการรับเรื่องไม่ควรก่อนวันที่ส่งหนังสือ กรุณาตรวจสอบข้อมูล</div>'
     : '';
+
+  // ข้อ 23 — คำนำหน้า+ชื่อ+นามสกุลจริง ห้าม null/undefined/ว่างเปล่าโดยไม่มี fallback (รูปแบบต่อข้อความเดียวกับที่
+  // ใช้ทั่วระบบอยู่แล้ว — ดู LegacyMigration.gs/LegacyUpdate1012.gs: title_name+first_name+' '+last_name)
+  var ownerName = (String(work.title_name || '') + String(work.first_name || '') + ' ' + String(work.last_name || '')).trim() || '-';
+
+  // ข้อ 24 — ไม่มีชื่อผลงานจริง (ไม่ควรเกิดเพราะเป็นฟิลด์บังคับ แต่กันไว้) ไม่ต้อง render แถวนี้เลย ห้ามแสดง "-"
+  var workTitleRowHtml = work.work_title
+    ? '<div class="detail-row regsuccess-row"><span class="detail-label">ชื่อผลงาน</span>' +
+      '<span class="detail-value regsuccess-value">' + escapeHtml_(work.work_title) + '</span></div>'
+    : '';
+
   return '' +
     dateWarningHtml +
-    '<div class="success-card">' +
-    '<p class="success-title">ลงทะเบียนสำเร็จ</p>' +
-    '<p class="tracking-big">' + escapeHtml_(result.tracking_no) + '</p>' +
-    '<img class="qr-img" src="' + escapeHtml_(result.qr_image_url) + '" alt="QR code เอกสาร ' + escapeHtml_(result.tracking_no) + '">' +
-    '<p class="hint">พิมพ์/แปะ QR นี้ไว้บนเอกสาร ใช้สแกนรับงานที่สถานีถัดไป</p>' +
-    '<p><a target="_top" href="' + baseUrl + '?page=register">+ ลงทะเบียนรายการถัดไป</a> &nbsp;|&nbsp; ' +
-    '<a target="_top" href="' + baseUrl + '?page=dashboard">กลับหน้าแรก</a></p>' +
+    '<div class="regsuccess-card">' +
+    '<div class="regsuccess-icon-circle" aria-hidden="true">&#10003;</div>' +
+    '<h1 class="regsuccess-title">บันทึกข้อมูลเรียบร้อยแล้ว</h1>' +
+    '<p class="regsuccess-desc">ระบบได้บันทึกข้อมูลผลงานเรียบร้อยแล้ว สามารถดูรายละเอียดหรือติดตามกระบวนการดำเนินงานได้</p>' +
+    '<div class="regsuccess-summary">' +
+    '<div class="detail-row regsuccess-row"><span class="detail-label">ชื่อเจ้าของผลงาน</span>' +
+    '<span class="detail-value regsuccess-value">' + escapeHtml_(ownerName) + '</span></div>' +
+    workTitleRowHtml +
+    // ข้อ 25 — เลขทะเบียน (tracking_no จริงที่ backend สร้าง — ห้ามเลขบัตรประชาชน) ให้เด่นกว่าแถวอื่นเล็กน้อย
+    '<div class="detail-row regsuccess-row"><span class="detail-label">เลขทะเบียน</span>' +
+    '<span class="detail-value regsuccess-value regsuccess-tracking">' + escapeHtml_(work.tracking_no) + '</span></div>' +
+    '</div>' +
+    '<div class="regsuccess-actions">' +
+    '<a class="btn-primary regsuccess-btn" target="_top" href="' + baseUrl + '?page=detail&id=' + encodeURIComponent(work.work_id) + '">ดูกระบวนการดำเนินงาน</a>' +
+    '<a class="btn-outline regsuccess-btn" target="_top" href="' + baseUrl + '?page=registry">กลับไปหน้ารายการ</a>' +
+    '</div>' +
     '</div>';
 }
 
@@ -4458,3 +4511,39 @@ PUBLIC_CSS_ += '' +
   '.swft-drawer-error{color:var(--danger);font-size:.82rem;}' +
   // ข้อ 40 — Mobile: Drawer เต็มจอ
   '@media (max-width:640px){.swft-drawer{width:100%;max-width:100%;}}';
+
+// 2026-11-05 — requirement ใหม่ "Success Confirmation Page" หลังบันทึกข้อมูลใหม่ (renderRegisterSuccessBody_,
+// Views.gs) คลาส "regsuccess-" ใหม่ทั้งหมด สโคปเฉพาะหน้านี้ — ตั้งใจไม่ reuse/แก้ .success-card เดิม (ใช้ร่วมกับ
+// renderQrPrintBody_ อยู่ — ถ้าแก้ขนาด/padding ของ .success-card จะกระทบหน้าพิมพ์ QR ไปด้วยทันที ซึ่งอยู่นอกสโคป
+// งานนี้) reuse .detail-row/.detail-label/.detail-value เดิม (ข้อ 11 label/value) เติม modifier เฉพาะสีให้ตรง
+// ข้อกำหนดเท่านั้น
+PUBLIC_CSS_ += '' +
+  // ข้อ 17 — max-width 800-950px กึ่งกลาง, radius 16px, border บาง, shadow เบามาก, padding 32-40px desktop
+  '.regsuccess-card{max-width:900px;margin:0 auto;background:#fff;border:1px solid var(--border);' +
+  'border-radius:16px;box-shadow:0 2px 10px rgba(31,59,84,.06);padding:36px 32px;text-align:center;}' +
+  // ข้อ 3 — วงกลมเขียว เครื่องหมาย ✓ ขาว ขนาดพอเหมาะ (ไม่ใหญ่เกินไป)
+  '.regsuccess-icon-circle{width:56px;height:56px;border-radius:50%;background:var(--done);color:#fff;' +
+  'font-size:1.6rem;font-weight:700;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px;}' +
+  // ข้อ 4/18 — หัวข้อ 26-32px/700/navy, spacing 8px ก่อนคำอธิบาย
+  '.regsuccess-title{font-size:1.7rem;font-weight:700;color:var(--navy);margin:0 0 8px;font-family:Sarabun,sans-serif;}' +
+  // ข้อ 5 — คำอธิบายสี muted ไม่ตัวใหญ่, spacing 24px ก่อน Summary Panel
+  '.regsuccess-desc{color:var(--muted);font-size:.9rem;margin:0 0 24px;}' +
+  // ข้อ 6/10 — Summary Panel การ์ดเดียว ไม่แยก 3 ใบ, spacing 24px ก่อนปุ่ม
+  '.regsuccess-summary{background:var(--bg);border:1px solid var(--border);border-radius:12px;' +
+  'padding:4px 16px;margin:0 0 24px;text-align:left;}' +
+  '.regsuccess-row{border-top-color:var(--border);}' +
+  '.regsuccess-row:first-child{border-top:none;}' +
+  // ข้อ 11 — value สี navy/600 (ต่าง .detail-value ปกติที่ไม่กำหนดสี/weight) ชื่อผลงาน wrap ได้ ห้าม truncate
+  '.regsuccess-value{color:var(--navy);font-weight:600;white-space:normal;word-break:break-word;}' +
+  // ข้อ 25 — เลขทะเบียนเด่นกว่าแถวอื่นเล็กน้อย
+  '.regsuccess-tracking{font-size:1.05rem;font-variant-numeric:tabular-nums;}' +
+  // ข้อ 12/14 — ปุ่มเรียงแนวนอน primary ซ้าย secondary ขวา ไม่เต็มหน้าจอ
+  '.regsuccess-actions{display:flex;gap:12px;justify-content:center;}' +
+  '.regsuccess-btn{text-decoration:none;}' +
+  // ข้อ 19 — Mobile 375/430px: การ์ดเกือบเต็มจอ padding ลด ปุ่ม stack แนวตั้งได้ ไม่ horizontal scroll
+  '@media (max-width:480px){' +
+  '.regsuccess-card{padding:24px 18px;}' +
+  '.regsuccess-title{font-size:1.4rem;}' +
+  '.regsuccess-actions{flex-direction:column;}' +
+  '.regsuccess-btn{width:100%;text-align:center;}' +
+  '}';
