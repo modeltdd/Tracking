@@ -557,16 +557,47 @@ function ownerTimelineNeedsRevisionPath_(steps) {
  * "ไม่ผ่าน" ตรง (ไม่มีการแก้ไขจริง) — "ห้าม mark skipped ก่อนรู้ผล Step 3" (resolved ยังเป็น null) จึงไม่ skip เลย
  * ปล่อยเป็น upcoming ปกติ
  */
+/**
+ * 2026-11-05 — requirement ใหม่ "ตรวจ Root Cause/Architecture" (ข้อ 16/17): แกะ logic ตัดสิน "Owner Step ปัจจุบัน
+ * คือเลขอะไร" ที่เดิมฝังอยู่ใน .map() ของ buildOwnerRevisionTimeline_ (เทียบ currentOrderNum กับ min/max ของทุก
+ * แถวซ้ำทุกครั้ง) ออกมาเป็น pure function แยกต่างหาก ชื่อ/พฤติกรรมตรงตามที่ระบุเป๊ะ — resolveOwnerStep_("7.2")
+ * ต้องคืน 3, resolveOwnerStep_("8.1") ต้องคืน 4 (ดู Final Report) ไม่ใช่ logic ใหม่ ไม่เปลี่ยนค่า/range ใดๆ จาก
+ * OWNER_REVISION_TIMELINE_STEPS_ เดิม (ยืนยันแล้วด้วย harness ว่า station_order จริงทุกค่าในระบบ (1 ถึง 10 รวม
+ * ทศนิยม 3.1-3.3/7.1-7.4/8.1-8.6/9.1-9.4) ตกอยู่ในช่วงใดช่วงหนึ่งพอดีเสมอ ไม่มีช่องว่าง) รับ station_order จริง
+ * (string/number เช่น "7.2") คืนเลข Owner Step 1-8 ตรงตัว คืน 0 ถ้าไม่ match ช่วงใดเลย (ไม่เคยเกิดกับข้อมูลจริงใน
+ * ระบบนี้ — กันไว้เผื่ออนาคต Admin เพิ่ม state ใหม่ที่ตกช่องว่าง ไม่ throw/ไม่เดา)
+ *
+ * Root cause ของบั๊ก tracking_no 69-220 ("Owner เห็น Current ที่ Step 4 ทั้งที่ current_state ยังเป็น 7.2") ที่
+ * ระบุในข้อ 1 ของ requirement — ตรวจจริงแล้วพบว่าถูกแก้ไปแล้วตั้งแต่ commit 4125b16 (2026-10-21, เส้นทาง "ต้อง
+ * แก้ไข" เปลี่ยนมาใช้ 8 ขั้นตอนนี้ + unify ทุกเส้นทางใน aaf29ae 2026-10-28) ทดสอบซ้ำด้วย harness ยืนยันว่า state
+ * 7.2/7.3/7.4/7.1/8.1 ทุกกรณี resolve ถูกต้องตาม Business Rule นี้แล้วในโค้ดปัจจุบัน (ดู Final Report ข้อ 2-3) —
+ * งานรอบนี้จึงเป็นการ "แกะเป็นฟังก์ชันชื่อตรงตามสถาปัตยกรรมที่ขอ" (ข้อ 17) + เพิ่ม regression test ป้องกันบั๊กนี้
+ * ไม่ให้เกิดซ้ำอีก ไม่ใช่การแก้ bug ใหม่ (พฤติกรรมเดิมทุกประการ — 0 risk)
+ */
+function resolveOwnerStep_(stationOrder) {
+  var n = parseFloat(stationOrder || '0') || 0;
+  for (var i = 0; i < OWNER_REVISION_TIMELINE_STEPS_.length; i++) {
+    var r = OWNER_REVISION_TIMELINE_STEPS_[i];
+    if (n >= r.min && n <= r.max) return r.order;
+  }
+  return 0;
+}
+
 function buildOwnerRevisionTimeline_(steps, stationsMap, work) {
   if (!steps) return null;
   var currentStation = (stationsMap || {})[work.current_station_key] || null;
   var currentOrderNum = currentStation ? (parseFloat(currentStation.station_order || '0') || 0) : 0;
+  // resolveOwnerStep_ เป็น Source of Truth หลัก (ข้อ 10/17 — ใช้ current_state จริงตัดสิน ไม่ใช่ข้อความ) ถ้า
+  // unmatched (0 — ไม่เคยเกิดกับข้อมูลจริง) fallback กลับไปเทียบ min/max ต่อแถวแบบเดิมทุกประการ กันพฤติกรรม
+  // เปลี่ยนแปลงแม้ในกรณีที่ไม่คาดคิด (station_order ใหม่ที่ Admin เพิ่มเองแล้วตกช่องว่างระหว่าง range)
+  var currentOwnerStep = resolveOwnerStep_(currentStation ? currentStation.station_order : '0');
   var resolvedFirstRound = getResolvedFirstRoundStep_(steps);
   var isPassFailRoute = !!resolvedFirstRound && (resolvedFirstRound.key === 's7_1' || resolvedFirstRound.key === 's7_4');
 
   var entries = OWNER_REVISION_TIMELINE_STEPS_.map(function (r) {
-    var state = currentOrderNum >= r.min && currentOrderNum <= r.max ? 'current'
-      : currentOrderNum > r.max ? 'done' : 'upcoming';
+    var state = currentOwnerStep > 0
+      ? (r.order === currentOwnerStep ? 'current' : r.order < currentOwnerStep ? 'done' : 'upcoming')
+      : (currentOrderNum >= r.min && currentOrderNum <= r.max ? 'current' : currentOrderNum > r.max ? 'done' : 'upcoming');
     var entry = { order: r.order, label: r.label, state: state, isLastStep: r.order === 8 };
 
     if (isPassFailRoute && r.order >= 4 && r.order <= 7) {
