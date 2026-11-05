@@ -1733,14 +1733,17 @@ function renderStaffWorkflowRowsTable_(ss, work, history, stationsMap, data, use
     // ตามข้อ 10 "กรณียังไม่ได้เลือก ไม่ต้องมี badge ว่าง")
     var bareStation = groupStations.filter(function (s) { return String(s.station_order) === String(n); })[0];
     var isDecisionHub = bareStation && model.branchFromCount[bareStation.station_key] > 1;
-    var resultBadgeHtml = '';
+    // 2026-11-05 รอบ 3 — requirement ใหม่ ข้อ 5/10/14/20 ย้าย badge ผลที่เลือกออกเป็นคอลัมน์แยก "ผลการเลือก /
+    // รายละเอียด" (เดิมต่อท้ายชื่อขั้นตอนในคอลัมน์ "ขั้นตอน" — ย้ายเฉยๆ ไม่เปลี่ยน logic การคำนวณผล) ขั้นตอนที่ไม่ใช่
+    // จุดแตกสาย หรือจุดแตกสายที่ยังไม่ resolve ให้แสดง "-" เสมอ (ห้าม null/undefined/ว่างเปล่า ตามข้อ 14)
+    var resultCellHtml = '-';
     if (isDecisionHub && rep && rep.stationKey !== bareStation.station_key) {
       var resInfo = STAFF_STEP_RESULT_BADGE_[rep.stationKey];
       if (!resInfo) {
         var repStDefForBadge = stationsMap[rep.stationKey];
         resInfo = { text: repStDefForBadge ? splitStationNameDesc_(repStDefForBadge.station_name).main : rep.stationKey, tone: 'neutral' };
       }
-      resultBadgeHtml = '<span class="swft-result-badge swft-result-badge-' + resInfo.tone + '">' + escapeHtml_(resInfo.text) + '</span>';
+      resultCellHtml = '<span class="swft-result-badge swft-result-badge-' + resInfo.tone + '">' + escapeHtml_(resInfo.text) + '</span>';
     }
 
     var dateInputHtml;
@@ -1817,7 +1820,8 @@ function renderStaffWorkflowRowsTable_(ss, work, history, stationsMap, data, use
 
     rowsHtml += '<tr class="swft-row swft-row-' + state + '" data-step="' + n + '">' +
       '<td class="swft-col-order"><span class="swfg-badge swfg-badge-' + badgeTone + '">' + badgeIcon + '</span></td>' +
-      '<td class="swft-col-step"><span class="swft-step-icon">' + staffStepIcon_(label) + '</span><span class="swft-step-name">' + escapeHtml_(label) + '</span>' + resultBadgeHtml + '</td>' +
+      '<td class="swft-col-step"><span class="swft-step-icon">' + staffStepIcon_(label) + '</span><span class="swft-step-name">' + escapeHtml_(label) + '</span></td>' +
+      '<td class="swft-col-result">' + resultCellHtml + '</td>' +
       '<td class="swft-col-date">' + dateInputHtml + '</td>' +
       '<td class="swft-col-history">' + historyCellHtml + '</td>' +
       '<td class="swft-col-detail">' + detailBtnHtml + '</td>' +
@@ -1838,8 +1842,8 @@ function renderStaffWorkflowRowsTable_(ss, work, history, stationsMap, data, use
     '<div class="swfg-header"><span class="swfg-header-icon">&#128197;</span>รายละเอียดขั้นตอนและการดำเนินการ</div>' +
     errorHtml +
     '<div class="swft-table-wrap"><table class="swft-table">' +
-    '<colgroup><col style="width:6%"><col style="width:38%"><col style="width:25%"><col style="width:18%"><col style="width:13%"></colgroup>' +
-    '<thead><tr><th>ลำดับ</th><th>ขั้นตอน</th><th>วันที่ดำเนินการ</th><th>ประวัติการแก้ไข</th><th>ดูรายละเอียด</th></tr></thead>' +
+    '<colgroup><col style="width:6%"><col style="width:27%"><col style="width:20%"><col style="width:20%"><col style="width:15%"><col style="width:12%"></colgroup>' +
+    '<thead><tr><th>ลำดับ</th><th>ขั้นตอน</th><th>ผลการเลือก / รายละเอียด</th><th>วันที่ดำเนินการ</th><th>ประวัติการแก้ไข</th><th>ดูรายละเอียด</th></tr></thead>' +
     '<tbody>' + rowsHtml + '</tbody>' +
     '</table></div>' +
     '<form method="post" target="_top" action="' + baseUrl + '" id="swfg-form">' +
@@ -4398,11 +4402,13 @@ PUBLIC_CSS_ += '' +
   '.swft-row-current td:first-child{border-left:3px solid var(--navy);}' +
   '.swft-row-skipped{opacity:.55;}' +
   '.swft-col-order{text-align:center;width:6%;}' +
-  // ข้อ 5/16 — "ครบถ้วน → ส่งเลขา" ต่อท้ายชื่อขั้นตอน wrap ลงบรรทัดถัดไปได้ภายใน cell เดิม (flex-wrap) ไม่สร้าง
-  // column ใหม่ บน mobile ชื่อขั้นตอนขึ้นก่อน (DOM order เดิม) badge ตามมาบรรทัดถัดไปได้เองจาก wrap นี้
   '.swft-col-step{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}' +
   '.swft-step-icon{flex-shrink:0;font-size:.9rem;}' +
   '.swft-step-name{color:var(--text);line-height:1.35;}' +
+  // 2026-11-05 รอบ 3 — requirement ใหม่ คอลัมน์แยก "ผลการเลือก / รายละเอียด" (เดิมต่อท้ายชื่อขั้นตอนในคอลัมน์
+  // ขั้นตอน — ย้ายมาคอลัมน์นี้ตามที่ขอ) ขั้นตอนที่ไม่มีผล/ยังไม่ resolve แสดง "-" สีเทากลาง (ข้อ 14/20 ห้าม
+  // null/undefined/ว่างเปล่า)
+  '.swft-col-result{text-align:center;color:var(--muted);font-size:.82rem;}' +
   // ข้อ 6/8/15 — badge ผลที่เลือก (Step 3 hub ครบถ้วน/ไม่ครบถ้วน + Step 7) เล็ก กระชับ 1366px (font 11px)
   '.swft-result-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;' +
   'border:1px solid transparent;line-height:1.5;white-space:normal;}' +
