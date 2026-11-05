@@ -152,6 +152,22 @@ function formatDateDDMMYYYYBuddhist_(date) {
   return day + '/' + month + '/' + year;
 }
 
+/** วันที่-เวลาแบบ dd/mm/yyyy (พ.ศ.) HH:mm น. — 2026-11-05 ใช้เฉพาะ Side Drawer "ประวัติการแก้ไข" (หน้า Staff
+ *  Workflow) ที่ต้องมีทั้งวันที่ พ.ศ. (ข้อ 15 ห้าม ISO/UTC) และเวลา (ต่างจาก formatDateDDMMYYYYBuddhist_ เดิมที่
+ *  ไม่มีเวลา และ formatDateTh_ เดิมที่มีเวลาแต่เป็นปี ค.ศ.) reuse padLeft_/getBuddhistYear_ เดิมเท่านั้น ไม่สร้าง
+ *  logic แปลงวันที่ใหม่ คืน '-' ถ้าไม่มีวันที่จริง/invalid */
+function formatDateTimeThBuddhist_(date) {
+  if (!date) return '-';
+  var d = new Date(date);
+  if (isNaN(d.getTime())) return '-';
+  var day = padLeft_(d.getDate(), 2);
+  var month = padLeft_(d.getMonth() + 1, 2);
+  var year = getBuddhistYear_(d);
+  var hh = padLeft_(d.getHours(), 2);
+  var mm = padLeft_(d.getMinutes(), 2);
+  return day + '/' + month + '/' + year + ' ' + hh + ':' + mm + ' น.';
+}
+
 /** วันที่แบบ YYYY-MM-DD (ค.ศ., ไม่มีเวลา) — 2026-10-21 ใช้เติมค่าเดิมกลับเข้า <input type="date"> ตอน Admin
  *  แก้ไข "วันครบกำหนดแก้ไข" ย้อนหลัง (renderWorkDetailBody_) — HTML date input ต้องการ format นี้เป๊ะ คืนค่า
  *  ว่าง '' ถ้าไม่มีวันที่จริง/invalid เหมือน formatDateDDMMYYYYBuddhist_ ด้านบน */

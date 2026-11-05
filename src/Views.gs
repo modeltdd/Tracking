@@ -1138,41 +1138,21 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
     renderPubOwnerRow_('เลขา', chairSecretary.secretaryName) +
     '</div>';
 
-  var heroHtml = renderPubHero_(work, data.currentStation, stationsMap, data.steps);
-
-  var actionHtml = work.next_step_text
-    ? '<div class="pub-action-box"><div class="pub-action-title">สิ่งที่ต้องดำเนินการ</div><p>' + escapeHtml_(work.next_step_text) + '</p></div>'
-    : '';
-
-  // Mini Important Info Grid (2026-09-24 redesign รอบ compact) — รวมผู้รับผิดชอบ+วันที่สำคัญไว้ grid เดียว
-  // (เดิมแยก 2 การ์ด: pub-owner-card "ผู้รับผิดชอบปัจจุบัน" + renderPubDateGrid_ "วันที่สำคัญ")
-  var infoGridHtml = renderPubInfoGrid_([
-    { label: 'ผู้รับผิดชอบ', value: work.handoff_pending ? '(รอสแกนรับเอกสาร)' : (work.current_owner_org || '-') },
-    { label: 'รับงานเมื่อ', value: formatDateThShort_(work.updated_at) },
-    { label: 'รับเรื่องเมื่อ', value: formatDateThShort_(work.received_date) },
-    { label: 'ส่งให้ผู้ว่า', value: data.governorForwardDate ? formatDateThShort_(data.governorForwardDate) : 'ยังไม่ส่งให้ผู้ว่า' },
-  ]);
+  // 2026-11-05 — requirement ใหม่ "Side Drawer" ข้อ 1/45: ห้ามมี block "สถานะปัจจุบัน" (renderPubHero_)/
+  // "ข้อมูลสำคัญ" (renderPubInfoGrid_)/"สิ่งที่ต้องดำเนินการ" ซ้ำกับตารางขั้นตอนแล้ว — ฟังก์ชันทั้งสองยังไม่ถูกลบ
+  // ทิ้ง (ตามธรรมเนียมโปรเจกต์ ใช้ที่หน้า Public/Owner เดิมต่อไปตามปกติ ไม่ถูกแตะ) แค่เลิกเรียกใช้ในหน้า Staff นี้
 
   // 2026-11-04 รอบ 3 — model กลาง (buildStaffWorkflowModel_) ยังใช้ร่วมกันเหมือนเดิม
   var model = buildStaffWorkflowModel_(ss, work, history, stationsMap, data, user);
 
-  // 2026-11-04 รอบ 3 — requirement ล่าสุด "รวมเป็น component เดียว" ยกเลิกไดอะแกรมแนวนอน+Progress Card แยก
-  // (renderStaffOverviewAndProgress_ เดิม — เลิกเรียกใช้ในหน้านี้แล้ว แต่ไม่ลบฟังก์ชันทิ้งตามธรรมเนียมโปรเจกต์)
-  // ตารางกริดใหม่ (renderStaffWorkflowGrid_) ทำหน้าที่ทั้ง Workflow Overview + วันที่ + บันทึกในตัวเดียวแล้ว
-  // ข้อ 21 — success feedback เล็กๆ (ไม่ใช่ modal) หลัง update สำเร็จ ส่งมาจาก Code.gs ตอน redirect กลับมาหน้านี้
+  // 2026-11-05 — requirement ใหม่ "ตารางแนวตั้ง 5 คอลัมน์ + Side Drawer ประวัติต่อขั้นตอน" (renderStaffWorkflowRowsTable_)
+  // แทนที่ renderStaffWorkflowGrid_ เดิม (ตารางกริดแนวนอน รอบก่อนหน้า — ไม่ถูกเรียกใช้แล้ว ไม่ลบทิ้ง)
+  // ข้อ 21/35 — success feedback เล็กๆ (ไม่ใช่ modal) หลัง update สำเร็จ ส่งมาจาก Code.gs ตอน redirect กลับมาหน้านี้
   var stepSuccessHtml = stepSuccessMessage
     ? '<div class="swfg-success-banner">&#10003; ' + escapeHtml_(stepSuccessMessage) + '</div>'
     : '';
-  var staffWorkflowTableHtml = stepSuccessHtml + renderStaffWorkflowGrid_(ss, work, history, stationsMap, data, user, baseUrl, stepErrors, stepPrevValues, model);
+  var staffWorkflowTableHtml = stepSuccessHtml + renderStaffWorkflowRowsTable_(ss, work, history, stationsMap, data, user, baseUrl, stepErrors, stepPrevValues, model);
   if (data.isLegacyImportOnly) staffWorkflowTableHtml += renderPubLegacyInfoBox_();
-
-  // ข้อมูลภายในสำหรับเจ้าหน้าที่ — พับเก็บด้วย <details> ไม่ให้เด่นเกินสถานะ/Timeline ตามที่ผู้ใช้ขอ 2026-09-24
-  var infoHtml = '' +
-    '<details class="pub-details"><summary>ข้อมูลเพิ่มเติมสำหรับเจ้าหน้าที่</summary>' +
-    '<div class="pub-details-body">' +
-    renderPubOwnerRow_('ตำแหน่ง', work.position) +
-    renderPubOwnerRow_('หน่วยงานต้นสังกัด', work.org_from) +
-    '</div></details>';
 
   var noteHtml = data.latestNote
     ? '<div class="pub-note-box"><div class="pub-note-title">หมายเหตุจากผู้รับผิดชอบ</div><p>' + escapeHtml_(data.latestNote) + '</p></div>'
@@ -1253,12 +1233,17 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
       }).join('') + '</div></details>'
     : '';
 
+  // 2026-11-05 — ข้อ 45 "ห้ามมี History card ใหญ่ใต้ตาราง" (auditLogHtml เดิม พับด้วย <details> ประวัติทุกแถว
+  // ทุก action) เลิกแสดงในหน้านี้แล้ว (Side Drawer ต่อขั้นตอน ครอบคลุมความต้องการดูประวัติแล้ว) ตัวแปร auditLogHtml
+  // ยังคงคำนวณไว้เหมือนเดิมด้านบน (ไม่ลบทิ้งตามธรรมเนียมโปรเจกต์ เผื่ออ้างอิง/ย้อนกลับภายหลัง) แค่ไม่ถูกต่อเข้า
+  // output ที่นี่อีกต่อไป เช่นเดียวกับ infoHtml เดิม ("ข้อมูลเพิ่มเติมสำหรับเจ้าหน้าที่" — ตำแหน่ง/หน่วยงานต้นสังกัด
+  // ซ้ำกับ summaryBoxesHtml ด้านบนแล้ว) ที่ไม่สร้างตัวแปรนี้แล้วเลย
   return '' +
     '<div class="pub-compact swf-page">' +
     swfHeaderHtml +
     '<div class="detail-card">' +
-    nameBlockHtml + summaryBoxesHtml + heroHtml + actionHtml + infoGridHtml + staffWorkflowTableHtml +
-    noteHtml + auditLogHtml + infoHtml + coverHtml + ownerCodeHtml + revisionDueDateHtml +
+    nameBlockHtml + summaryBoxesHtml + staffWorkflowTableHtml +
+    noteHtml + coverHtml + ownerCodeHtml + revisionDueDateHtml +
     '<p style="margin-top:12px"><a class="btn-outline" target="_top" href="' + baseUrl + '?page=qrprint&id=' + encodeURIComponent(work.work_id) + '">พิมพ์ QR ใหม่</a></p>' +
     '</div>' +
     '</div>' +
@@ -1308,11 +1293,44 @@ function buildStaffWorkflowModel_(ss, work, history, stationsMap, data, user) {
   var mainStepNumbers = Object.keys(mainStepNumSet).map(Number).sort(function (a, b) { return a - b; });
   var currentMainStepNumber = currentStateDef ? (parseInt(parentStepOrder_(currentStateDef.station_order), 10) || 0) : 0;
 
+  // 2026-11-05 — requirement ใหม่ "คอลัมน์ ประวัติการแก้ไข + Side Drawer กรอง work_id+stepCode" โหลด AuditLog
+  // ของงานนี้ "ครั้งเดียว" ตรงนี้ (ข้อ 28 — ห้ามยิง backend 10 ครั้งนับ history ต่อ step) แล้ว group ตามขั้นตอนหลัก
+  // ที่เกี่ยวข้องให้ทุกจุดอ่านค่าเดียวกัน (ตาราง count + Drawer filter) ไม่ query ซ้ำ ไม่สร้าง log system ใหม่ —
+  // อ่านจาก AuditLog เดิม (writeAuditLog_, Utils.gs) ที่มีอยู่แล้วจาก performEditStepDate_ (field_changed =
+  // "action_date (<to_station>)") และ performSetRevisionDueDate_ (field_changed = "revision_due_date" — ผูกกับ
+  // ขั้นตอนหลัก 7 เสมอเพราะ REVISION_DUE_DATE_STATE_KEYS_ มีแค่ s7_2/s7_3 เท่านั้นในระบบจริง ไม่ใช่การเดา)
+  var auditRows = readSheetAsObjects_(ss.getSheetByName(SHEET.AUDIT_LOG)).filter(function (a) { return a.work_id === work.work_id; });
+  var auditByMainStep = {};
+  auditRows.forEach(function (a) {
+    var n = null;
+    var m = /^action_date \(([^)]+)\)$/.exec(String(a.field_changed || ''));
+    if (m && stationsMap[m[1]]) {
+      n = parseInt(parentStepOrder_(stationsMap[m[1]].station_order), 10);
+    } else if (a.field_changed === 'revision_due_date') {
+      n = 7;
+    }
+    if (!n) return;
+    (auditByMainStep[n] = auditByMainStep[n] || []).push(a);
+  });
+  Object.keys(auditByMainStep).forEach(function (n) {
+    auditByMainStep[n].sort(function (a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });
+  });
+
   return {
     isAdmin: user.role === 'Admin', doneMap: doneMap, skippedMainSteps: skippedMainSteps, currentKey: currentKey,
     currentStateDef: currentStateDef, eligibleTransitions: eligibleTransitions, resolvedFirstRound: resolvedFirstRound,
     allStations: allStations, mainStepNumbers: mainStepNumbers, currentMainStepNumber: currentMainStepNumber,
+    auditByMainStep: auditByMainStep,
   };
+}
+
+/** ชื่อฟิลด์ที่แก้ แบบอ่านง่าย (ข้อ 22/23 Drawer "รายการ :: ...") — field_changed ภายในเก็บเป็น
+ *  "action_date (<station_key>)"/"revision_due_date" (AuditLog เดิม) ไม่ใช่ข้อความอ่านง่ายตรงๆ */
+function swftAuditFieldLabel_(fieldChanged) {
+  var s = String(fieldChanged || '');
+  if (s.indexOf('action_date') === 0) return 'วันที่ดำเนินการ';
+  if (s === 'revision_due_date') return 'วันครบกำหนดแก้ไข';
+  return s;
 }
 
 /** ชื่อขั้นตอนหลัก (เลขหน้าจุด n) แบบ internal — ไม่ใช้ OWNER_STATE_LABELS_/mainStepNameFor_ (สงวนไว้เฉพาะ
@@ -1596,6 +1614,252 @@ function renderStaffWorkflowGrid_(ss, work, history, stationsMap, data, user, ba
     '</div>' +
     SWFG_DIRTY_SCRIPT_;
 }
+
+/**
+ * 2026-11-05 — requirement ใหม่ "Staff workflow ตารางแนวตั้ง 5 คอลัมน์ (ลำดับ/ขั้นตอน/วันที่ดำเนินการ/ประวัติ
+ * การแก้ไข/ดูรายละเอียด) + Side Drawer ประวัติต่อขั้นตอน" แทนที่ renderStaffWorkflowGrid_ ด้านบน (ตารางกริด
+ * แนวนอน 10 คอลัมน์ รอบก่อนหน้า) ในหน้าจริง — ไม่ลบ renderStaffWorkflowGrid_ ทิ้ง (ตามธรรมเนียมโปรเจกต์)
+ *
+ * 1 แถว = 1 "ขั้นตอนหลัก" จาก model.mainStepNumbers (buildStaffWorkflowModel_ เดิม — ไม่คำนวณ state/doneMap/
+ * skip/outcome ซ้ำ, business rule เดิมทุกจุดเหมือน renderStaffWorkflowGrid_) กว้างคอลัมน์ 6/38/25/18/13%
+ * ตามที่ระบุ (ข้อ 6) ใช้ <table table-layout:fixed> ธรรมดา ไม่ใช่ CSS Grid แล้ว (ข้อมูลกลับมาเป็นแนวตั้งปกติ)
+ *
+ * <table> นี้ไม่ได้ถูกครอบด้วย <form> โดยตรง (ต่างจาก renderStaffWorkflowGrid_ เดิม) เพราะขั้นตอนแตกสายจริง
+ * (step 3/7 — ดูหมายเหตุด้านล่างว่าทำไมไม่ใช่ step 2) ต้องมี <form> แยกของตัวเองอยู่ใน <td> เดียวกัน ซ้อน <form> ใน <form> ไม่ได้ตาม HTML spec — ใช้
+ * attribute มาตรฐาน HTML5 `form="swfg-form"` ผูก input คอลัมน์ "วันที่ดำเนินการ" ของแถวอื่นๆ (เสร็จแล้ว/ปัจจุบัน
+ * ทางเดียว) เข้ากับฟอร์ม #swfg-form ที่อยู่หลังตาราง (มีแค่ hidden fields + ปุ่ม ไม่มี input ของตัวเอง) แทน —
+ * รองรับทุก browser หลักปัจจุบัน (Chrome/Firefox/Edge/Safari) ปุ่ม "✓ อัปเดตข้อมูล" เดียว ยังเรียก
+ * performSaveAllStepDates_ เดิมเป๊ะ (ไม่ถูกแตะ)
+ *
+ * ขั้นตอนแตกสายจริง — ตรวจ WORKFLOW_TRANSITIONS_SEED (Constants.gs) จริงแล้วพบว่าไม่ใช่ step 2 ตามที่ requirement
+ * เรียกชื่อ (requirement ใช้ชื่อ "ขั้นตอน" ตามความเข้าใจผู้ใช้ ไม่ตรงกับ state code จริงเป๊ะ — s2_s3_1/s2_s3_2 เดิม
+ * ถูกปิด active แล้วจริงจาก migrateAddState3Hub() ก่อนหน้านี้ ข้อ "ตรวจ code จริงก่อนแก้ ห้ามเดา" จึงต้องยึดโค้ด
+ * จริงเป็นหลัก): step 2 ("ตรวจสอบเอกสาร") ปัจจุบันมีทางออกทางเดียวจริง (s2_s3 -> ส่งเอกสารให้เลขาคณะกรรมการฯ)
+ * ส่วนตัวเลือกครบถ้วน/ไม่ครบถ้วน -> 3.1/3.2 จริงๆ เกิดตอน current เป็น "step 3" (hub bare, s3_s3_1/s3_s3_2) —
+ * โค้ดด้านล่างไม่ hardcode เลข step ใดๆ เลย (เช็คแค่ model.eligibleTransitions.length>1 ตอน state==='current'
+ * เท่านั้น) จึงแตกสายถูกจุดจริงเสมอไม่ว่าจะเป็น step 3 หรือ step 7 (ผ่าน/แก้ไข 2 เดือน/แก้ไข 6 เดือน/ไม่ผ่าน)
+ * โดยอัตโนมัติ ไม่ต้องแก้โค้ดถ้า business rule ย้ายจุดแตกสายอีกในอนาคต แสดงเป็น radio ในคอลัมน์ "วันที่ดำเนินการ"
+ * ของแถวนั้น (ข้อ 10/32/33
+ * "radio/segmented, inline compact, ห้ามเลือกได้พร้อมกัน 2 ตัว") เลือกแล้วฟอร์มย่อยของตัวเลือกนั้นเผยออกมาในที่
+ * เดียวกัน (toggle ด้วย data-wf-toggle/.wtbl-panel/STAFF_WORKFLOW_TOGGLE_SCRIPT_ เดิมทุกอัน — เดิมใช้กับปุ่ม,
+ * ใช้กับ radio ได้เลยไม่ต้องแก้สคริปต์ เพราะ event listener ผูกกับ "click" บน [data-wf-toggle] ทุก element
+ * อยู่แล้ว ไม่สนใจว่าเป็น tag อะไร) ฟอร์มย่อย POST ตรงไป form_action=state_transition เดิมทุกประการ
+ * (performStateTransition_ ไม่ถูกแตะ — ห้ามเดาผลจากวันที่อย่างเดียวยังจริงเหมือนเดิม)
+ *
+ * ประวัติการแก้ไข/Drawer: นับ+กรองด้วย work_id+stepCode จาก model.auditByMainStep (โหลด AuditLog ครั้งเดียวใน
+ * buildStaffWorkflowModel_ — ข้อ 28 ห้ามยิง backend ต่อ step) เนื้อหา Drawer ของทุก step ที่มีประวัติ ถูก embed
+ * ไว้ใน <template> ซ่อนอยู่ตั้งแต่โหลดหน้าแล้ว กดปุ่ม "ดูรายละเอียด" แค่สลับ DOM ฝั่ง client (SWFT_DRAWER_SCRIPT_)
+ * ไม่มี backend call เพิ่มเลยตอนเปิด Drawer (เข้าเงื่อนไข "dataset เล็ก" ของข้อ 28 เสมอ — AuditLog ต่องานหนึ่ง
+ * รายการมีไม่กี่แถวจริง)
+ *
+ * ขอบเขตที่ตั้งใจไม่ Implement (ตรวจแล้วว่าไม่ปลอดภัยตาม "ห้ามเปลี่ยน Business Rule"): การ "เปลี่ยนผลที่เลือกไป
+ * แล้ว" ของขั้นตอนแตกสาย (step 3/7) หลังจากขั้นตอนนั้นผ่านไปแล้วจริง (current_station_key เดินหน้าไปขั้นอื่นแล้ว) ต้องมีการย้อน
+ * state กลับซึ่งไม่มี transition ใดใน WorkflowTransitions รองรับไว้จริง — สร้างเส้นทางนี้เองเท่ากับ "เดา"/เพิ่ม
+ * business rule ใหม่ จึงไม่ implement ส่วนนี้ (ดูรายละเอียดเต็มใน Final Report) ยังทำได้และปลอดภัยเสมอคือ (1)
+ * เลือกผลระหว่างที่ขั้นตอนนั้นยังเป็น "ปัจจุบัน" จริง (ก่อน fire transition) ผ่าน radio ปกติด้านบน และ (2) แก้
+ * "วันที่" ย้อนหลังของขั้นที่เสร็จแล้วทุกขั้น (รวม step 3/7) ผ่าน performEditStepDate_ เดิม — ทั้ง 2 กรณีสร้าง
+ * AuditLog ที่ Drawer/คอลัมน์ประวัติแสดงได้จริงตามข้อ 25-27 ไม่ fabricate อะไรเพิ่ม
+ */
+function renderStaffWorkflowRowsTable_(ss, work, history, stationsMap, data, user, baseUrl, stepErrors, stepPrevValues, model) {
+  stepPrevValues = stepPrevValues || {};
+  var isAdmin = model.isAdmin;
+
+  var errorHtml = (stepErrors && stepErrors.length)
+    ? '<div class="error-banner"><ul>' + stepErrors.map(function (m) { return '<li>' + escapeHtml_(m) + '</li>'; }).join('') + '</ul></div>'
+    : '';
+
+  var rowsHtml = '';
+  var templatesHtml = '';
+
+  model.mainStepNumbers.forEach(function (n) {
+    var groupStations = model.allStations.filter(function (s) { return parentStepOrder_(s.station_order) === String(n); });
+    var label = staffMainStepLabel_(n, model.allStations);
+
+    var state;
+    if (n === model.currentMainStepNumber) state = 'current';
+    else if (model.skippedMainSteps[String(n)]) state = 'skipped';
+    else if (n < model.currentMainStepNumber) state = 'done';
+    else state = 'pending';
+
+    var rep = null;
+    groupStations.forEach(function (s) {
+      var d = model.doneMap[s.station_key];
+      if (d && (!rep || new Date(d.enteredAt).getTime() >= new Date(rep.enteredAt).getTime())) {
+        rep = { enteredAt: d.enteredAt, historyId: d.historyId, stationKey: s.station_key };
+      }
+    });
+
+    var resolvedHere = model.resolvedFirstRound && parentStepOrder_(model.resolvedFirstRound.order) === String(n) ? model.resolvedFirstRound : null;
+    var outcome = resolvedHere ? OWNER_RESULT_OUTCOME_[resolvedHere.key] : null;
+    var badgeTone = outcome ? STAFF_ORDER_OUTCOME_TONE_MAP_[outcome.tone] : (state === 'skipped' ? 'skip' : state);
+    var badgeIcon = state === 'done' ? '&#10003;' : n;
+
+    var dateInputHtml;
+    if (state === 'done' && rep) {
+      var repStationDef = stationsMap[rep.stationKey];
+      var orgResp = repStationDef ? resolveResponsibleOrg_(repStationDef, work) : '';
+      var canEditThis = isAdmin || (orgResp && user.organization === orgResp);
+      var isoVal = formatDateYYYYMMDD_(rep.enteredAt);
+      dateInputHtml = '<input type="date" class="input swfg-input" form="swfg-form" name="action_date_' + escapeHtml_(rep.historyId) + '"' +
+        ' value="' + escapeHtml_(isoVal) + '" data-original="' + escapeHtml_(isoVal) + '"' + (canEditThis ? '' : ' disabled') + '>';
+    } else if (state === 'current' && model.eligibleTransitions.length === 1) {
+      dateInputHtml = '<input type="date" class="input swfg-input" form="swfg-form" name="transition_date" value="" data-original="" placeholder="เลือกวันที่">' +
+        '<input type="hidden" form="swfg-form" name="transition_id" value="' + escapeHtml_(model.eligibleTransitions[0].transition_id) + '">';
+    } else if (state === 'current' && model.eligibleTransitions.length > 1) {
+      dateInputHtml = '<div class="swft-branch-group" role="radiogroup" aria-label="เลือกผลการพิจารณา">';
+      model.eligibleTransitions.forEach(function (t) {
+        var panelId = 'swft-branch-panel-' + t.transition_id;
+        var isReopenOpt = stepPrevValues.wtbl_action === 'state_transition' && stepPrevValues.transition_id === t.transition_id;
+        dateInputHtml += '<label class="swft-branch-option"><input type="radio" class="swft-branch-radio" name="swft_branch_' + n + '"' +
+          ' value="' + escapeHtml_(t.transition_id) + '" data-wf-toggle="' + escapeHtml_(panelId) + '"' + (isReopenOpt ? ' checked' : '') + '>' +
+          '<span>' + escapeHtml_(t.button_label) + '</span></label>';
+      });
+      dateInputHtml += '</div>';
+      model.eligibleTransitions.forEach(function (t) {
+        var panelId = 'swft-branch-panel-' + t.transition_id;
+        var isReopen = stepPrevValues.wtbl_action === 'state_transition' && stepPrevValues.transition_id === t.transition_id;
+        var targetStation = stationsMap[t.to_state];
+        var targetName = targetStation ? splitStationNameDesc_(targetStation.station_name).main : t.to_state;
+        var needsDueDate = REVISION_DUE_DATE_STATE_KEYS_[t.to_state];
+        dateInputHtml += '<div class="wf-confirm wtbl-panel swft-branch-form" id="' + escapeHtml_(panelId) + '"' + (isReopen ? ' data-auto-open="1"' : '') + '>' +
+          '<form method="post" target="_top" action="' + baseUrl + '" class="reg-form" style="border:none;padding:0;margin:0">' +
+          '<input type="hidden" name="form_action" value="state_transition">' +
+          '<input type="hidden" name="return_to" value="detail">' +
+          '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
+          '<input type="hidden" name="transition_id" value="' + escapeHtml_(t.transition_id) + '">' +
+          '<div class="field"><label>วันที่ดำเนินการ (เป็น ' + escapeHtml_(targetName) + ')</label>' +
+          '<input class="input" type="date" name="action_date" value="' + escapeHtml_(isReopen ? (stepPrevValues.action_date || '') : formatDateYYYYMMDD_(now_())) + '" required></div>' +
+          (needsDueDate ? '<div class="field"><label>วันครบกำหนดแก้ไข</label>' +
+            '<input class="input" type="date" name="revision_due_date" value="' + escapeHtml_(isReopen ? (stepPrevValues.revision_due_date || '') : '') + '" required></div>' : '') +
+          '<div class="field"><label>หมายเหตุ' + (t.requires_note ? '' : ' (ถ้ามี)') + '</label>' +
+          '<textarea class="input" name="note" rows="2">' + escapeHtml_(isReopen ? (stepPrevValues.note || '') : '') + '</textarea></div>' +
+          '<button class="btn-primary swft-branch-submit" type="submit" data-loading-text="กำลังบันทึก...">ยืนยัน' + escapeHtml_(t.button_label) + '</button>' +
+          '</form></div>';
+      });
+    } else if (state === 'skipped') {
+      dateInputHtml = '<input type="date" class="input swfg-input" value="" disabled>';
+    } else if (state === 'current') { // ไม่มีสิทธิ์ (eligibleTransitions ว่างเพราะ permission ไม่ตรง)
+      dateInputHtml = '<input type="date" class="input swfg-input" value="" disabled placeholder="ไม่มีสิทธิ์">';
+    } else if (state === 'done') { // เคสขอบ: ไม่ควรเกิดจริง — กันไว้
+      dateInputHtml = '<input type="date" class="input swfg-input" value="" disabled>';
+    } else { // pending
+      dateInputHtml = '<input type="date" class="input swfg-input" value="" disabled placeholder="เลือกวันที่">';
+    }
+
+    var auditList = model.auditByMainStep[n] || [];
+    var historyCount = auditList.length;
+    var historyCellHtml = historyCount > 0 ? ('มี ' + historyCount + ' รายการ') : 'ไม่มี';
+    var detailBtnHtml = historyCount > 0
+      ? '<button type="button" class="btn-outline swft-detail-btn" data-drawer-step="' + n + '" data-drawer-label="' + escapeHtml_(n + '. ' + label) + '">ดูรายละเอียด</button>'
+      : '';
+
+    if (historyCount > 0) {
+      var itemsHtml = auditList.map(function (a) {
+        return '<div class="swft-drawer-item">' +
+          '<div class="swft-drawer-time">' + formatDateTimeThBuddhist_(a.timestamp) + '</div>' +
+          '<div class="swft-drawer-row"><span class="swft-drawer-k">ผู้แก้ไข</span><span class="swft-drawer-v">' + escapeHtml_(a.user_email) + '</span></div>' +
+          '<div class="swft-drawer-row"><span class="swft-drawer-k">รายการ</span><span class="swft-drawer-v">' + escapeHtml_(swftAuditFieldLabel_(a.field_changed)) + '</span></div>' +
+          '<div class="swft-drawer-row"><span class="swft-drawer-k">เดิม</span><span class="swft-drawer-old">' + escapeHtml_(a.old_value || '-') + '</span></div>' +
+          '<div class="swft-drawer-row"><span class="swft-drawer-k">ใหม่</span><span class="swft-drawer-new">' + escapeHtml_(a.new_value || '-') + '</span></div>' +
+          '</div>';
+      }).join('');
+      templatesHtml += '<template id="swft-drawer-tpl-' + n + '">' + itemsHtml + '</template>';
+    }
+
+    rowsHtml += '<tr class="swft-row swft-row-' + state + '" data-step="' + n + '">' +
+      '<td class="swft-col-order"><span class="swfg-badge swfg-badge-' + badgeTone + '">' + badgeIcon + '</span></td>' +
+      '<td class="swft-col-step"><span class="swft-step-icon">' + staffStepIcon_(label) + '</span><span class="swft-step-name">' + escapeHtml_(label) + '</span></td>' +
+      '<td class="swft-col-date">' + dateInputHtml + '</td>' +
+      '<td class="swft-col-history">' + historyCellHtml + '</td>' +
+      '<td class="swft-col-detail">' + detailBtnHtml + '</td>' +
+      '</tr>';
+  });
+
+  var drawerShellHtml = '' +
+    '<div class="swft-drawer-overlay" id="swft-drawer-overlay"></div>' +
+    '<div class="swft-drawer" id="swft-drawer" role="dialog" aria-modal="true">' +
+    '<div class="swft-drawer-head"><div class="swft-drawer-title" id="swft-drawer-title"></div>' +
+    '<button type="button" class="swft-drawer-close" id="swft-drawer-close" aria-label="ปิด">&times;</button></div>' +
+    '<div class="swft-drawer-body" id="swft-drawer-body"></div>' +
+    '<div class="swft-drawer-foot"><button type="button" class="btn-outline" id="swft-drawer-close-btn">ปิด</button></div>' +
+    '</div>';
+
+  return '' +
+    '<div class="swfg-section">' +
+    '<div class="swfg-header"><span class="swfg-header-icon">&#128197;</span>รายละเอียดขั้นตอนและการดำเนินการ</div>' +
+    errorHtml +
+    '<div class="swft-table-wrap"><table class="swft-table">' +
+    '<colgroup><col style="width:6%"><col style="width:38%"><col style="width:25%"><col style="width:18%"><col style="width:13%"></colgroup>' +
+    '<thead><tr><th>ลำดับ</th><th>ขั้นตอน</th><th>วันที่ดำเนินการ</th><th>ประวัติการแก้ไข</th><th>ดูรายละเอียด</th></tr></thead>' +
+    '<tbody>' + rowsHtml + '</tbody>' +
+    '</table></div>' +
+    '<form method="post" target="_top" action="' + baseUrl + '" id="swfg-form">' +
+    '<input type="hidden" name="form_action" value="save_all_step_dates">' +
+    '<input type="hidden" name="return_to" value="detail">' +
+    '<input type="hidden" name="work_id" value="' + escapeHtml_(work.work_id) + '">' +
+    '<div class="swfg-actions"><button type="submit" class="swfg-update-btn" id="swfg-update-btn" disabled ' +
+    'data-loading-text="กำลังบันทึก...">&#10003; อัปเดตข้อมูล</button></div>' +
+    '</form>' +
+    templatesHtml + drawerShellHtml +
+    '</div>' +
+    SWFT_DIRTY_SCRIPT_ + SWFT_DRAWER_SCRIPT_;
+}
+
+/** ข้อ 17 ของรอบก่อนหน้า (ยังจริงเหมือนกัน) — Dirty-state tracking ของ #swfg-form เวอร์ชันตารางแนวตั้ง 2026-11-05:
+ *  ปุ่ม "✓ อัปเดตข้อมูล" disabled ตอนเปิดหน้าเสมอ enable ทันทีที่ .swfg-input (ที่ไม่ disabled) ค่าเปลี่ยนจาก
+ *  data-original ของมันเอง — ต่าง renderStaffWorkflowGrid_ เดิมที่ query จาก "form.querySelectorAll(...)" (input
+ *  เป็นลูกของฟอร์มตรงๆ) ตอนนี้ query จาก document ทั้งหน้าแทน เพราะ input ผูกฟอร์มด้วย attribute `form="swfg-form"`
+ *  ไม่ใช่ลูกของฟอร์มอีกต่อไป (<table> ไม่ได้อยู่ใน <form> แล้ว — ดูเหตุผลเต็มที่คอมเมนต์ renderStaffWorkflowRowsTable_) */
+var SWFT_DIRTY_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'var btn = document.getElementById("swfg-update-btn");' +
+  'if (!btn) return;' +
+  'var inputs = Array.prototype.slice.call(document.querySelectorAll(".swfg-input:not([disabled])"));' +
+  'function checkDirty() {' +
+  'var dirty = inputs.some(function (inp) { return inp.value !== (inp.getAttribute("data-original") || ""); });' +
+  'btn.disabled = !dirty;' +
+  '}' +
+  'inputs.forEach(function (inp) { inp.addEventListener("input", checkDirty); inp.addEventListener("change", checkDirty); });' +
+  'checkDirty();' +
+  '});' +
+  '</script>';
+
+/**
+ * Side Drawer "ประวัติการแก้ไข" (ข้อ 19-22/39/46/47) — เนื้อหาต่อขั้นตอนถูก embed ไว้ใน <template> ซ่อนอยู่แล้ว
+ * ตั้งแต่โหลดหน้า (renderStaffWorkflowRowsTable_ ด้านบน) เปิด/ปิด Drawer คือสลับ class "open"/คัดลอก innerHTML
+ * ของ template ไปลง #swft-drawer-body ล้วนๆ ฝั่ง client ไม่มี fetch/backend call ใดๆ เลย (ข้อ 19 "ไม่ reload",
+ * ข้อ 28 "ไม่ยิง backend ซ้ำตอนเปิด Drawer" — dataset ต่องานหนึ่งรายการเล็กพอที่จะ embed ไว้ล่วงหน้าได้เสมอ)
+ * ปิดได้ 3 ทาง: ปุ่ม X, ปุ่ม "ปิด", คลิก overlay, หรือกด Escape (ข้อ 39) ไม่มีทางไหน reload หน้าเลย ไม่พบ
+ * template ของ step นั้น (ไม่ควรเกิดจริง เพราะปุ่ม "ดูรายละเอียด" render เฉพาะ step ที่มี history>0) ให้ fallback
+ * ข้อความ error สั้นๆ แทน raw error (ข้อ 46)
+ */
+var SWFT_DRAWER_SCRIPT_ = '' +
+  '<script>' +
+  'document.addEventListener("DOMContentLoaded", function () {' +
+  'var overlay = document.getElementById("swft-drawer-overlay");' +
+  'var drawer = document.getElementById("swft-drawer");' +
+  'var titleEl = document.getElementById("swft-drawer-title");' +
+  'var bodyEl = document.getElementById("swft-drawer-body");' +
+  'if (!overlay || !drawer) return;' +
+  'function openDrawer(step, label) {' +
+  'var tpl = document.getElementById("swft-drawer-tpl-" + step);' +
+  'titleEl.textContent = "ประวัติการแก้ไข – ขั้นตอนที่ " + label;' +
+  'bodyEl.innerHTML = tpl ? tpl.innerHTML : "<div class=\\"swft-drawer-error\\">ไม่สามารถโหลดประวัติการแก้ไขได้</div>";' +
+  'overlay.classList.add("open"); drawer.classList.add("open");' +
+  '}' +
+  'function closeDrawer() { overlay.classList.remove("open"); drawer.classList.remove("open"); }' +
+  'document.querySelectorAll("[data-drawer-step]").forEach(function (btn) {' +
+  'btn.addEventListener("click", function () { openDrawer(btn.getAttribute("data-drawer-step"), btn.getAttribute("data-drawer-label")); });' +
+  '});' +
+  'overlay.addEventListener("click", closeDrawer);' +
+  'var closeBtn = document.getElementById("swft-drawer-close");' +
+  'if (closeBtn) closeBtn.addEventListener("click", closeDrawer);' +
+  'var closeBtn2 = document.getElementById("swft-drawer-close-btn");' +
+  'if (closeBtn2) closeBtn2.addEventListener("click", closeDrawer);' +
+  'document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeDrawer(); });' +
+  '});' +
+  '</script>';
 
 /**
  * ข้อ 17 — Dirty-state tracking ของฟอร์มกริด (#swfg-form): ปุ่ม "✓ อัปเดตข้อมูล" disabled ตอนเปิดหน้าเสมอ
@@ -4064,3 +4328,66 @@ var PUBLIC_CSS_ = '' +
   '.swfg-history-link{text-align:center;margin-top:10px;}' +
   '.swfg-history-link a{font-size:.78rem;color:var(--teal);text-decoration:none;}' +
   '@media (max-width:640px){.swfg-grid{grid-template-columns:100px repeat(10, minmax(72px, 1fr));}}';
+
+// 2026-11-05 — requirement ใหม่ "ตารางแนวตั้ง 5 คอลัมน์ + Side Drawer" (renderStaffWorkflowRowsTable_, Views.gs)
+// คลาส "swft-" ใหม่ทั้งหมด สโคปเฉพาะ component นี้ ไม่กระทบ .swfg-*/.swf-table เดิมที่เลิกใช้ในหน้านี้แล้วแต่ไม่ได้
+// ลบ CSS ทิ้ง (.swfg-badge/.swfg-input/.swfg-section/.swfg-header/.swfg-actions/.swfg-update-btn/.wtbl-panel/
+// .wf-confirm ยังถูก reuse จริงจากตารางนี้ — ไม่ซ้ำ rule ที่มีอยู่แล้วด้านบน)
+PUBLIC_CSS_ += '' +
+  // ข้อ 42 — การ์ด white/border #d9e2ea/radius 14-16/shadow เบา (reuse .swfg-section เดิมเป๊ะอยู่แล้ว ไม่ต้องสร้างซ้ำ)
+  '.swft-table-wrap{overflow-x:auto;}' + // safety net จอแคบมากๆ — 1366px ไม่ scroll จริงตามที่ทดสอบ (ข้อ 44)
+  '.swft-table{width:100%;border-collapse:collapse;table-layout:fixed;font-family:Sarabun,sans-serif;}' +
+  // ข้อ 43 — หัวตาราง bg #eef3f6, font 13-14px/600
+  '.swft-table thead th{background:#eef3f6;color:var(--navy);font-size:13px;font-weight:600;text-align:left;' +
+  'padding:8px 8px;border-bottom:1px solid var(--border);}' +
+  '.swft-table tbody td{padding:8px 8px;border-bottom:1px solid var(--border);vertical-align:middle;' +
+  'font-size:.82rem;word-break:break-word;}' +
+  // ข้อ 7 — row สูง 44-54px ปกติ (min-height ผ่าน padding ของ td ด้านบน + line-height ปกติก็เกินพอแล้ว)
+  '.swft-row-current{background:#eef6ff;}' + // ข้อ 29 — highlight ทั้งแถวเบาๆ ห้ามสีหนัก
+  '.swft-row-current td:first-child{border-left:3px solid var(--navy);}' +
+  '.swft-row-skipped{opacity:.55;}' +
+  '.swft-col-order{text-align:center;width:6%;}' +
+  '.swft-col-step{display:flex;align-items:center;gap:6px;}' +
+  '.swft-step-icon{flex-shrink:0;font-size:.9rem;}' +
+  '.swft-step-name{color:var(--text);line-height:1.35;}' +
+  '.swft-col-date .swfg-input{height:34px;}' + // ข้อ 7 — ปกติไม่สูงเกินแถว ยกเว้น branch row (ข้อ 7 ข้อยกเว้น)
+  '.swft-col-history{color:var(--muted);font-size:.78rem;text-align:center;}' + // ข้อ 17/34 — ข้อความสั้น ไม่โชว์รายละเอียดในเซลล์
+  '.swft-col-detail{text-align:center;}' +
+  '.swft-detail-btn{font-size:.72rem;padding:4px 10px;border-radius:8px;}' + // ข้อ 18 — outline blue compact (.btn-outline เดิม)
+  // ข้อ 10/32/33 — checklist/result แบบ radio segmented inline compact (ไม่ใช่ checkbox, เลือกได้ค่าเดียว)
+  '.swft-branch-group{display:flex;flex-direction:column;gap:4px;margin-bottom:4px;}' +
+  '.swft-branch-option{display:flex;align-items:center;gap:6px;font-size:.76rem;color:var(--text);' +
+  'border:1px solid var(--border);border-radius:8px;padding:4px 8px;cursor:pointer;background:#fff;}' +
+  '.swft-branch-option input{margin:0;cursor:pointer;}' +
+  // ข้อ 32 — "ไม่ต้องทำ card ใหญ่" ฟอร์มย่อยที่เผยออกมา compact กว่า .wf-confirm เดิม (รอบก่อนหน้าเป็น popup
+  // ลอยกลางจอ รอบนี้ inline อยู่ในเซลล์เดียวกันแล้ว ไม่ต้องมี shadow/title ใหญ่)
+  '.swft-branch-form{padding:8px;margin-top:4px;border:1px dashed var(--border);border-radius:8px;background:#f9fbfc;' +
+  'box-shadow:none;}' +
+  '.swft-branch-form .field{margin-bottom:6px;}' +
+  '.swft-branch-form .field label{font-size:.72rem;}' +
+  '.swft-branch-submit{font-size:.76rem;padding:6px 14px;}' +
+  // ข้อ 21 — Drawer ด้านขวา 360-420px, shadow เบา, เต็ม viewport, ปุ่ม X มุมขวาบน
+  '.swft-drawer-overlay{position:fixed;inset:0;background:rgba(20,40,55,.35);opacity:0;visibility:hidden;' +
+  'transition:opacity .15s;z-index:200;}' +
+  '.swft-drawer-overlay.open{opacity:1;visibility:visible;}' +
+  '.swft-drawer{position:fixed;top:0;right:0;height:100vh;width:380px;max-width:90vw;background:#fff;' +
+  'box-shadow:-4px 0 16px rgba(20,40,55,.12);z-index:201;transform:translateX(100%);transition:transform .2s;' +
+  'display:flex;flex-direction:column;font-family:Sarabun,sans-serif;}' +
+  '.swft-drawer.open{transform:translateX(0);}' +
+  '.swft-drawer-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;' +
+  'border-bottom:1px solid var(--border);}' +
+  '.swft-drawer-title{font-size:.92rem;font-weight:700;color:var(--navy);}' +
+  '.swft-drawer-close{border:none;background:none;font-size:1.3rem;line-height:1;color:var(--muted);cursor:pointer;padding:0 4px;}' +
+  '.swft-drawer-body{flex:1;overflow-y:auto;padding:12px 16px;}' +
+  '.swft-drawer-foot{padding:12px 16px;border-top:1px solid var(--border);}' +
+  // ข้อ 22/23 — รายการประวัติ: วันที่/เวลา, ผู้แก้ไข, รายการ, เดิม(neutral)/ใหม่(เขียวอ่อน)
+  '.swft-drawer-item{border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px;}' +
+  '.swft-drawer-time{font-size:.74rem;color:var(--muted);margin-bottom:6px;}' +
+  '.swft-drawer-row{display:flex;justify-content:space-between;gap:8px;font-size:.78rem;margin-top:3px;}' +
+  '.swft-drawer-k{color:var(--muted);flex-shrink:0;}' +
+  '.swft-drawer-v{color:var(--text);text-align:right;}' +
+  '.swft-drawer-old{color:var(--muted);text-align:right;}' +
+  '.swft-drawer-new{background:#e3f6e8;color:#166534;padding:1px 6px;border-radius:6px;text-align:right;font-weight:600;}' +
+  '.swft-drawer-error{color:var(--danger);font-size:.82rem;}' +
+  // ข้อ 40 — Mobile: Drawer เต็มจอ
+  '@media (max-width:640px){.swft-drawer{width:100%;max-width:100%;}}';
