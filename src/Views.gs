@@ -1316,11 +1316,25 @@ function buildStaffWorkflowModel_(ss, work, history, stationsMap, data, user) {
     auditByMainStep[n].sort(function (a, b) { return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(); });
   });
 
+  // 2026-11-05 รอบ 2 — requirement ใหม่ "Step 2/7 ต้องแสดงผลที่เลือกต่อท้ายชื่อขั้นตอน" ต้องรู้ว่า main step
+  // ไหนเป็น "จุดแตกสายจริง" (decision hub) แบบ generic ไม่ hardcode เลข step (ตรวจ code จริงก่อนแก้ — ห้ามเดา)
+  // นับจำนวน active transition จริงที่ออกจาก "station เปล่า" ของแต่ละ main step จาก WorkflowTransitions เดิม
+  // (โหลดครั้งเดียวที่นี่ ไม่ query ซ้ำต่อแถว) จุดที่มี >1 ทางออกจริง = จุดแตกสายจริง (ปัจจุบันคือ step 3 hub
+  // "ส่งเอกสารให้เลขาคณะกรรมการฯ" ที่ตัดสิน ครบถ้วน(3.1)/ไม่ครบถ้วน(3.2) — ไม่ใช่ step 2 "ตรวจสอบเอกสาร" ตามที่
+  // requirement เรียก เพราะ s2_s3_1/s2_s3_2 ถูกปิด active จริงจาก migrateAddState3Hub() ไปแล้ว ดูคอมเมนต์เต็มที่
+  // renderStaffWorkflowRowsTable_ — และ step 7 "เลขาแจ้งผลการพิจารณามาที่ สนง เขต" เดิม)
+  var transitionRows = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_TRANSITIONS));
+  var branchFromCount = {};
+  transitionRows.forEach(function (t) {
+    if (!t.active) return;
+    branchFromCount[t.from_state] = (branchFromCount[t.from_state] || 0) + 1;
+  });
+
   return {
     isAdmin: user.role === 'Admin', doneMap: doneMap, skippedMainSteps: skippedMainSteps, currentKey: currentKey,
     currentStateDef: currentStateDef, eligibleTransitions: eligibleTransitions, resolvedFirstRound: resolvedFirstRound,
     allStations: allStations, mainStepNumbers: mainStepNumbers, currentMainStepNumber: currentMainStepNumber,
-    auditByMainStep: auditByMainStep,
+    auditByMainStep: auditByMainStep, branchFromCount: branchFromCount,
   };
 }
 
@@ -1332,6 +1346,23 @@ function swftAuditFieldLabel_(fieldChanged) {
   if (s === 'revision_due_date') return 'วันครบกำหนดแก้ไข';
   return s;
 }
+
+/**
+ * 2026-11-05 รอบ 2 — ข้อความ/สี "badge ผลที่เลือก" ต่อท้ายชื่อขั้นตอน (requirement ใหม่ ข้อ 4-8) ต่าง
+ * OWNER_RESULT_OUTCOME_ เดิม (PublicTrack.gs, ข้อความยาวแบบ Owner-facing "ผ่านการประเมิน" ฯลฯ — ห้ามแก้ Owner
+ * View ตามที่ระบุ) ที่นี่ใช้ข้อความสั้นตามที่ requirement นี้ขอตรงๆ ("ผ่าน"/"แก้ไข 2 เดือน" ฯลฯ) คีย์ด้วย
+ * station_key จริง (ค่าเดียวกับ StatusHistory.to_station จริง — ข้อ 9 "ใช้ field/result จริง ห้ามเดา") สโคป
+ * เฉพาะตาราง Staff นี้เท่านั้น ไม่กระทบ OWNER_RESULT_OUTCOME_/Owner View แต่อย่างใด
+ */
+var STAFF_STEP_RESULT_BADGE_ = {
+  s3_1: { text: 'ครบถ้วน → ส่งเลขา', tone: 'pass' },
+  s3_2: { text: 'ไม่ครบถ้วน → ส่งคืนหน่วยงาน', tone: 'fail' },
+  s3_3: { text: 'ไม่ครบถ้วน → ส่งคืนหน่วยงาน', tone: 'fail' }, // state เดิมที่เลิกใช้แล้ว (ดู migrateAddState3Hub) เก็บไว้เผื่องานเก่าอ้างถึง
+  s7_1: { text: 'ผ่าน', tone: 'pass' },
+  s7_2: { text: 'แก้ไข 2 เดือน', tone: 'revision2' },
+  s7_3: { text: 'แก้ไข 6 เดือน', tone: 'revision3' },
+  s7_4: { text: 'ไม่ผ่าน', tone: 'fail' },
+};
 
 /** ชื่อขั้นตอนหลัก (เลขหน้าจุด n) แบบ internal — ไม่ใช้ OWNER_STATE_LABELS_/mainStepNameFor_ (สงวนไว้เฉพาะ
  *  Owner Timeline ตามที่ requirement ห้ามแตะ) หา station "เปล่า" (order===String(n)) ก่อน ถ้าไม่มีใช้ station
@@ -1692,7 +1723,25 @@ function renderStaffWorkflowRowsTable_(ss, work, history, stationsMap, data, use
     var resolvedHere = model.resolvedFirstRound && parentStepOrder_(model.resolvedFirstRound.order) === String(n) ? model.resolvedFirstRound : null;
     var outcome = resolvedHere ? OWNER_RESULT_OUTCOME_[resolvedHere.key] : null;
     var badgeTone = outcome ? STAFF_ORDER_OUTCOME_TONE_MAP_[outcome.tone] : (state === 'skipped' ? 'skip' : state);
-    var badgeIcon = state === 'done' ? '&#10003;' : n;
+    // 2026-11-05 รอบ 2 — ข้อ 2 "ห้ามใช้ ✓ แทนเลขขั้นตอน" วงกลมต้องแสดงเลขขั้นตอนเสมอไม่ว่าสถานะใด (สีวงกลมเป็น
+    // ตัวบอกสถานะอยู่แล้วจาก badgeTone ด้านบน — ไม่ต้องเปลี่ยนเลข icon ซ้ำ)
+    var badgeIcon = n;
+
+    // 2026-11-05 รอบ 2 — ข้อ 4-10 "แสดงผลที่เลือกต่อท้ายชื่อขั้นตอน" เฉพาะ main step ที่เป็นจุดแตกสายจริง
+    // (model.branchFromCount — นับจาก WorkflowTransitions จริง ไม่ hardcode เลข step) และมีผลบันทึกจริงแล้ว
+    // (rep.stationKey จาก StatusHistory.to_station จริง ไม่ใช่ bare hub เอง = ยังไม่มีผล -> ไม่แสดง badge เลย
+    // ตามข้อ 10 "กรณียังไม่ได้เลือก ไม่ต้องมี badge ว่าง")
+    var bareStation = groupStations.filter(function (s) { return String(s.station_order) === String(n); })[0];
+    var isDecisionHub = bareStation && model.branchFromCount[bareStation.station_key] > 1;
+    var resultBadgeHtml = '';
+    if (isDecisionHub && rep && rep.stationKey !== bareStation.station_key) {
+      var resInfo = STAFF_STEP_RESULT_BADGE_[rep.stationKey];
+      if (!resInfo) {
+        var repStDefForBadge = stationsMap[rep.stationKey];
+        resInfo = { text: repStDefForBadge ? splitStationNameDesc_(repStDefForBadge.station_name).main : rep.stationKey, tone: 'neutral' };
+      }
+      resultBadgeHtml = '<span class="swft-result-badge swft-result-badge-' + resInfo.tone + '">' + escapeHtml_(resInfo.text) + '</span>';
+    }
 
     var dateInputHtml;
     if (state === 'done' && rep) {
@@ -1768,7 +1817,7 @@ function renderStaffWorkflowRowsTable_(ss, work, history, stationsMap, data, use
 
     rowsHtml += '<tr class="swft-row swft-row-' + state + '" data-step="' + n + '">' +
       '<td class="swft-col-order"><span class="swfg-badge swfg-badge-' + badgeTone + '">' + badgeIcon + '</span></td>' +
-      '<td class="swft-col-step"><span class="swft-step-icon">' + staffStepIcon_(label) + '</span><span class="swft-step-name">' + escapeHtml_(label) + '</span></td>' +
+      '<td class="swft-col-step"><span class="swft-step-icon">' + staffStepIcon_(label) + '</span><span class="swft-step-name">' + escapeHtml_(label) + '</span>' + resultBadgeHtml + '</td>' +
       '<td class="swft-col-date">' + dateInputHtml + '</td>' +
       '<td class="swft-col-history">' + historyCellHtml + '</td>' +
       '<td class="swft-col-detail">' + detailBtnHtml + '</td>' +
@@ -4302,8 +4351,10 @@ var PUBLIC_CSS_ = '' +
   '.swfg-head{min-height:130px;max-height:160px;}' + // ข้อ 23
   '.swfg-step-name{font-size:.76rem;line-height:1.3;color:var(--text);word-break:break-word;}' + // ข้อ 24/26 — wrap 2-3 บรรทัดได้
   '.swfg-date{min-height:52px;}' + // ข้อ 23
-  '.swfg-badge{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;' +
-  'border-radius:50%;font-size:.72rem;font-weight:700;color:#fff;flex-shrink:0;}' + // ข้อ 26 — 12-13px ขนาด badge เลขให้สมดุลกับ font
+  // 2026-11-05 รอบ 2 — ข้อ 3 "ห้ามให้เลข 10 ล้นวงกลม" ขยับ 24->26px (ยังอยู่ในช่วง 24-28px ที่ระบุ) พอสำหรับ
+  // เลข 2 หลักที่ font-size เดิมโดยไม่ต้องเพิ่ม logic แยกขนาดต่อ step
+  '.swfg-badge{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;' +
+  'border-radius:50%;font-size:.72rem;font-weight:700;color:#fff;flex-shrink:0;white-space:nowrap;}' + // ข้อ 26 — 12-13px ขนาด badge เลขให้สมดุลกับ font
   '.swfg-badge-done{background:var(--done);}.swfg-badge-current{background:var(--navy);}' +
   '.swfg-badge-pending{background:var(--pending);}.swfg-badge-skip{background:#c3c9cf;}' +
   '.swfg-badge-revision2{background:#e8c547;}.swfg-badge-revision3{background:var(--revision);}' +
@@ -4347,9 +4398,19 @@ PUBLIC_CSS_ += '' +
   '.swft-row-current td:first-child{border-left:3px solid var(--navy);}' +
   '.swft-row-skipped{opacity:.55;}' +
   '.swft-col-order{text-align:center;width:6%;}' +
-  '.swft-col-step{display:flex;align-items:center;gap:6px;}' +
+  // ข้อ 5/16 — "ครบถ้วน → ส่งเลขา" ต่อท้ายชื่อขั้นตอน wrap ลงบรรทัดถัดไปได้ภายใน cell เดิม (flex-wrap) ไม่สร้าง
+  // column ใหม่ บน mobile ชื่อขั้นตอนขึ้นก่อน (DOM order เดิม) badge ตามมาบรรทัดถัดไปได้เองจาก wrap นี้
+  '.swft-col-step{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}' +
   '.swft-step-icon{flex-shrink:0;font-size:.9rem;}' +
   '.swft-step-name{color:var(--text);line-height:1.35;}' +
+  // ข้อ 6/8/15 — badge ผลที่เลือก (Step 3 hub ครบถ้วน/ไม่ครบถ้วน + Step 7) เล็ก กระชับ 1366px (font 11px)
+  '.swft-result-badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;' +
+  'border:1px solid transparent;line-height:1.5;white-space:normal;}' +
+  '.swft-result-badge-pass{background:#d9f0e1;color:#166534;border-color:#bfe6cc;}' +
+  '.swft-result-badge-fail{background:#f6d4d1;color:#9a2d24;border-color:#eec0bb;}' +
+  '.swft-result-badge-revision2{background:#fbecc0;color:#8a6300;border-color:#f3dd96;}' +
+  '.swft-result-badge-revision3{background:#f3dd96;color:#6b4e00;border-color:#e8c547;}' +
+  '.swft-result-badge-neutral{background:#eef1f3;color:var(--muted);border-color:var(--border);}' +
   '.swft-col-date .swfg-input{height:34px;}' + // ข้อ 7 — ปกติไม่สูงเกินแถว ยกเว้น branch row (ข้อ 7 ข้อยกเว้น)
   '.swft-col-history{color:var(--muted);font-size:.78rem;text-align:center;}' + // ข้อ 17/34 — ข้อความสั้น ไม่โชว์รายละเอียดในเซลล์
   '.swft-col-detail{text-align:center;}' +
