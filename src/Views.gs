@@ -1820,7 +1820,7 @@ function renderStaffWorkflowRowsTable_(ss, work, history, stationsMap, data, use
 
     rowsHtml += '<tr class="swft-row swft-row-' + state + '" data-step="' + n + '">' +
       '<td class="swft-col-order"><span class="swfg-badge swfg-badge-' + badgeTone + '">' + badgeIcon + '</span></td>' +
-      '<td class="swft-col-step"><span class="swft-step-icon">' + staffStepIcon_(label) + '</span><span class="swft-step-name">' + escapeHtml_(label) + '</span></td>' +
+      '<td class="swft-col-step"><div class="swft-step-cell"><span class="swft-step-icon">' + staffStepIcon_(label) + '</span><span class="swft-step-name">' + escapeHtml_(label) + '</span></div></td>' +
       '<td class="swft-col-result">' + resultCellHtml + '</td>' +
       '<td class="swft-col-date">' + dateInputHtml + '</td>' +
       '<td class="swft-col-history">' + historyCellHtml + '</td>' +
@@ -4468,7 +4468,12 @@ PUBLIC_CSS_ += '' +
   '.swft-row-current td:first-child{border-left:3px solid var(--navy);}' +
   '.swft-row-skipped{opacity:.55;}' +
   '.swft-col-order{text-align:center;width:6%;}' +
-  '.swft-col-step{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}' +
+  // 2026-11-05 รอบ 4 — แก้บั๊กจริง (ผู้ใช้รายงาน "เส้นตารางของขั้นตอน ไม่เท่ากับ column อื่น"): display:flex เดิม
+  // อยู่บน <td> โดยตรง (.swft-col-step) ซึ่งเปลี่ยน outer display ของ td จาก table-cell เป็น flex container
+  // ตรงๆ ทำให้ td นี้หลุดจากการคำนวณความสูง/เส้น border-bottom ร่วมกับ td อื่นในแถวเดียวกันแบบปกติของ table —
+  // ย้าย flex ไปไว้ที่ div ชั้นในแทน (.swft-step-cell, ดู markup renderStaffWorkflowRowsTable_) td เองกลับไปเป็น
+  // table-cell ปกติเหมือน td อื่นทุกคอลัมน์ เส้น border-bottom จึงเรียงระดับเดียวกันทั้งแถวแล้ว
+  '.swft-step-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}' +
   '.swft-step-icon{flex-shrink:0;font-size:.9rem;}' +
   '.swft-step-name{color:var(--text);line-height:1.35;}' +
   // 2026-11-05 รอบ 3 — requirement ใหม่ คอลัมน์แยก "ผลการเลือก / รายละเอียด" (เดิมต่อท้ายชื่อขั้นตอนในคอลัมน์
