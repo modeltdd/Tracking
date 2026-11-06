@@ -139,6 +139,20 @@ function formatDateThShort_(date) {
   }
 }
 
+/** วันที่แบบไทยอ่านง่าย ไม่มีเวลาเสมอ — "23 ก.ย. 2569" (2026-11-06 ตามที่ผู้ใช้ขอ สำหรับคอลัมน์ "วันที่ลงรับ" ใน
+ *  ตาราง Registry ทั้ง 2 มุมมอง — ต่างจาก formatDateThShort_/formatOwnerReceivedDate_ เดิมที่ยังโผล่เวลาในบาง
+ *  เงื่อนไข ตัวนี้ตัดเวลาทิ้งเสมอไม่มีข้อยกเว้น) reuse getBuddhistYear_/THAI_MONTHS_SHORT_ เดิมเท่านั้น ไม่มี parse
+ *  วันที่แบบใหม่ คืน '-' ถ้าไม่มีวันที่จริง/invalid (กัน "Invalid Date"/เศษ serial number หลุดออกมา) */
+function formatThaiDateOnly_(date) {
+  if (!date) return '-';
+  var d = new Date(date);
+  if (isNaN(d.getTime())) return '-';
+  var day = d.getDate();
+  var month = THAI_MONTHS_SHORT_[d.getMonth()];
+  var year = getBuddhistYear_(d);
+  return day + ' ' + month + ' ' + year;
+}
+
 /** วันที่แบบ dd/mm/yyyy ปี พ.ศ. ไม่มีเวลา (2026-10-12 ตามที่ผู้ใช้ขอ — บรรทัด "วันที่ :: ..." การ์ดผลการ
  *  พิจารณา หน้า Owner Dashboard) วัน/เดือนมี 2 หลักเสมอ (ใช้ padLeft_/getBuddhistYear_ เดิม) คืนค่าว่าง ''
  *  ถ้าไม่มีวันที่จริง/invalid — ให้ผู้เรียกซ่อนบรรทัดทั้งหมด ห้ามแสดง "-"/"null"/"Invalid Date" */

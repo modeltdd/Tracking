@@ -708,15 +708,15 @@ function renderRegistryListBody_(ss, pageResult, rp, totalAllCount, bucketCounts
   var rows = pageResult.items.map(function (w, i) {
     var ownerName = ((w.title_name || '') + (w.first_name || '') + ' ' + (w.last_name || '')).trim();
     var station = stationsMap[w.current_station_key];
-    // วันที่ลงรับ — ใช้ formatOwnerReceivedDate_ (OwnerAuth.gs) ไม่ใช่ formatDateTh_ ปกติ เพราะ formatDateTh_
-    // แสดงปี ค.ศ.+เวลา 00:00 เสมอ (ไม่ตรงข้อกำหนด: ต้องปี พ.ศ. "12 มิ.ย. 2569" และห้ามแสดงเวลา 00:00 ถ้าไม่มีเวลาจริง)
+    // วันที่ลงรับ — ใช้ formatThaiDateOnly_ (Utils.gs, 2026-11-06) ตัดเวลาทิ้งเสมอตามที่ผู้ใช้ขอ (เดิมใช้
+    // formatOwnerReceivedDate_ ซึ่งยังโผล่ "เวลา" เมื่อ hours/minutes ไม่เป็น 0 — ไม่ตรงข้อกำหนดใหม่)
     return '<tr>' +
       '<td class="reg-main-col-seq">' + (startIndexCard + i + 1) + '</td>' +
       '<td class="reg-main-col-name">' + escapeHtml_(ownerName || '-') + '</td>' +
       '<td class="reg-main-col-position">' + escapeHtml_(w.position || '-') + '</td>' +
       '<td class="reg-main-col-specialty">' + escapeHtml_(w.specialty || '-') + '</td>' +
       '<td class="reg-main-col-province">' + escapeHtml_(w.province || '-') + '</td>' +
-      '<td class="reg-main-col-date">' + escapeHtml_(formatOwnerReceivedDate_(w.received_date)) + '</td>' +
+      '<td class="reg-main-col-date">' + escapeHtml_(formatThaiDateOnly_(w.received_date)) + '</td>' +
       '<td class="reg-main-col-team">' + escapeHtml_(w.legacy_team || '-') + '</td>' +
       '<td class="reg-main-col-state">' + escapeHtml_(registryStateDisplayText_(station)) + '</td>' +
       // 2026-11-03 — หน้า Staff "Workflow เดียว" ใหม่ (page=detail) ครบทุก action (ดู/เปลี่ยนสถานะ/บันทึก-แก้ไข
@@ -953,7 +953,7 @@ function renderRegistryExcelViewBody_(ss, pageResult, rp, totalAllCount, bucketC
       '<td>' + escapeHtml_(w.position || '-') + '</td>' +
       '<td>' + escapeHtml_(w.specialty || '-') + '</td>' +
       '<td>' + escapeHtml_(w.province || '-') + '</td>' +
-      '<td>' + escapeHtml_(formatDateTh_(w.received_date)) + '</td>' +
+      '<td>' + escapeHtml_(formatThaiDateOnly_(w.received_date)) + '</td>' +
       '<td>' + escapeHtml_(w.legacy_team || '-') + '</td>' +
       '<td>' + escapeHtml_(w.secretary || '-') + '</td>' +
       '<td class="excel-col-wide">' + escapeHtml_(w.org_from || '-') + '</td>' +
