@@ -200,6 +200,28 @@ function fixWebAppBaseUrl() {
 }
 
 /**
+ * READ-ONLY diagnostic สำหรับ migration — list installed triggers + ชื่อ key ของ Script Properties
+ * (ไม่ log ค่า secret) ไว้เทียบ Project เดิม vs Project ใหม่ตอน migration. รันจาก Editor แล้วดูผลที่ View > Logs.
+ */
+function listMigrationInventory() {
+  var triggers = ScriptApp.getProjectTriggers();
+  Logger.log('--- INSTALLED TRIGGERS (' + triggers.length + ') ---');
+  triggers.forEach(function (t) {
+    Logger.log('function=' + t.getHandlerFunction() +
+      ' eventType=' + t.getEventType() +
+      ' triggerSource=' + t.getTriggerSource() +
+      ' uniqueId=' + t.getUniqueId());
+  });
+
+  var keys = PropertiesService.getScriptProperties().getKeys();
+  Logger.log('--- SCRIPT PROPERTY KEYS (' + keys.length + ') ---');
+  Logger.log(keys.join(', '));
+
+  Logger.log('--- WEB APP URL (current deployment) ---');
+  Logger.log(ScriptApp.getService().getUrl() || '(ว่าง — ยังไม่ deploy เป็น Web App)');
+}
+
+/**
  * แก้ไข station_order + public_hint ของชีต WorkflowStates ที่มีอยู่แล้วให้ตรงกับ WORKFLOW_STATES_SEED ปัจจุบัน —
  * (1) station_order เป็นเลขลำดับย่อยแบบทศนิยม เช่น "3.1"/"8.4" แทนเลขเต็มซ้ำกัน (2026-09-08 รอบแรก)
  * (2) public_hint ข้อความ "สิ่งที่ต้องดำเนินการ" ต่อ state ที่หน้าตรวจสอบสถานะสาธารณะใช้แสดง (2026-09-08 รอบสอง)
