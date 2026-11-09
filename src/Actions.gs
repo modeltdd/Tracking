@@ -132,7 +132,7 @@ function performStateTransition_(ss, user, e) {
     revision_reasons: '', revision_due_date: revisionDueDateObj || '', attachment_url: '', created_at: nowTs,
   });
 
-  return { ok: true, work_id: work.work_id, to_station: newState.station_key, action: 'transition' };
+  return { ok: true, work_id: work.work_id, to_station: newState.station_key, action: 'transition', resultLabel: transition.button_label };
 }
 
 /**

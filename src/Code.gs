@@ -237,8 +237,13 @@ function doPost(e) {
     // (ข้อ 6/10 ของ requirement — ห้ามต้องเข้า-ออกหลายหน้า) ไม่กระทบ flow เดิมของหน้าสแกน QR เลย (branch แยก)
     if (e.parameter.return_to === 'detail') {
       var transPrev = transResult.ok ? {} : Object.assign({}, e.parameter, { wtbl_action: 'state_transition' });
+      // 2026-11-09 — บั๊กจริงที่พบจาก smoke test: เลือกผลการพิจารณา (เช่น step 7 แตกสาย) แล้วบันทึกสำเร็จจริง
+      // (ยืนยันจาก Works.current_station_key เปลี่ยนจริง) แต่ข้อความ "อัปเดตข้อมูลเรียบร้อย" เดิมไม่บอกว่าบันทึก
+      // ผลอะไร ทำให้ผู้ใช้เข้าใจว่าไม่มีอะไรเกิดขึ้น — ใช้ transition.button_label จริง (resultLabel จาก
+      // performStateTransition_, Actions.gs) ไม่ hardcode ข้อความผล
+      var transSuccessMsg = transResult.ok ? ('บันทึกผลเรียบร้อย' + (transResult.resultLabel ? ': ' + transResult.resultLabel : '')) : '';
       return renderStaffDetailAfterAction_(ss, user, baseUrl, e.parameter.work_id, transResult.ok ? [] : (transResult.errors || []), transPrev,
-        transResult.ok ? 'อัปเดตข้อมูลเรียบร้อย' : '');
+        transSuccessMsg);
     }
     if (!transResult.ok) {
       var transWork = transResult.work || findWorkById_(ss, e.parameter.work_id);

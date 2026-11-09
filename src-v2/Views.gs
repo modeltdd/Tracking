@@ -1149,7 +1149,7 @@ function renderWorkDetailBody_(ss, work, history, stationsMap, baseUrl, user, er
   // แทนที่ renderStaffWorkflowGrid_ เดิม (ตารางกริดแนวนอน รอบก่อนหน้า — ไม่ถูกเรียกใช้แล้ว ไม่ลบทิ้ง)
   // ข้อ 21/35 — success feedback เล็กๆ (ไม่ใช่ modal) หลัง update สำเร็จ ส่งมาจาก Code.gs ตอน redirect กลับมาหน้านี้
   var stepSuccessHtml = stepSuccessMessage
-    ? '<div class="swfg-success-banner">&#10003; ' + escapeHtml_(stepSuccessMessage) + '</div>'
+    ? '<div class="swfg-success-banner" id="swfg-success-banner">&#10003; ' + escapeHtml_(stepSuccessMessage) + '</div>'
     : '';
   var staffWorkflowTableHtml = stepSuccessHtml + renderStaffWorkflowRowsTable_(ss, work, history, stationsMap, data, user, baseUrl, stepErrors, stepPrevValues, model);
   if (data.isLegacyImportOnly) staffWorkflowTableHtml += renderPubLegacyInfoBox_();
@@ -1965,6 +1965,11 @@ var STAFF_WORKFLOW_TOGGLE_SCRIPT_ = '' +
   '});' +
   'var autoOpen = document.querySelector(".wtbl-panel[data-auto-open=\\"1\\"]");' +
   'if (autoOpen) { autoOpen.style.display = "block"; autoOpen.scrollIntoView({ behavior: "smooth", block: "center" }); }' +
+  // 2026-11-09 — บั๊กจริงที่พบจาก smoke test (ข้อ "เลือกผลการพิจารณาแล้วดูเหมือนไม่เกิดอะไรขึ้น"): บันทึกสำเร็จจริง
+  // แต่ banner "บันทึกผลเรียบร้อย" อยู่เหนือตารางไกลเกินจะสังเกตเห็นหลัง reload — auto-scroll ไปหาให้เห็นชัดเหมือน
+  // ที่ทำกับ autoOpen panel (error) ด้านบนอยู่แล้ว ไม่ใช่ logic ใหม่ แค่ reuse pattern เดิม
+  'var successBanner = document.getElementById("swfg-success-banner");' +
+  'if (successBanner) { successBanner.scrollIntoView({ behavior: "smooth", block: "center" }); }' +
   '});' +
   '</script>';
 
