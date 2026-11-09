@@ -1278,7 +1278,10 @@ function buildStaffWorkflowModel_(ss, work, history, stationsMap, data, user) {
   history.forEach(function (h) {
     if (!h.to_station) return;
     if (h.action !== 'registered' && h.action !== 'transition' && h.action !== 'reassigned') return;
-    doneMap[h.to_station] = { enteredAt: h.action_date, historyId: h.history_id };
+    // 2026-11-09 — เก็บ createdAt (เวลาบันทึกจริงของระบบ, now_() ตอน performStateTransition_ ไม่ให้แก้) แยกจาก
+    // enteredAt (action_date — วันที่ "ดำเนินการ" ที่เจ้าหน้าที่พิมพ์เองได้ ไม่เรียงตามลำดับกดจริงเสมอ) ใช้ตอนหา
+    // "ตัวแทนล่าสุด" ของกลุ่มจุดแตกสาย (ดูคอมเมนต์ที่ rep ใน renderStaffWorkflowRowsTable_)
+    doneMap[h.to_station] = { enteredAt: h.action_date, historyId: h.history_id, createdAt: h.created_at };
   });
 
   var skippedMainSteps = computeSkippedMainSteps_(data.steps);
@@ -1713,10 +1716,15 @@ function renderStaffWorkflowRowsTable_(ss, work, history, stationsMap, data, use
     else state = 'pending';
 
     var rep = null;
+    // 2026-11-09 — บั๊กจริงที่พบ: เลือกผล "ผ่าน" (เข้า s7_1) สำเร็จจริง แต่ badge ไม่ขึ้น เพราะเดิมเทียบ "ใคร
+    // ล่าสุด" ด้วย enteredAt (action_date — วันที่ที่เจ้าหน้าที่พิมพ์เองได้ ไม่ใช่ลำดับกดจริง) ถ้า action_date
+    // ของ s7 (bare) ถูกพิมพ์เป็นวันหลัง s7_1 โดยบังเอิญ/ไม่ตั้งใจ ตัวแทนกลุ่มจะกลับไปเป็น s7 (ยังไม่มีผล) แทน
+    // s7_1 — เปลี่ยนไปเทียบด้วย createdAt (เวลาบันทึกจริงของระบบ เรียงตามลำดับกดจริงเสมอ) แทน ไม่กระทบวันที่ที่
+    // แสดง/แก้ไขได้ในช่อง "วันที่ดำเนินการ" เดิมเลย (ยังใช้ enteredAt/action_date เหมือนเดิมทุกจุด)
     groupStations.forEach(function (s) {
       var d = model.doneMap[s.station_key];
-      if (d && (!rep || new Date(d.enteredAt).getTime() >= new Date(rep.enteredAt).getTime())) {
-        rep = { enteredAt: d.enteredAt, historyId: d.historyId, stationKey: s.station_key };
+      if (d && (!rep || new Date(d.createdAt).getTime() >= new Date(rep.createdAt).getTime())) {
+        rep = { enteredAt: d.enteredAt, historyId: d.historyId, stationKey: s.station_key, createdAt: d.createdAt };
       }
     });
 

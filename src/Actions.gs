@@ -162,6 +162,63 @@ function logWorkRevisionDueDate(trackingNo) {
 }
 
 /**
+ * Diagnostic (2026-11-09 — ตรวจบั๊กจริง "เลือก 7.1 (ผ่าน) แล้ว badge ผลการเลือก ไม่ขึ้น" ยืนยันแล้วว่า
+ * current_station_key เปลี่ยนเป็น s7_1 จริง แต่ evaluation_result ว่าง และ badge ไม่ขึ้น — log ทุกค่าที่
+ * resultCellHtml (renderStaffWorkflowRowsTable_, Views.gs) ใช้จริงเพื่อหา root cause ตรงจุด ไม่เดา)
+ * รันจาก Editor โดยตรง ไม่มี _ ต่อท้ายชื่อ ไม่ระบุ tracking_no ใช้ "69-220" เป็นค่าเริ่มต้น
+ */
+function logStep7BadgeDiagnosis(trackingNo) {
+  trackingNo = trackingNo || '69-220';
+  var ss = getSpreadsheet_();
+  var works = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKS));
+  var work = works.filter(function (w) { return String(w.tracking_no || '').trim() === String(trackingNo).trim(); })[0];
+  if (!work) { Logger.log('=== ไม่พบงาน tracking_no="' + trackingNo + '" ==='); return; }
+
+  Logger.log('work_id = ' + work.work_id);
+  Logger.log('current_station_key = ' + work.current_station_key);
+  Logger.log('evaluation_result = ' + JSON.stringify(work.evaluation_result));
+
+  var history = readSheetAsObjects_(ss.getSheetByName(SHEET.STATUS_HISTORY))
+    .filter(function (h) { return h.work_id === work.work_id; });
+  Logger.log('--- StatusHistory ของงานนี้ (' + history.length + ' แถว) ---');
+  history.forEach(function (h) {
+    Logger.log('action=' + h.action + ' to_station=' + h.to_station + ' action_date=' + h.action_date + ' note=' + h.note);
+  });
+
+  var transitions = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_TRANSITIONS));
+  Logger.log('--- WorkflowTransitions ที่ from_state="s7" (ชีตจริง ไม่ใช่ seed ใน Constants.gs) ---');
+  transitions.filter(function (t) { return t.from_state === 's7'; }).forEach(function (t) {
+    Logger.log('transition_id=' + t.transition_id + ' to_state=' + t.to_state + ' button_label=' + JSON.stringify(t.button_label) +
+      ' result_value=' + JSON.stringify(t.result_value) + ' active=' + t.active + ' (typeof active: ' + typeof t.active + ')');
+  });
+
+  var stationsSheet = readSheetAsObjects_(ss.getSheetByName(SHEET.WORKFLOW_STATES));
+  Logger.log('--- WorkflowStates station_key=s7/s7_1/s7_2/s7_3/s7_4 (ชีตจริง) ---');
+  stationsSheet.filter(function (s) { return ['s7', 's7_1', 's7_2', 's7_3', 's7_4'].indexOf(s.station_key) !== -1; }).forEach(function (s) {
+    Logger.log('station_key=' + s.station_key + ' station_order=' + JSON.stringify(s.station_order) + ' active=' + s.active + ' (typeof: ' + typeof s.active + ')');
+  });
+
+  // จำลอง branchFromCount/rep/isDecisionHub เหมือน buildStaffWorkflowModel_ + renderStaffWorkflowRowsTable_ จริง
+  var branchFromCount = {};
+  transitions.forEach(function (t) { if (t.active) branchFromCount[t.from_state] = (branchFromCount[t.from_state] || 0) + 1; });
+  Logger.log('branchFromCount["s7"] = ' + branchFromCount['s7']);
+
+  var doneMap = {};
+  history.forEach(function (h) {
+    if (!h.to_station) return;
+    if (h.action !== 'registered' && h.action !== 'transition' && h.action !== 'reassigned') return;
+    doneMap[h.to_station] = { enteredAt: h.action_date };
+  });
+  var rep = null;
+  ['s7', 's7_1', 's7_2', 's7_3', 's7_4'].forEach(function (key) {
+    var d = doneMap[key];
+    if (d && (!rep || new Date(d.enteredAt).getTime() >= new Date(rep.enteredAt).getTime())) rep = { enteredAt: d.enteredAt, stationKey: key };
+  });
+  Logger.log('rep (จำลอง) = ' + JSON.stringify(rep));
+  Logger.log('=== ถ้า branchFromCount["s7"] ไม่ใช่ 4 หรือ active ของ s7_1-4 ไม่ใช่ true = root cause อยู่ที่ชีต (ข้อมูล stale/ผิด) ไม่ใช่โค้ด render ===');
+}
+
+/**
  * 2026-10-21 ตามข้อแก้ไขผู้บริหาร ข้อ 8 — Admin กำหนด/แก้ไข "วันครบกำหนดแก้ไข" ย้อนหลังให้งานที่ผลรอบ 1 เป็น
  * "แก้ไข 2/6 เดือน" (s7_2/s7_3) อยู่แล้ว แต่ revision_due_date ยังว่าง (เช่น transition เกิดขึ้นก่อนมี feature
  * นี้) ไม่ใช่ state transition ใหม่ — ไม่แตะ current_station_key/current_status_public/evaluation_result เลย
